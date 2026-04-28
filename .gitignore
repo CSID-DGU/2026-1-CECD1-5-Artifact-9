@@ -25,3 +25,22 @@ replay_pid*
 
 # 하위의 node_modules 제외
 **/node_modules/
+
+# === Backend (Spring Boot) ===
+backend/.idea/
+backend/.gradle/
+backend/build/
+backend/out/
+backend/*.iml
+backend/HELP.md
+
+# === Spring 업로드 폴더 (이미지 저장 위치) ===
+backend/uploads/
+
+# === macOS ===
+.DS_Store
+
+# === Java ===
+*.class
+*.jar
+*.war
