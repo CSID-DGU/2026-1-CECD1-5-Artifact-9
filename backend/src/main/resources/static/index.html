@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>이미지 업로드 테스트</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            max-width: 640px;
+            margin: 50px auto;
+            padding: 0 20px;
+            background: #f9fafb;
+            color: #111827;
+        }
+        h1 { font-size: 22px; margin-bottom: 6px; }
+        .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+
+        .card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 28px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .file-row { margin-bottom: 16px; }
+        input[type="file"] { width: 100%; font-size: 14px; padding: 8px 0; }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 11px 22px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #93c5fd; cursor: not-allowed; }
+
+        .result {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 10px;
+            font-size: 14px;
+            display: none;
+        }
+        .result.success {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+        .result.error {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+        .result h3 { margin: 0 0 10px; font-size: 16px; }
+
+        .url-box {
+            margin-top: 8px;
+            padding: 10px 12px;
+            background: #f3f4f6;
+            border-radius: 6px;
+            word-break: break-all;
+            font-family: 'SF Mono', Menlo, monospace;
+            font-size: 12px;
+            color: #374151;
+        }
+        .url-box a { color: #2563eb; text-decoration: none; }
+        .url-box a:hover { text-decoration: underline; }
+
+        .info {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 10px;
+        }
+        img.preview {
+            margin-top: 14px;
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .copy-btn {
+            margin-top: 8px;
+            background: white;
+            color: #3b82f6;
+            border: 1px solid #3b82f6;
+            padding: 6px 14px;
+            font-size: 13px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: auto;
+        }
+        .copy-btn:hover { background: #eff6ff; }
+    </style>
+</head>
+<body>
+    <h1>🏥 의료 영상 업로드 테스트</h1>
+    <p class="subtitle">JPEG / PNG 이미지를 선택해서 AWS S3에 업로드합니다 (최대 10MB)</p>
+
+    <div class="card">
+        <div class="file-row">
+            <input type="file" id="fileInput" accept="image/jpeg,image/png" />
+        </div>
+        <button id="uploadBtn" onclick="uploadImage()">업로드</button>
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        async function uploadImage() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showResult('error', '⚠️ 파일을 먼저 선택해주세요.');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '업로드 중...';
+            showResult('success', '<h3>📤 서버에 전송 중...</h3>');
+
+            try {
+                const res = await fetch('/api/v1/images', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || `HTTP ${res.status}`);
+                }
+
+                showResult('success', `
+                    <h3>✅ 업로드 성공</h3>
+                    <div><strong>파일명:</strong> ${file.name}</div>
+                    <div><strong>크기:</strong> ${(file.size / 1024).toFixed(1)} KB</div>
+                    <div class="url-box">
+                        <a href="${data.url}" target="_blank" id="resultUrl">${data.url}</a>
+                    </div>
+                    <button class="copy-btn" onclick="copyUrl('${data.url.replace(/'/g, "\\'")}')">URL 복사</button>
+                    <div class="info">⏰ 이 URL은 1시간 동안만 유효합니다.</div>
+                    <img class="preview" src="${data.url}" alt="업로드된 이미지" />
+                `);
+            } catch (err) {
+                showResult('error', `<h3>❌ 업로드 실패</h3><div>${err.message}</div>`);
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '업로드';
+            }
+        }
+
+        function showResult(type, html) {
+            const el = document.getElementById('result');
+            el.className = 'result ' + type;
+            el.innerHTML = html;
+            el.style.display = 'block';
+        }
+
+        async function copyUrl(url) {
+            try {
+                await navigator.clipboard.writeText(url);
+                alert('URL이 클립보드에 복사되었습니다.');
+            } catch {
+                alert('복사 실패. URL을 직접 선택해주세요.');
+            }
+        }
+    </script>
+</body>
+</html>
