@@ -1,0 +1,72 @@
+# =============================================
+# Team Artifact - 학기 1 로컬 개발 환경
+# MySQL + Spring Boot 묶음 정의
+# =============================================
+
+services:
+
+  # -------------------------------------------
+  # MySQL 8.0 데이터베이스
+  # -------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: artifact-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpass}    # 기본값 rootpass, .env로 덮을 수 있음
+      MYSQL_DATABASE: artifact_db
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"   # 호스트(내 PC):컨테이너 내부 포트 매핑
+    volumes:
+      - mysql-data:/var/lib/mysql                      # DB 데이터를 컨테이너 밖에 영구 저장
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d  # 첫 실행 시 SQL 자동 실행
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-rootpass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - artifact-network
+
+  # -------------------------------------------
+  # Spring Boot 백엔드
+  # -------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: artifact-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy   # MySQL이 완전히 켜진 후에 Spring 시작
+    environment:
+      # Spring → MySQL 연결 (컨테이너끼리 통신은 서비스명 'mysql'로)
+      DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-rootpass}
+
+      # AWS S3 (.env에서 읽음)
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+
+      TZ: Asia/Seoul
+    ports:
+      - "8080:8080"
+    networks:
+      - artifact-network
+
+# -------------------------------------------
+# 영구 저장 볼륨 (컨테이너 지워져도 DB 데이터 유지)
+# -------------------------------------------
+volumes:
+  mysql-data:
+
+# -------------------------------------------
+# 컨테이너 간 통신용 가상 네트워크
+# -------------------------------------------
+networks:
+  artifact-network:
+    driver: bridge
