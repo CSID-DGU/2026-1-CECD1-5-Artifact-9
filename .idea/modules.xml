@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/artifact-medical-ai.iml" filepath="$PROJECT_DIR$/.idea/artifact-medical-ai.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/diagnosis.main.iml" filepath="$PROJECT_DIR$/.idea/modules/diagnosis.main.iml" />
     </modules>
   </component>
 </project>

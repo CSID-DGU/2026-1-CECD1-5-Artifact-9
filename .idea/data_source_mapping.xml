@@ -2,6 +2,5 @@
 <project version="4">
   <component name="DataSourcePerFileMappings">
     <file url="file://$PROJECT_DIR$/docker/mysql/init/01-schema.sql" value="a638cd1c-4511-4172-919a-666cf1859f9b" />
-    <file url="file://$APPLICATION_CONFIG_DIR$/consoles/db/a638cd1c-4511-4172-919a-666cf1859f9b/console.sql" value="a638cd1c-4511-4172-919a-666cf1859f9b" />
   </component>
 </project>

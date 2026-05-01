@@ -12,4 +12,11 @@
       </profile>
     </annotationProcessing>
   </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="diagnosis" options="-parameters" />
+      <module name="diagnosis.main" options="-parameters" />
+      <module name="diagnosis.test" options="-parameters" />
+    </option>
+  </component>
 </project>
