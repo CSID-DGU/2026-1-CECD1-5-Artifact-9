@@ -20,6 +20,12 @@ import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * AWS S3 기반 이미지 저장 구현체.
+ *
+ * 업로드 흐름: 파일 검증 → S3 PutObject → 1시간 유효 Pre-signed URL 반환.
+ * S3 key 구조: images/YYYY/MM/DD/{UUID}{.ext}
+ */
 @Service
 public class S3ImageStorageService implements ImageStorageService {
 
@@ -74,6 +80,7 @@ public class S3ImageStorageService implements ImageStorageService {
         return createPresignedUrl(key);
     }
 
+    /** null·빈파일·허용되지 않은 Content-Type 검사. 실패 시 IllegalArgumentException → 400. */
     private void validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("업로드할 이미지 파일이 비어 있습니다.");
@@ -85,6 +92,7 @@ public class S3ImageStorageService implements ImageStorageService {
         }
     }
 
+    /** 날짜 경로 + UUID로 S3 오브젝트 키를 생성. 파일명 충돌 방지. */
     private String createObjectKey(String originalFilename) {
         LocalDate today = LocalDate.now();
         return "images/%d/%02d/%02d/%s%s".formatted(
@@ -95,6 +103,7 @@ public class S3ImageStorageService implements ImageStorageService {
                 extensionOf(originalFilename));
     }
 
+    /** 원본 파일명에서 확장자(.jpg 등)를 소문자로 추출. 없으면 빈 문자열. */
     private String extensionOf(String originalFilename) {
         if (originalFilename == null || originalFilename.isBlank()) {
             return "";
@@ -108,6 +117,7 @@ public class S3ImageStorageService implements ImageStorageService {
         return originalFilename.substring(dotIndex).toLowerCase();
     }
 
+    /** S3 key로 1시간 유효한 GET Pre-signed URL을 생성해 반환. */
     private String createPresignedUrl(String key) {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucket)
