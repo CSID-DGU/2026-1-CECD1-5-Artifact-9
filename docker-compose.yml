@@ -43,7 +43,7 @@ services:
         condition: service_healthy   # MySQL이 완전히 켜진 후에 Spring 시작
     environment:
       # Spring → MySQL 연결 (컨테이너끼리 통신은 서비스명 'mysql'로)
-      DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+      DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:-rootpass}
 
