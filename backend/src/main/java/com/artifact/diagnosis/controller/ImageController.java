@@ -46,13 +46,5 @@ public class ImageController {
         return ResponseEntity.ok(Map.of("url", url));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-    }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, String>> handleServerError(RuntimeException e) {
-        return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
-    }
 }
