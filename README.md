@@ -39,8 +39,8 @@ git branch -a
 
 ## 2. 브랜치 전략
 
-> 핵심 원칙: **main에 직접 push하지 않는다.** 반드시 PR을 통해 머지한다.
-> 
+> 핵심 원칙: **main 브랜치는 최종 배포 전에 사용 예정이므로 dev브랜치만 사용하도록 한다.**
+> 각자 개인 브랜치에서 작업 후 항상 **dev 브랜치에만 PR을 통해 머지한다.**
 
 ### 브랜치 구조
 
@@ -109,13 +109,13 @@ git push origin kwon/patient-api
 2. 상단에 뜨는 **Compare & pull request** 버튼 클릭
 3. **base: `dev`** ← compare: `kwon/patient-api` 확인
 4. 제목과 설명 작성 후 **Create pull request**
-5. 팀원 1명 이상 리뷰 요청
+5. 팀원 1명 이상 리뷰 요청(선택)(저는 깃허브 프로라서 코파일럿AI를 코드리뷰어로 해두었습니다.)
 
 ### Step 6 — 리뷰 완료 후 머지 & 브랜치 삭제
 
 1. GitHub에서 **Merge pull request** 클릭
-2. **Delete branch** 클릭 (머지된 브랜치는 바로 삭제)
-3. 로컬에서도 정리:
+2. **Delete branch** 클릭 (머지된 브랜치는 바로 삭제) (예를들어, 하나의 기능 개발이 완료된 kwon/image-upload-api 등은 dev에 머지이후 브랜치 삭제)
+3. 로컬에서도 브랜치 정리:
 
 ```bash
 git checkout dev

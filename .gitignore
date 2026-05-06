@@ -46,4 +46,10 @@ backend/uploads/
 *.war
 
 
+# === 환경변수 (.env) — 절대 커밋 금지 ===
 .env
+.env.*
+!.env.example
+backend/.env
+.idea
+.idea/compiler.xml
