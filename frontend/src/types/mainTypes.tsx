@@ -13,6 +13,7 @@ export type InputProps = {
 export type CardProps = {
   title?: string;
   children: React.ReactNode;
+  className?: string;
 };
 
 export type TabsProps = {
