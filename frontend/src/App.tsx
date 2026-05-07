@@ -1,143 +1,125 @@
-import React from "react";
+import React, { useState } from "react";
+import { Input } from "./components/Input";
+import { Card } from "./components/Card";
+import { Tabs } from "./components/Tab";
+import { Table } from "./components/Table";
+import { Button } from "./components/Button";
 
-//type
-type BtnProps = {
-  children : React.ReactNode;
-  type?: "primary"|"secondary";
-};
-type InputProps = {
-  label : string;
-  placeholder : string;
-};
-type CardProps = {
-  title : string;
-  children : React.ReactNode;
-};
-type TabsProps = {
-  tabs: string[];
-  active: string;
-  setActive: (tab: string) => void;
-};
-type TableProps = {
-  headers: string[];
-  data: (string | number)[][];
-};
-
-// Basic Button
-export const Button = ({ children, type = "primary" }:BtnProps) => {
-  const base = "px-4 py-2 rounded-lg text-sm";
-  const styles = {
-    primary: "bg-blue-500 text-white",
-    secondary: "border border-gray-400 text-gray-200",
-  };
-  return <button className={`${base} ${styles[type]}`}>{children}</button>;
-};
-
-// Input Component
-export const Input = ({ label, placeholder }:InputProps) => {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-gray-400">{label}</label>
-      <input
-        placeholder={placeholder}
-        className="px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-sm"
-      />
-    </div>
-  );
-};
-
-// Card Component
-export const Card = ({ title, children }:CardProps) => {
-  return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-3">
-      {title && <div className="text-sm font-semibold">{title}</div>}
-      {children}
-    </div>
-  );
-};
-
-// Tab Component
-export const Tabs = ({ tabs, active, setActive }:TabsProps) => {
-  return (
-    <div className="flex gap-2">
-      {tabs.map((tab) => (
-        <button
-          key={tab}
-          onClick={() => setActive(tab)}
-          className={`px-3 py-1 rounded-lg text-sm ${
-            active === tab ? "bg-blue-500 text-white" : "text-gray-400"
-          }`}
-        >
-          {tab}
-        </button>
-      ))}
-    </div>
-  );
-};
-
-// Table Component
-export const Table = ({ headers, data }:TableProps) => {
-  return (
-    <div className="flex flex-col">
-      <div className="flex border-b border-gray-600">
-        {headers.map((h) => (
-          <div key={h} className="flex-1 p-2 text-xs text-gray-400">
-            {h}
-          </div>
-        ))}
-      </div>
-      {data.map((row, i) => (
-        <div key={i} className="flex border-b border-gray-700">
-          {row.map((cell, j) => (
-            <div key={j} className="flex-1 p-2 text-sm">
-              {cell}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// Main Layout Example
 export default function App() {
-  const [tab, setTab] = React.useState("진료대기");
+  const [tab, setTab] = useState("진료대기");
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6 flex gap-6">
-      {/* Left */}
-      <div className="w-30 bg-gray-800 rounded-xl p-4">Sidebar</div>
+    <div className="min-h-screen bg-main-bg text-white font-sans flex flex-col">
+      {/* 헤더바 */}
+      <header className="h-[40px] bg-blue-500 flex items-center justify-between px-4 shrink-0">
+        <div className="flex items-center gap-4">
+          <button className="p-1 hover:bg-blue-600 rounded transition-colors">
+            {/* 메뉴 아이콘 */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          <h1 className="font-bold text-sm">HIS System</h1>
+        </div>
+        <div className="text-sm font-medium">김철수 님</div>
+      </header>
 
-      {/* Center */}
-      <div className="flex-1 flex flex-col gap-4">
-        <Card title="환자 정보">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="이름" placeholder="입력하세요" />
-            <Input label="주민번호" placeholder="입력하세요" />
-          </div>
-        </Card>
-      </div>
+      {/* 버튼 영역 */}
+      <section className="h-[35px] border-b border-gray-700 flex items-center justify-end px-4 shrink-0">
+        {['접수조회', '환자조회', '인적저장', '예방접종', '처방내역'].map((num) => (
+          <button
+            key={num}
+            className="h-[20px] ml-[5px] px-3 bg-blue-400 hover:bg-blue-500 text-[11px] rounded flex items-center justify-center transition-colors"
+          >
+            {num}
+          </button>
+        ))}
+      </section>
 
-      {/* Right */}
-      <div className="w-80 flex flex-col gap-4">
-        <Card title="table">
-          <Tabs
-            tabs={["진료대기", "예약대기"]}
-            active={tab}
-            setActive={setTab}
-          />
-        </Card>
+      {/* 메인 */}
+      <main className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
+        
+        {/* Left Column */}
+        <section className="w-[300px] flex flex-col shrink-0">
+          <Card title="특이사항" className="h-[100px]">
+            <textarea 
+              className="w-full h-full bg-transparent text-xs text-white outline-none resize-none"
+              placeholder="특이사항을 입력하세요."
+            />
+          </Card>
+        </section>
 
-        <Card title="기초 정보">
-          <Table
-            headers={["항목", "값"]}
-            data={[
-              ["혈압", "120/80"],
-              ["체온", "36.5"],
-            ]}
-          />
-        </Card>
-      </div>
+        {/* Center Column */}
+        <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
+          <Card title="환자정보">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <Input label="환자번호" placeholder="P00001" />
+              <Input label="최종환자번호" placeholder="자동 생성" />
+              <Input label="성명" placeholder="성명을 입력하세요" />
+              <Input label="전진료일" placeholder="YYYY-MM-DD" />
+              <Input label="주민번호" placeholder="[RRN Omitted]" />
+              <Input label="성별/나이" placeholder="남 / 30" />
+              <Input label="휴대폰번호" placeholder="010-0000-0000" />
+              <Input label="E-Mail" placeholder="example@mail.com" />
+              <div className="col-span-2">
+                <Input label="주소" placeholder="기본 주소 및 상세 주소" />
+              </div>
+              <Input label="보호자연락처" placeholder="010-0000-0000" />
+            </div>
+          </Card>
+          
+          <Card title="보험급여">
+            <Input label="증번호" placeholder="보험 증번호 입력" />
+          </Card>
+        </section>
+
+        {/* Right Column */}
+        <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
+          <Card>
+            <Tabs
+              tabs={["진료대기", "예약대기"]}
+              active={tab}
+              setActive={setTab}
+            />
+            <div className="mt-2 border-t border-gray-700 pt-2">
+              <Table
+                headers={["순번", "환자명", "상태"]}
+                data={[
+                  ["1", "홍길동", "대기"],
+                  ["2", "이순신", "진료중"],
+                  ["3", "강감찬", "대기"],
+                ]}
+              />
+            </div>
+          </Card>
+
+          <Card title="진료정보" className="flex-1">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+              <Input label="진료과목" placeholder="내과" />
+              <Input label="진료의사" placeholder="홍길동" />
+    
+              <Input label="초/재진" placeholder="초진" />
+              <Input label="접수시간" placeholder="09:00" />
+    
+              <Input label="공단검진구분" placeholder="일반검진" />
+              <Input label="내원사유" placeholder="감기 증상" />
+    
+              <Input label="예외환자코드" placeholder="해당 없음" />
+              <Input label="내원경로" placeholder="외래" />
+    
+              <Input label="주야공휴" placeholder="주간" />
+              <Input label="진료유형" placeholder="건강보험" />
+            </div>
+          </Card>
+          <Card title="기초임상정보" className="h-[200px]">
+            <Table
+                headers={["입력일시", "체온", "키", "몸무게", "BMI"]}
+                data={[
+                  ["1", "0", "0", "0", "0"],
+                ]}
+              />
+          </Card>
+        </section>
+
+      </main>
     </div>
   );
 }
