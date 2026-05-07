@@ -8,7 +8,7 @@ export const Tabs = ({ tabs, active, setActive }: TabsProps) => {
           key={tab}
           onClick={() => setActive(tab)}
           className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-            active === tab ? "bg-blue-500 text-white" : "text-gray-400 hover:text-gray-200"
+            active === tab ? "bg-side-bg text-white" : "text-gray-400 hover:text-gray-200"
           }`}
         >
           {tab}
