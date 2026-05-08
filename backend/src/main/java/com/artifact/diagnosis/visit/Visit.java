@@ -55,7 +55,7 @@ public class Visit {
 
     /** 사진 업로드 후 호출 — image_url 갱신 + 상태 전이 */
     public void attachImage(String imageUrl) {
-        if (this.status != VisitStatus.RECEIVED) {
+        if (this.status != VisitStatus.RECEIVED && this.status != VisitStatus.IMAGE_UPLOADED) {
             throw new IllegalStateException(
                 "이미지 업로드 가능 상태가 아닙니다. 현재 상태: " + this.status);
         }
