@@ -1,6 +1,6 @@
 import type { TabsProps } from "../types/mainTypes";
 
-export const Tabs = ({ tabs, active, setActive }: TabsProps) => {
+export const Tab = ({ tabs, active, setActive }: TabsProps) => {
   return (
     <div className="flex gap-2">
       {tabs.map((tab) => (
