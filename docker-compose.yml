@@ -30,6 +30,20 @@ services:
       - artifact-network
 
   # -------------------------------------------
+  # FastAPI AI 추론 서버
+  # -------------------------------------------
+  fastapi:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: artifact-fastapi
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - artifact-network
+
+  # -------------------------------------------
   # Spring Boot 백엔드
   # -------------------------------------------
   backend:
@@ -52,6 +66,8 @@ services:
       AWS_SECRET_KEY: ${AWS_SECRET_KEY}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
       AWS_REGION: ${AWS_REGION:-us-east-1}
+
+      FASTAPI_URL: http://fastapi:8000
 
       TZ: Asia/Seoul
     ports:
