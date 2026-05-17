@@ -17,4 +17,13 @@ public interface ImageStorageService {
      * @return 저장된 이미지의 접근 URL (S3 구현체는 1시간 유효 Pre-signed URL)
      */
     String upload(MultipartFile file);
+
+    /**
+     * 저장된 이미지 URL로부터 원본 바이트를 읽어 반환한다.
+     * S3 구현체는 URL에서 오브젝트 키를 파싱해 SDK로 직접 다운로드한다.
+     *
+     * @param imageUrl DB에 저장된 이미지 URL
+     * @return 이미지 바이트 배열
+     */
+    byte[] download(String imageUrl);
 }
