@@ -4,15 +4,13 @@ import java.time.LocalDateTime;
 
 /**
  * 진료 접수 응답 DTO. 엔티티를 그대로 노출하지 않고 필요한 필드만.
- * imageUrl·imageUploadedAt 은 이미지 업로드 전까지 null.
+ * 이미지는 별도 visit_image 테이블로 관리 — GET /visits/{id}/images 로 조회.
  */
 public record VisitResponse(
         Long id,
         Long patientId,
         LocalDateTime visitDate,
         VisitStatus status,
-        String imageUrl,
-        LocalDateTime imageUploadedAt,
         LocalDateTime createdAt
 ) {
     /** Visit 엔티티 → 응답 DTO 변환. */
@@ -22,8 +20,6 @@ public record VisitResponse(
                 visit.getPatientId(),
                 visit.getVisitDate(),
                 visit.getStatus(),
-                visit.getImageUrl(),
-                visit.getImageUploadedAt(),
                 visit.getCreatedAt()
         );
     }

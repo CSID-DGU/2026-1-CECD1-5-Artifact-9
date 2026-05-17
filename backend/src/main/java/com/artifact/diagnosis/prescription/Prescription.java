@@ -33,9 +33,9 @@ public class Prescription {
     @Column(name = "visit_id", nullable = false)
     private Long visitId;
 
-    /** 의사가 확정한 질병 (AI 예측과 다를 수 있음) */
-    @Column(name = "disease_id", nullable = false)
-    private Long diseaseId;
+    /** 의사가 선택한 KCD 상병코드 ID */
+    @Column(name = "kcd_disease_id", nullable = false)
+    private Long kcdDiseaseId;
 
     /** 어떤 AI 분석 결과를 근거로 했는지 (nullable) */
     @Column(name = "analysis_id")
