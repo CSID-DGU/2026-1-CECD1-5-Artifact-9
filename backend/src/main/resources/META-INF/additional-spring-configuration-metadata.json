@@ -1,0 +1,9 @@
+{
+  "properties": [
+    {
+      "name": "fastapi.url",
+      "type": "java.lang.String",
+      "description": "FastAPI AI 추론 서버 URL"
+    }
+  ]
+}

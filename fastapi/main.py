@@ -1,10 +1,12 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import torch
 import timm
 from torchvision import transforms
 from PIL import Image
 import io
+import base64
 
 app = FastAPI(title="Artifact Medical AI", version="1.0.0")
 
@@ -41,18 +43,12 @@ transform = transforms.Compose([
 ])
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "device": str(device)}
+class PredictRequest(BaseModel):
+    image_base64: str
 
 
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="이미지 파일만 허용됩니다.")
-
-    contents = await file.read()
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
+def run_inference(image_bytes: bytes) -> dict:
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
@@ -69,8 +65,25 @@ async def predict(file: UploadFile = File(...)):
         }
         for i, (prob, idx) in enumerate(zip(top5.values, top5.indices))
     ]
+    return {"top1": results[0], "top5": results}
 
-    return {
-        "top1": results[0],
-        "top5": results,
-    }
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "device": str(device)}
+
+
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    """Swagger / curl 직접 테스트용 (multipart)"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="이미지 파일만 허용됩니다.")
+    contents = await file.read()
+    return run_inference(contents)
+
+
+@app.post("/predict-base64")
+def predict_base64(request: PredictRequest):
+    """Spring Boot 내부 호출용 (JSON base64)"""
+    image_bytes = base64.b64decode(request.image_base64)
+    return run_inference(image_bytes)
