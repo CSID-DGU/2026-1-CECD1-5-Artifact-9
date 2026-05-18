@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card } from "../components/Card"
-import { Input } from "../components/Input";
 import { Table } from "../components/Table";
 import { usePatient } from "../hooks/usePatient";
 
@@ -19,15 +18,6 @@ export default function Clinic() {
     ["보호자 연락처", "010-9876-5432"]
   ];
 
-  const waitingData = patients.filter(p => p.status === "대기").map(p => [
-    p.name,
-    <button onClick={() => toggleStatus(p.id)} className="px-2 py-0.5 bg-green-600 hover:bg-green-500 text-[10px] rounded cursor-pointer">호출</button>
-  ]);
-
-  const completedData = patients.filter(p => p.status === "완료").map(p => [
-    p.name,
-    <button onClick={() => toggleStatus(p.id)} className="px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-[10px] rounded text-gray-400 cursor-pointer">취소</button>
-  ]);
   const centerTableData = patients
     .filter(p => p.status === (activeTab === "대기" ? "대기" : "완료"))
     .map((p, idx) => [
