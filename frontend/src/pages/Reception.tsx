@@ -1,9 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Input } from "../components/Input";
 import { Card } from "../components/Card";
-import { Tab } from "../components/Tab";
 import { Table } from "../components/Table";
-import { Button } from "../components/Button";
 import { usePatient } from "../hooks/usePatient";
 
 export default function Reception() {
