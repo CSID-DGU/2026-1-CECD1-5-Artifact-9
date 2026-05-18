@@ -24,5 +24,5 @@ export type TabsProps = {
 
 export type TableProps = {
   headers: string[];
-  data: (string | number)[][];
+  data: React.ReactNode[][]; 
 };

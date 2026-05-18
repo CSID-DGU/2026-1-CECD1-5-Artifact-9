@@ -2,23 +2,37 @@ import type { TableProps } from "../types/mainTypes";
 
 export const Table = ({ headers, data }: TableProps) => {
   return (
-    <div className="flex flex-col w-full">
-      <div className="flex border-b border-gray-600">
-        {headers.map((h) => (
-          <div key={h} className="flex-1 p-2 text-xs text-gray-400">
-            {h}
-          </div>
-        ))}
-      </div>
-      {data.map((row, i) => (
-        <div key={i} className="flex border-b border-gray-700 hover:bg-gray-750">
-          {row.map((cell, j) => (
-            <div key={j} className="flex-1 p-2 text-sm text-gray-200">
-              {cell}
-            </div>
-          ))}
-        </div>
-      ))}
+    <div className="w-full overflow-x-auto rounded-lg">
+      <table className="w-full text-left border-collapse text-xs">
+        {/* 헤더 */}
+        <thead className="bg-gray-950 text-gray-400 font-semibold uppercase border-b border-gray-700">
+          <tr>
+            {headers.map((header, idx) => (
+              <th key={idx} className="px-4 py-2.5">{header}</th>
+            ))}
+          </tr>
+        </thead>
+        {/* 본문 */}
+        <tbody className="divide-y divide-gray-800">
+          {data.length === 0 ? (
+            <tr>
+              <td colSpan={headers.length} className="px-4 py-8 text-center text-gray-500">
+                데이터가 없습니다.
+              </td>
+            </tr>
+          ) : (
+            data.map((row, rowIdx) => (
+              <tr key={rowIdx} className="hover:bg-gray-800/50 transition-colors">
+                {row.map((cell, cellIdx) => (
+                  <td key={cellIdx} className="px-4 py-2 text-gray-200 align-middle">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   );
 };
