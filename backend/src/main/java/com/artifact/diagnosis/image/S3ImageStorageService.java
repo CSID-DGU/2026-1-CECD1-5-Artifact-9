@@ -2,6 +2,7 @@ package com.artifact.diagnosis.image;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -29,6 +30,7 @@ import java.util.UUID;
  * S3 key 구조: images/YYYY/MM/DD/{UUID}{.ext}
  */
 @Service
+@ConditionalOnProperty(name = "image.storage.type", havingValue = "s3", matchIfMissing = true)
 public class S3ImageStorageService implements ImageStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(S3ImageStorageService.class);
