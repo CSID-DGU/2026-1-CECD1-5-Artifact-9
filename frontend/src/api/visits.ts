@@ -18,6 +18,10 @@ export type Visit = {
   createdAt: string;
 };
 
+export function getVisit(visitId: number) {
+  return apiRequest<Visit>(`/api/v1/visits/${visitId}`);
+}
+
 export function listVisits(status: VisitStatus) {
   return apiRequest<Visit[]>(`/api/v1/visits?status=${status}`);
 }
