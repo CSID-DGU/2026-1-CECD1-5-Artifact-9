@@ -4,9 +4,35 @@ import { Card } from "../components/Card";
 import { Tab } from "../components/Tab";
 import { Table } from "../components/Table";
 import { Button } from "../components/Button";
+import { usePatient } from "../hooks/usePatient";
 
 export default function Reception() {
-  const [tab, setTab] = useState("진료대기");
+  const { patients, toggleStatus } = usePatient();
+  
+  // 테이블 상태
+  const [activeTab, setActiveTab] = useState<"대기" | "완료">("대기");
+
+  // 진료 대기 환자만 필터링
+  const waitingData = patients.filter(p => p.status === "대기").map(p => [
+    p.id, p.name, p.time,
+    <button 
+      onClick={() => toggleStatus(p.id)} 
+      className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-[10px] rounded cursor-pointer transition-colors"
+    >
+      진료
+    </button>
+  ]);
+
+  // 진료 완료 환자만 필터링
+  const completedData = patients.filter(p => p.status === "완료").map(p => [
+    p.id, p.name, p.time,
+    <button 
+      onClick={() => toggleStatus(p.id)} 
+      className="px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-[10px] rounded text-gray-400 cursor-pointer transition-colors"
+    >
+      대기
+    </button>
+  ]);
 
   return (
       <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
@@ -46,52 +72,42 @@ export default function Reception() {
         </section>
 
         {/* Right Column */}
-        <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
-          <Card>
-            <Tab
-              tabs={["진료대기", "예약대기"]}
-              active={tab}
-              setActive={setTab}
-            />
-            <div className="mt-2 border-t border-gray-700 pt-2">
-              <Table
-                headers={["순번", "환자명", "상태"]}
-                data={[
-                  ["1", "홍길동", "대기"],
-                  ["2", "이순신", "진료중"],
-                  ["3", "강감찬", "대기"],
-                ]}
-              />
-            </div>
-          </Card>
+        <section className="flex-1 flex flex-col overflow-y-auto">
+        <Card title="진료 현황" className="flex-1">
+          
+          {/* 상태 버튼 영역 */}
+          <div className="flex border-b border-gray-700 mb-3 pb-1 gap-2">
+            <button
+              onClick={() => setActiveTab("대기")}
+              className={`px-4 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
+                activeTab === "대기" 
+                  ? "bg-blue-600 text-white font-bold" 
+                  : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+              }`}
+            >
+              진료대기
+            </button>
+            <button
+              onClick={() => setActiveTab("완료")}
+              className={`px-4 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
+                activeTab === "완료" 
+                  ? "bg-blue-600 text-white font-bold" 
+                  : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+              }`}
+            >
+              진료완료
+            </button>
+          </div>
 
-          <Card title="진료정보" className="flex-1">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <Input label="진료과목" placeholder="내과" />
-              <Input label="진료의사" placeholder="홍길동" />
-    
-              <Input label="초/재진" placeholder="초진" />
-              <Input label="접수시간" placeholder="09:00" />
-    
-              <Input label="공단검진구분" placeholder="일반검진" />
-              <Input label="내원사유" placeholder="감기 증상" />
-    
-              <Input label="예외환자코드" placeholder="해당 없음" />
-              <Input label="내원경로" placeholder="외래" />
-    
-              <Input label="주야공휴" placeholder="주간" />
-              <Input label="진료유형" placeholder="건강보험" />
-            </div>
-          </Card>
-          <Card title="기초임상정보" className="h-[200px]">
-            <Table
-                headers={["입력일시", "체온", "키", "몸무게", "BMI"]}
-                data={[
-                  ["1", "0", "0", "0", "0"],
-                ]}
-              />
-          </Card>
-        </section>
+          {/* 테이블 렌더링 */}
+          {activeTab === "대기" ? (
+            <Table headers={["번호", "성명", "접수시간", "변경"]} data={waitingData} />
+          ) : (
+            <Table headers={["번호", "성명", "완료시간", "변경"]} data={completedData} />
+          )}
+
+        </Card>
+      </section>
 
       </div>
   );
