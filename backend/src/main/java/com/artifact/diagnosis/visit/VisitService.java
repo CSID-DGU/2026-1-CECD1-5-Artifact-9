@@ -59,9 +59,23 @@ public class VisitService {
     public VisitResponse startConsultation(Long id) {
         Visit visit = visitRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
+        visit.startConsultation();
+        return VisitResponse.from(visit);
+    }
 
-        visit.startConsultation(); // 상태 전이 — RECEIVED가 아니면 IllegalStateException → 409
+    /** 진단 확정. ANALYZED → DIAGNOSED 전이. 처방 작성 가능 상태로 변경. */
+    public VisitResponse markDiagnosed(Long id) {
+        Visit visit = visitRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
+        visit.markDiagnosed();
+        return VisitResponse.from(visit);
+    }
 
-        return VisitResponse.from(visit); // Dirty Checking으로 자동 UPDATE
+    /** 진료 완료. PRESCRIBED → COMPLETED 전이. */
+    public VisitResponse markCompleted(Long id) {
+        Visit visit = visitRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
+        visit.markCompleted();
+        return VisitResponse.from(visit);
     }
 }

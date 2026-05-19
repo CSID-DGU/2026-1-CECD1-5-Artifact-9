@@ -75,11 +75,11 @@ public class Visit {
         this.status = VisitStatus.ANALYZED;
     }
 
-    /** 의사가 병명을 확정한 시점 */
+    /** 의사가 병명을 확정한 시점 — AI 분석 없이 IN_PROGRESS에서 바로 확정도 가능 */
     public void markDiagnosed() {
-        if (this.status != VisitStatus.ANALYZED) {
+        if (this.status != VisitStatus.ANALYZED && this.status != VisitStatus.IN_PROGRESS) {
             throw new IllegalStateException(
-                "AI 분석 완료 상태에서만 진단 확정이 가능합니다. 현재 상태: " + this.status);
+                "진료 중 또는 AI 분석 완료 상태에서만 진단 확정이 가능합니다. 현재 상태: " + this.status);
         }
         this.status = VisitStatus.DIAGNOSED;
     }

@@ -64,4 +64,24 @@ public class VisitController {
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
         return visitService.startConsultation(id);
     }
+
+    @Operation(summary = "진단 확정", description = "AI 분석 검토 후 진단을 확정합니다. 상태: ANALYZED → DIAGNOSED. 이후 처방 저장 가능.")
+    @ApiResponse(responseCode = "200", description = "진단 확정 성공")
+    @ApiResponse(responseCode = "404", description = "접수 없음")
+    @ApiResponse(responseCode = "409", description = "ANALYZED 상태가 아님")
+    @PatchMapping("/{id}/diagnose")
+    public VisitResponse markDiagnosed(
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
+        return visitService.markDiagnosed(id);
+    }
+
+    @Operation(summary = "진료 완료", description = "처방 저장 후 진료를 완료합니다. 상태: PRESCRIBED → COMPLETED.")
+    @ApiResponse(responseCode = "200", description = "진료 완료 성공")
+    @ApiResponse(responseCode = "404", description = "접수 없음")
+    @ApiResponse(responseCode = "409", description = "PRESCRIBED 상태가 아님")
+    @PatchMapping("/{id}/complete")
+    public VisitResponse markCompleted(
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
+        return visitService.markCompleted(id);
+    }
 }
