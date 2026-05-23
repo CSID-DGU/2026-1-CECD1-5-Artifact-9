@@ -18,8 +18,6 @@ public interface ImageStorageService {
      * @return 스토리지 키 (S3: objects key, 로컬: 파일명)
      */
     String upload(MultipartFile file);
-<<<<<<< Updated upstream
-=======
 
     /**
      * 스토리지 키로 일시적인 접근 URL을 생성한다.
@@ -37,5 +35,5 @@ public interface ImageStorageService {
      * @return 이미지 바이트 배열
      */
     byte[] download(String key);
->>>>>>> Stashed changes
+
 }

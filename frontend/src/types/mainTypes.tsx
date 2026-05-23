@@ -3,11 +3,21 @@ import React from "react";
 export type BtnProps = {
   children: React.ReactNode;
   type?: "primary" | "secondary";
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+  buttonType?: "button" | "submit" | "reset";
 };
 
 export type InputProps = {
   label: string;
-  placeholder: string;
+  placeholder?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  name?: string;
+  type?: string;
+  disabled?: boolean;
+  className?: string;
 };
 
 export type CardProps = {
@@ -24,5 +34,5 @@ export type TabsProps = {
 
 export type TableProps = {
   headers: string[];
-  data: (string | number)[][];
+  data: React.ReactNode[][];
 };

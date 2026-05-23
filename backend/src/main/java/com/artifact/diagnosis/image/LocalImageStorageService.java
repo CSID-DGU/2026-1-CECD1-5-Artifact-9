@@ -48,17 +48,13 @@ public class LocalImageStorageService implements ImageStorageService {
             throw new RuntimeException("로컬 이미지 저장에 실패했습니다.", e);
         }
 
-        return storedFilename;
+        return "/api/v1/local-images/" + storedFilename;
     }
 
     @Override
-    public String generatePresignedUrl(String key) {
-        return "/api/v1/local-images/" + key;
-    }
-
-    @Override
-    public byte[] download(String key) {
-        Path target = uploadRoot.resolve(key).normalize();
+    public byte[] download(String imageUrl) {
+        String filename = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
+        Path target = uploadRoot.resolve(filename).normalize();
 
         if (!target.startsWith(uploadRoot)) {
             throw new IllegalArgumentException("잘못된 이미지 경로입니다.");

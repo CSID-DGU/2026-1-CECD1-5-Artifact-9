@@ -2,12 +2,15 @@ package com.artifact.diagnosis.image;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -27,6 +30,7 @@ import java.util.UUID;
  * S3 key 구조: images/YYYY/MM/DD/{UUID}{.ext}
  */
 @Service
+@ConditionalOnProperty(name = "image.storage.type", havingValue = "s3", matchIfMissing = true)
 public class S3ImageStorageService implements ImageStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(S3ImageStorageService.class);
@@ -122,10 +126,11 @@ public class S3ImageStorageService implements ImageStorageService {
         return originalFilename.substring(dotIndex).toLowerCase();
     }
 
-<<<<<<< Updated upstream
-=======
     @Override
     public byte[] download(String key) {
+    @Override
+    public byte[] download(String imageUrl) {
+        String key = extractKeyFromUrl(imageUrl);
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(bucket)
                 .key(key)
@@ -134,7 +139,21 @@ public class S3ImageStorageService implements ImageStorageService {
         return response.asByteArray();
     }
 
->>>>>>> Stashed changes
+
+    /** pre-signed URL에서 S3 오브젝트 키를 추출한다.
+     *  URL 형식: https://{bucket}.s3.{region}.amazonaws.com/{key}?X-Amz-...
+     */
+    private String extractKeyFromUrl(String imageUrl) {
+        try {
+            String path = new java.net.URI(imageUrl).getPath();
+            // path = "/{key}" — 앞의 '/' 제거
+            return path.startsWith("/") ? path.substring(1) : path;
+        } catch (Exception e) {
+            throw new RuntimeException("이미지 URL에서 S3 키를 파싱할 수 없습니다: " + imageUrl, e);
+        }
+    }
+
+
     /** S3 key로 1시간 유효한 GET Pre-signed URL을 생성해 반환. */
     private String createPresignedUrl(String key) {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
