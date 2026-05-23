@@ -81,6 +81,11 @@ public class S3ImageStorageService implements ImageStorageService {
             throw new RuntimeException("S3 이미지 업로드에 실패했습니다.", e);
         }
 
+        return key;
+    }
+
+    @Override
+    public String generatePresignedUrl(String key) {
         return createPresignedUrl(key);
     }
 
@@ -122,6 +127,8 @@ public class S3ImageStorageService implements ImageStorageService {
     }
 
     @Override
+    public byte[] download(String key) {
+    @Override
     public byte[] download(String imageUrl) {
         String key = extractKeyFromUrl(imageUrl);
         GetObjectRequest request = GetObjectRequest.builder()
@@ -131,6 +138,7 @@ public class S3ImageStorageService implements ImageStorageService {
         ResponseBytes<GetObjectResponse> response = s3Client.getObjectAsBytes(request);
         return response.asByteArray();
     }
+
 
     /** pre-signed URL에서 S3 오브젝트 키를 추출한다.
      *  URL 형식: https://{bucket}.s3.{region}.amazonaws.com/{key}?X-Amz-...
@@ -144,6 +152,7 @@ public class S3ImageStorageService implements ImageStorageService {
             throw new RuntimeException("이미지 URL에서 S3 키를 파싱할 수 없습니다: " + imageUrl, e);
         }
     }
+
 
     /** S3 key로 1시간 유효한 GET Pre-signed URL을 생성해 반환. */
     private String createPresignedUrl(String key) {

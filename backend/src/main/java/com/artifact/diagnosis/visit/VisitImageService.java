@@ -38,17 +38,23 @@ public class VisitImageService {
                     + visit.getStatus());
         }
 
-        String imageUrl = imageStorageService.upload(file);
+        String key = imageStorageService.upload(file);
         VisitImage image = VisitImage.builder()
                 .visitId(visitId)
-                .imageUrl(imageUrl)
+                .imageUrl(key)
                 .uploadedAt(LocalDateTime.now())
                 .build();
 
-        return VisitImageResponse.from(visitImageRepository.save(image));
+        VisitImage saved = visitImageRepository.save(image);
+        return new VisitImageResponse(
+                saved.getId(),
+                saved.getVisitId(),
+                imageStorageService.generatePresignedUrl(saved.getImageUrl()),
+                saved.getUploadedAt()
+        );
     }
 
-    /** 특정 접수의 이미지 전체 목록 조회 */
+    /** 특정 접수의 이미지 전체 목록 조회. 조회 시점에 presigned URL을 새로 발급한다. */
     @Transactional(readOnly = true)
     public List<VisitImageResponse> findByVisitId(Long visitId) {
         if (!visitRepository.existsById(visitId)) {
@@ -56,7 +62,12 @@ public class VisitImageService {
         }
         return visitImageRepository.findByVisitIdOrderByUploadedAtAsc(visitId)
                 .stream()
-                .map(VisitImageResponse::from)
+                .map(img -> new VisitImageResponse(
+                        img.getId(),
+                        img.getVisitId(),
+                        imageStorageService.generatePresignedUrl(img.getImageUrl()),
+                        img.getUploadedAt()
+                ))
                 .toList();
     }
 }
