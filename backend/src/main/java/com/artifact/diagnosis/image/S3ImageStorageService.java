@@ -128,9 +128,6 @@ public class S3ImageStorageService implements ImageStorageService {
 
     @Override
     public byte[] download(String key) {
-    @Override
-    public byte[] download(String imageUrl) {
-        String key = extractKeyFromUrl(imageUrl);
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(bucket)
                 .key(key)
@@ -138,21 +135,6 @@ public class S3ImageStorageService implements ImageStorageService {
         ResponseBytes<GetObjectResponse> response = s3Client.getObjectAsBytes(request);
         return response.asByteArray();
     }
-
-
-    /** pre-signed URL에서 S3 오브젝트 키를 추출한다.
-     *  URL 형식: https://{bucket}.s3.{region}.amazonaws.com/{key}?X-Amz-...
-     */
-    private String extractKeyFromUrl(String imageUrl) {
-        try {
-            String path = new java.net.URI(imageUrl).getPath();
-            // path = "/{key}" — 앞의 '/' 제거
-            return path.startsWith("/") ? path.substring(1) : path;
-        } catch (Exception e) {
-            throw new RuntimeException("이미지 URL에서 S3 키를 파싱할 수 없습니다: " + imageUrl, e);
-        }
-    }
-
 
     /** S3 key로 1시간 유효한 GET Pre-signed URL을 생성해 반환. */
     private String createPresignedUrl(String key) {
