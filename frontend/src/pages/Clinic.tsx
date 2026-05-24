@@ -2,9 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
-import { getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
+import {
+  getPrescription,
+  savePrescription,
+  type PrescriptionDetailRequest,
+  type PrescriptionResponse,
+} from "../api/prescriptions";
+import { searchDrugs, searchKcdDiseases, type DrugMaster, type KcdDisease } from "../api/reference";
+import {
+  completeVisit,
+  diagnoseVisit,
+  getVisit,
+  listVisits,
+  startVisit,
+  type Visit,
+  type VisitStatus,
+} from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { Input } from "../components/Input";
 import { Table } from "../components/Table";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -19,6 +35,10 @@ const STATUS_LABELS: Record<VisitStatus, string> = {
 };
 
 const COMPLETED_STATUSES: VisitStatus[] = ["ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"];
+
+type PrescriptionDraftDetail = PrescriptionDetailRequest & {
+  localId: string;
+};
 
 function formatDateTime(value?: string) {
   if (!value) return "-";
@@ -69,6 +89,15 @@ export default function Clinic() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
+  const [diseaseQuery, setDiseaseQuery] = useState("");
+  const [diseaseResults, setDiseaseResults] = useState<KcdDisease[]>([]);
+  const [selectedDisease, setSelectedDisease] = useState<KcdDisease | null>(null);
+  const [drugQuery, setDrugQuery] = useState("");
+  const [drugResults, setDrugResults] = useState<DrugMaster[]>([]);
+  const [prescriptionDetails, setPrescriptionDetails] = useState<PrescriptionDraftDetail[]>([]);
+  const [doctorNotes, setDoctorNotes] = useState("");
+  const [revisitRecommendedDate, setRevisitRecommendedDate] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -76,6 +105,21 @@ export default function Clinic() {
 
   const canUploadImage = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
   const canAnalyze = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
+  const canDiagnose = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
+  const canSavePrescription = selectedVisit?.status === "DIAGNOSED";
+  const canCompleteVisit = selectedVisit?.status === "PRESCRIBED";
+
+  function resetPrescriptionForm() {
+    setDiseaseQuery("");
+    setDiseaseResults([]);
+    setSelectedDisease(null);
+    setDrugQuery("");
+    setDrugResults([]);
+    setPrescriptionDetails([]);
+    setDoctorNotes("");
+    setRevisitRecommendedDate("");
+    setPrescription(null);
+  }
 
   async function loadVisitLists() {
     setIsLoading(true);
@@ -101,6 +145,7 @@ export default function Clinic() {
     setIsActionLoading(true);
     setErrorMessage(null);
     setMessage(null);
+    resetPrescriptionForm();
 
     try {
       const visit = await getVisit(visitId);
@@ -110,8 +155,12 @@ export default function Clinic() {
       ]);
 
       const latestAnalysis =
-        visit.status === "ANALYZED"
+        ["ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"].includes(visit.status)
           ? await getLatestAnalysis(visit.id).catch(() => null)
+          : null;
+      const savedPrescription =
+        visit.status === "PRESCRIBED" || visit.status === "COMPLETED"
+          ? await getPrescription(visit.id).catch(() => null)
           : null;
 
       setSelectedVisit(visit);
@@ -119,6 +168,25 @@ export default function Clinic() {
       setImages(visitImages);
       setSelectedImageIds(visitImages.map((image) => image.imageId));
       setAnalysis(latestAnalysis);
+      setPrescription(savedPrescription);
+
+      if (savedPrescription) {
+        setSelectedDisease({
+          id: savedPrescription.kcdDiseaseId,
+          code: savedPrescription.kcdCode,
+          nameKr: savedPrescription.kcdNameKr,
+        });
+        setDoctorNotes(savedPrescription.doctorNotes ?? "");
+        setRevisitRecommendedDate(savedPrescription.revisitRecommendedDate ?? "");
+        setPrescriptionDetails(savedPrescription.details.map((detail) => ({
+          localId: String(detail.detailId),
+          drugId: detail.drugId,
+          medicineName: detail.medicineName,
+          dosage: detail.dosage,
+          durationDays: detail.durationDays,
+          notes: detail.notes,
+        })));
+      }
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -230,6 +298,7 @@ export default function Clinic() {
       const result = await requestAnalysis(selectedVisit.id, selectedImageIds);
       setAnalysis(result);
       setSelectedVisit((current) => current ? { ...current, status: "ANALYZED" } : current);
+      setPrescription(null);
       await loadVisitLists();
       setMessage("AI 분석 요청이 완료되었습니다.");
     } catch (error) {
@@ -247,6 +316,144 @@ export default function Clinic() {
     );
   }
 
+  async function handleSearchDiseases() {
+    setIsActionLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await searchKcdDiseases(diseaseQuery, 8);
+      setDiseaseResults(result.content);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
+
+  async function handleSearchDrugs() {
+    setIsActionLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await searchDrugs(drugQuery, 8);
+      setDrugResults(result.content);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
+
+  async function handleDiagnoseVisit() {
+    if (!selectedVisit || !selectedDisease) return;
+
+    setIsActionLoading(true);
+    setErrorMessage(null);
+    setMessage(null);
+
+    try {
+      const updatedVisit = await diagnoseVisit(selectedVisit.id);
+      setSelectedVisit(updatedVisit);
+      await loadVisitLists();
+      setMessage("진단을 확정했습니다. 처방을 저장할 수 있습니다.");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
+
+  async function handleSavePrescription() {
+    if (!selectedVisit || !selectedDisease || prescriptionDetails.length === 0) return;
+
+    setIsActionLoading(true);
+    setErrorMessage(null);
+    setMessage(null);
+
+    try {
+      const savedPrescription = await savePrescription(selectedVisit.id, {
+        kcdDiseaseId: selectedDisease.id,
+        analysisId: analysis?.analysisId ?? null,
+        revisitRecommendedDate: revisitRecommendedDate || null,
+        doctorNotes: doctorNotes || null,
+        details: prescriptionDetails.map((detail) => ({
+          drugId: detail.drugId,
+          medicineName: detail.medicineName,
+          dosage: detail.dosage || null,
+          durationDays: detail.durationDays ?? null,
+          notes: detail.notes || null,
+        })),
+      });
+      const updatedVisit = await getVisit(selectedVisit.id);
+      setPrescription(savedPrescription);
+      setSelectedVisit(updatedVisit);
+      await loadVisitLists();
+      setMessage("처방을 저장했습니다. 진료 완료 처리를 할 수 있습니다.");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
+
+  async function handleCompleteVisit() {
+    if (!selectedVisit) return;
+
+    setIsActionLoading(true);
+    setErrorMessage(null);
+    setMessage(null);
+
+    try {
+      const updatedVisit = await completeVisit(selectedVisit.id);
+      setSelectedVisit(updatedVisit);
+      await loadVisitLists();
+      setActiveTab("완료");
+      setMessage("진료를 완료했습니다.");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsActionLoading(false);
+    }
+  }
+
+  function addDrugToPrescription(drug: DrugMaster) {
+    setPrescriptionDetails((current) => [
+      ...current,
+      {
+        localId: `${drug.id}-${Date.now()}`,
+        drugId: drug.id,
+        medicineName: drug.nameKr,
+        dosage: "",
+        durationDays: null,
+        notes: "",
+      },
+    ]);
+    setDrugQuery("");
+    setDrugResults([]);
+  }
+
+  function updatePrescriptionDetail(
+    localId: string,
+    field: keyof Omit<PrescriptionDraftDetail, "localId" | "drugId">,
+    value: string
+  ) {
+    setPrescriptionDetails((current) =>
+      current.map((detail) => {
+        if (detail.localId !== localId) return detail;
+
+        if (field === "durationDays") {
+          return { ...detail, durationDays: value ? Number(value) : null };
+        }
+
+        return { ...detail, [field]: value };
+      })
+    );
+  }
+
+  function removePrescriptionDetail(localId: string) {
+    setPrescriptionDetails((current) => current.filter((detail) => detail.localId !== localId));
+  }
+
   return (
       <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
         
@@ -259,7 +466,9 @@ export default function Clinic() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
-              <span className="text-[11px] text-green-400 font-medium">진료중</span>
+              <span className="text-[11px] text-green-400 font-medium">
+                {selectedVisit ? STATUS_LABELS[selectedVisit.status] : "접수 선택"}
+              </span>
             </div>
             
             <Table 
@@ -425,6 +634,171 @@ export default function Clinic() {
                   </p>
                 </>
               )}
+            </div>
+          </Card>
+
+          <Card title="진단 및 처방">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    label="상병검색"
+                    placeholder="상병코드 또는 상병명"
+                    value={diseaseQuery}
+                    onChange={setDiseaseQuery}
+                    disabled={!selectedVisit || isActionLoading}
+                    className="text-xs"
+                  />
+                  <Button
+                    onClick={handleSearchDiseases}
+                    disabled={!selectedVisit || isActionLoading}
+                    className="shrink-0 py-1.5 text-xs"
+                  >
+                    검색
+                  </Button>
+                </div>
+                {selectedDisease && (
+                  <p className="rounded border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs text-green-100">
+                    선택 상병: {selectedDisease.code} · {selectedDisease.nameKr}
+                  </p>
+                )}
+                {diseaseResults.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto rounded border border-gray-700">
+                    {diseaseResults.map((disease) => (
+                      <button
+                        key={disease.id}
+                        onClick={() => {
+                          setSelectedDisease(disease);
+                          setDiseaseResults([]);
+                          setDiseaseQuery(`${disease.code} ${disease.nameKr}`);
+                        }}
+                        className="block w-full border-b border-gray-800 px-3 py-2 text-left text-xs text-gray-100 hover:bg-gray-800"
+                      >
+                        {disease.code} · {disease.nameKr}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <Button
+                  onClick={handleDiagnoseVisit}
+                  disabled={!canDiagnose || !selectedDisease || isActionLoading}
+                  className="self-end py-1.5 text-xs"
+                >
+                  진단 확정
+                </Button>
+              </div>
+
+              <div className="border-t border-gray-700 pt-3">
+                <div className="flex items-center gap-2">
+                  <Input
+                    label="약품검색"
+                    placeholder="처방코드 또는 약품명"
+                    value={drugQuery}
+                    onChange={setDrugQuery}
+                    disabled={!selectedVisit || isActionLoading}
+                    className="text-xs"
+                  />
+                  <Button
+                    onClick={handleSearchDrugs}
+                    disabled={!selectedVisit || isActionLoading}
+                    className="shrink-0 py-1.5 text-xs"
+                  >
+                    검색
+                  </Button>
+                </div>
+                {drugResults.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto rounded border border-gray-700">
+                    {drugResults.map((drug) => (
+                      <button
+                        key={drug.id}
+                        onClick={() => addDrugToPrescription(drug)}
+                        className="block w-full border-b border-gray-800 px-3 py-2 text-left text-xs text-gray-100 hover:bg-gray-800"
+                      >
+                        {drug.code} · {drug.nameKr}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {prescriptionDetails.length === 0 ? (
+                  <p className="text-xs text-gray-400">약품을 검색해서 처방 목록에 추가하세요.</p>
+                ) : (
+                  prescriptionDetails.map((detail) => (
+                    <div key={detail.localId} className="rounded border border-gray-700 p-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-xs font-medium text-white">{detail.medicineName}</span>
+                        <button
+                          onClick={() => removePrescriptionDetail(detail.localId)}
+                          className="rounded bg-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:bg-gray-700"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        <input
+                          value={detail.dosage ?? ""}
+                          onChange={(event) => updatePrescriptionDetail(detail.localId, "dosage", event.target.value)}
+                          placeholder="용법"
+                          className="rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white outline-none"
+                        />
+                        <input
+                          type="number"
+                          value={detail.durationDays ?? ""}
+                          onChange={(event) => updatePrescriptionDetail(detail.localId, "durationDays", event.target.value)}
+                          placeholder="일수"
+                          className="rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white outline-none"
+                        />
+                        <input
+                          value={detail.notes ?? ""}
+                          onChange={(event) => updatePrescriptionDetail(detail.localId, "notes", event.target.value)}
+                          placeholder="주의사항"
+                          className="rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white outline-none"
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  value={revisitRecommendedDate}
+                  onChange={(event) => setRevisitRecommendedDate(event.target.value)}
+                  className="rounded border border-gray-600 bg-side-bg px-3 py-2 text-xs text-white outline-none"
+                />
+                <input
+                  value={doctorNotes}
+                  onChange={(event) => setDoctorNotes(event.target.value)}
+                  placeholder="의사 소견"
+                  className="rounded border border-gray-600 bg-side-bg px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              {prescription && (
+                <p className="rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
+                  저장된 처방: {prescription.kcdCode} · 약품 {prescription.details.length}개
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={handleSavePrescription}
+                  disabled={!canSavePrescription || !selectedDisease || prescriptionDetails.length === 0 || isActionLoading}
+                  className="py-1.5 text-xs"
+                >
+                  처방 저장
+                </Button>
+                <Button
+                  onClick={handleCompleteVisit}
+                  disabled={!canCompleteVisit || isActionLoading}
+                  className="py-1.5 text-xs"
+                >
+                  진료 완료
+                </Button>
+              </div>
             </div>
           </Card>
 

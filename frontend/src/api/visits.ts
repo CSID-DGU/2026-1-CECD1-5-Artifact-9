@@ -31,3 +31,15 @@ export function startVisit(visitId: number) {
     method: "PATCH",
   });
 }
+
+export function diagnoseVisit(visitId: number) {
+  return apiRequest<Visit>(`/api/v1/visits/${visitId}/diagnose`, {
+    method: "PATCH",
+  });
+}
+
+export function completeVisit(visitId: number) {
+  return apiRequest<Visit>(`/api/v1/visits/${visitId}/complete`, {
+    method: "PATCH",
+  });
+}

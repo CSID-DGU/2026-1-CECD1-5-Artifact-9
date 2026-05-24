@@ -56,12 +56,12 @@ public class Prescription {
     private LocalDateTime createdAt;
 
     /** 처방 상세 줄들 — Prescription 저장 시 함께 INSERT 됨. */
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "prescription_id")
+    @OneToMany(mappedBy = "prescription", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<PrescriptionDetail> details = new ArrayList<>();
 
     public void addDetail(PrescriptionDetail detail) {
+        detail.setPrescription(this);
         this.details.add(detail);
     }
 }
