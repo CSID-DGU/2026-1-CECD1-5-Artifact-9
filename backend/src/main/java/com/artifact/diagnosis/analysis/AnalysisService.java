@@ -67,6 +67,11 @@ public class AnalysisService {
         FastApiPredictResponse prediction = callFastApi(image.getImageUrl());
         int inferenceMs = (int) (System.currentTimeMillis() - startMs);
 
+        if (!prediction.isValidOrDefault()) {
+            visit.rollbackAnalysis();
+            throw new InvalidAnalysisImageException(prediction.messageOrDefault());
+        }
+
         Disease disease = diseaseRepository.findByDiseaseCode(prediction.top1().diseaseCode())
                 .orElseThrow(() -> new IllegalStateException("알 수 없는 병명 코드: " + prediction.top1().diseaseCode()));
 
@@ -178,9 +183,22 @@ public class AnalysisService {
 
     // FastAPI 응답 구조 (snake_case → camelCase 매핑)
     private record FastApiPredictResponse(
+            @JsonProperty("is_valid") Boolean isValid,
+            String message,
+            Double threshold,
             FastApiTop1 top1,
             List<FastApiTop5Item> top5
-    ) {}
+    ) {
+        private boolean isValidOrDefault() {
+            return isValid == null || isValid;
+        }
+
+        private String messageOrDefault() {
+            return message != null && !message.isBlank()
+                    ? message
+                    : "AI 분석에 적합하지 않은 이미지입니다.";
+        }
+    }
 
     private record FastApiTop1(
             int rank,

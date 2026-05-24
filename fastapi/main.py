@@ -7,6 +7,7 @@ from torchvision import transforms
 from PIL import Image
 import io
 import base64
+import os
 
 app = FastAPI(title="Artifact Medical AI", version="1.0.0")
 
@@ -27,6 +28,12 @@ CLASS_NAMES_KO = {
     "nv":    "멜라닌세포모반",
     "vasc":  "혈관성 병변",
 }
+
+MIN_TOP1_CONFIDENCE = float(os.getenv("MIN_TOP1_CONFIDENCE", "0.45"))
+INVALID_IMAGE_MESSAGE = (
+    "피부 병변 이미지로 판단하기 어렵습니다. "
+    "의료 이미지 또는 피부 병변이 명확히 보이는 사진을 업로드해 주세요."
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -65,12 +72,25 @@ def run_inference(image_bytes: bytes) -> dict:
         }
         for i, (prob, idx) in enumerate(zip(top5.values, top5.indices))
     ]
-    return {"top1": results[0], "top5": results}
+    top1_confidence = results[0]["confidence"]
+    is_valid = top1_confidence >= MIN_TOP1_CONFIDENCE
+
+    return {
+        "is_valid": is_valid,
+        "message": None if is_valid else INVALID_IMAGE_MESSAGE,
+        "threshold": MIN_TOP1_CONFIDENCE,
+        "top1": results[0],
+        "top5": results,
+    }
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "device": str(device)}
+    return {
+        "status": "ok",
+        "device": str(device),
+        "min_top1_confidence": MIN_TOP1_CONFIDENCE,
+    }
 
 
 @app.post("/predict")
