@@ -75,6 +75,15 @@ public class Visit {
         this.status = VisitStatus.ANALYZED;
     }
 
+    /** AI 분석이 유효하지 않은 이미지로 중단된 경우 다시 진료중 상태로 복구 */
+    public void rollbackAnalysis() {
+        if (this.status != VisitStatus.ANALYZING) {
+            throw new IllegalStateException(
+                "분석 중 상태에서만 분석을 취소할 수 있습니다. 현재 상태: " + this.status);
+        }
+        this.status = VisitStatus.IN_PROGRESS;
+    }
+
     /** 의사가 병명을 확정한 시점 — AI 분석 없이 IN_PROGRESS에서 바로 확정도 가능 */
     public void markDiagnosed() {
         if (this.status != VisitStatus.ANALYZED && this.status != VisitStatus.IN_PROGRESS) {

@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.common.exception;
 
+import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -42,6 +43,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error(409, e.getMessage(), null));
+    }
+
+    /** AI 분석 대상 이미지가 모델 판별 기준을 통과하지 못함 → 422. */
+    @ExceptionHandler(InvalidAnalysisImageException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidAnalysisImage(InvalidAnalysisImageException e) {
+        return ResponseEntity.unprocessableEntity().body(error(422, e.getMessage(), null));
     }
 
     /** 그 외 잘못된 인자 → 400. */

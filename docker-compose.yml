@@ -38,6 +38,8 @@ services:
       dockerfile: Dockerfile
     container_name: artifact-fastapi
     restart: unless-stopped
+    environment:
+      MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.45}
     ports:
       - "8000:8000"
     networks:
