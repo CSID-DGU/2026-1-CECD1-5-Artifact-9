@@ -24,6 +24,10 @@ public class PrescriptionDetail {
     @Column(name = "detail_id")
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "prescription_id", nullable = false)
+    private Prescription prescription;
+
     /** drug_master.drug_id — 마스터에서 선택 시 설정, 직접 입력 시 null */
     @Column(name = "drug_id")
     private Long drugId;
