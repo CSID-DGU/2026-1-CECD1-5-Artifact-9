@@ -12,6 +12,25 @@ export type Patient = {
   createdAt?: string | null;
 };
 
+export type PatientCreateRequest = {
+  name: string;
+  birthDate?: string | null;
+  gender?: "M" | "F" | "OTHER" | null;
+  phone?: string | null;
+  memo?: string | null;
+};
+
 export function getPatient(patientId: number) {
   return apiRequest<Patient>(`/api/v1/patients/${patientId}`);
+}
+
+export function createPatient(req: PatientCreateRequest) {
+  return apiRequest<Patient>(`/api/v1/patients`, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export function searchPatients(name: string) {
+  return apiRequest<Patient[]>(`/api/v1/patients?name=${encodeURIComponent(name)}`);
 }

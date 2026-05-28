@@ -51,8 +51,13 @@ public class VisitController {
     @GetMapping
     public List<VisitResponse> list(
             @Parameter(description = "상태 필터", example = "RECEIVED")
-            @RequestParam(defaultValue = "RECEIVED") VisitStatus status) {
-        return visitService.findByStatus(status);
+            @RequestParam(required = false) VisitStatus status,
+            @Parameter(description = "환자 ID 필터")
+            @RequestParam(required = false) Long patientId) {
+        if (patientId != null) {
+            return visitService.findByPatientId(patientId);
+        }
+        return visitService.findByStatus(status != null ? status : VisitStatus.RECEIVED);
     }
 
     @Operation(summary = "진료 시작", description = "접수 상태를 RECEIVED → IN_PROGRESS로 변경합니다. 이후 이미지 업로드 가능.")

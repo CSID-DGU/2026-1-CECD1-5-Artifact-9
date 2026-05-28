@@ -28,29 +28,34 @@ export default function MainLayout() {
                 >
                   <span className="text-[10px] text-gray-400 group-hover:text-blue-400 transition-colors">접수</span>
                 </Link>
-                <Link 
-                  to="/clinic" 
+                <Link
+                  to="/clinic"
                   onClick={() => setIsMenuOpen(false)}
                   className="group relative flex flex-col items-center"
                 >
                   <span className="text-[10px] text-gray-400 group-hover:text-blue-400 transition-colors">진료</span>
+                </Link>
+                <Link
+                  to="/lookup"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="group relative flex flex-col items-center"
+                >
+                  <span className="text-[10px] text-gray-400 group-hover:text-blue-400 transition-colors">조회</span>
+                </Link>
+                <Link
+                  to="/certificate"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="group relative flex flex-col items-center"
+                >
+                  <span className="text-[10px] text-gray-400 group-hover:text-blue-400 transition-colors">증명</span>
                 </Link>
               </div>
             )}
           </div>
           
         </div>
-        <div className="text-sm font-medium">김철수 님</div>
+        <div className="text-sm font-medium text-blue-100">AI 보조 진단 시스템</div>
       </header>
-
-      {/* 버튼 영역 */}
-      <section className="h-[35px] flex items-center justify-end px-4 shrink-0">
-        {[1, 2, 3, 4, 5].map((num) => (
-          <button key={num} className="h-[20px] ml-[5px] px-3 bg-gray-600 hover:bg-gray-500 text-[11px] rounded transition-colors">
-            버튼{num}
-          </button>
-        ))}
-      </section>
 
       {/* 클릭 시 메뉴 닫기 */}
       {isMenuOpen && (

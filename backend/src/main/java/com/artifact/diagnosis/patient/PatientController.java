@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * 환자 REST API.
  *
@@ -48,5 +50,14 @@ public class PatientController {
             @Parameter(description = "환자 ID", example = "1")
             @PathVariable Long id) {
         return patientService.findById(id);
+    }
+
+    @Operation(summary = "환자 이름 검색", description = "이름 일부를 포함하는 환자 목록을 반환한다.")
+    @ApiResponse(responseCode = "200", description = "조회 성공")
+    @GetMapping
+    public List<PatientResponse> search(
+            @Parameter(description = "이름 검색어", example = "홍")
+            @RequestParam(defaultValue = "") String name) {
+        return patientService.searchByName(name);
     }
 }

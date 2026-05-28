@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.NoSuchElementException;
 
 /**
@@ -40,5 +41,14 @@ public class PatientService {
         return patientRepository.findById(id)
                 .map(PatientResponse::from)
                 .orElseThrow(() -> new NoSuchElementException("환자를 찾을 수 없습니다. id=" + id));
+    }
+
+    /** 이름 부분 검색. 조회 화면에서 환자를 찾을 때 사용. */
+    @Transactional(readOnly = true)
+    public List<PatientResponse> searchByName(String name) {
+        return patientRepository.findByNameContaining(name)
+                .stream()
+                .map(PatientResponse::from)
+                .toList();
     }
 }

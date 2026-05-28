@@ -107,7 +107,7 @@ CREATE TABLE visit (
 CREATE TABLE visit_image (
     image_id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '이미지 PK',
     visit_id    BIGINT       NOT NULL                COMMENT '접수ID (FK)',
-    image_url   VARCHAR(500) NOT NULL                COMMENT 'S3 URL',
+    image_url   VARCHAR(500) NOT NULL                COMMENT 'S3 객체 키',
     uploaded_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '업로드 시각',
     PRIMARY KEY (image_id),
     CONSTRAINT fk_vi_visit FOREIGN KEY (visit_id) REFERENCES visit(visit_id),

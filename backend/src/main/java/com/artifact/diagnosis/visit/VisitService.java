@@ -55,6 +55,15 @@ public class VisitService {
                 .toList();
     }
 
+    /** 환자별 진료 이력. 최신 순. */
+    @Transactional(readOnly = true)
+    public List<VisitResponse> findByPatientId(Long patientId) {
+        return visitRepository.findByPatientIdOrderByVisitDateDesc(patientId)
+                .stream()
+                .map(VisitResponse::from)
+                .toList();
+    }
+
     /** 진료 시작. RECEIVED → IN_PROGRESS 전이. 이후 이미지 업로드 가능. */
     public VisitResponse startConsultation(Long id) {
         Visit visit = visitRepository.findById(id)

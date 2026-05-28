@@ -26,6 +26,17 @@ export function listVisits(status: VisitStatus) {
   return apiRequest<Visit[]>(`/api/v1/visits?status=${status}`);
 }
 
+export function listVisitsByPatient(patientId: number) {
+  return apiRequest<Visit[]>(`/api/v1/visits?patientId=${patientId}`);
+}
+
+export function createVisit(patientId: number) {
+  return apiRequest<Visit>(`/api/v1/visits`, {
+    method: "POST",
+    body: JSON.stringify({ patientId }),
+  });
+}
+
 export function startVisit(visitId: number) {
   return apiRequest<Visit>(`/api/v1/visits/${visitId}/start`, {
     method: "PATCH",
