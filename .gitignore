@@ -45,5 +45,31 @@ backend/uploads/
 *.jar
 *.war
 
+# === Python ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
+# === 기업/의료 기준 데이터 원본 ===
+# 멘토님이 전달한 원본 엑셀은 공개 저장소에 올리지 않는다.
+backend/src/main/resources/data/*.xlsx
+
+# === AI 학습 산출물 ===
+*.pt
+*.pth
+*.onnx
+*.keras
+*.h5
+!fastapi/model.pth
+
+# === Frontend build output ===
+frontend/dist/
+
+# === 환경변수 (.env) — 절대 커밋 금지 ===
 .env
+.env.*
+!.env.example
+backend/.env
+.idea
+.idea/compiler.xml

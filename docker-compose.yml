@@ -30,6 +30,22 @@ services:
       - artifact-network
 
   # -------------------------------------------
+  # FastAPI AI 추론 서버
+  # -------------------------------------------
+  fastapi:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: artifact-fastapi
+    restart: unless-stopped
+    environment:
+      MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.45}
+    ports:
+      - "8000:8000"
+    networks:
+      - artifact-network
+
+  # -------------------------------------------
   # Spring Boot 백엔드
   # -------------------------------------------
   backend:
@@ -43,14 +59,21 @@ services:
         condition: service_healthy   # MySQL이 완전히 켜진 후에 Spring 시작
     environment:
       # Spring → MySQL 연결 (컨테이너끼리 통신은 서비스명 'mysql'로)
-      DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Seoul
+      DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:-rootpass}
 
       # AWS S3 (.env에서 읽음)
-      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
-      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
-      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY:-local-dev-access-key}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY:-local-dev-secret-key}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-local-dev-bucket}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+
+      # 로컬 Docker 개발에서는 실제 AWS 키 없이 이미지 업로드 흐름을 검증
+      IMAGE_STORAGE_TYPE: ${IMAGE_STORAGE_TYPE:-local}
+      IMAGE_LOCAL_UPLOAD_DIR: /tmp/artifact-images
+
+      FASTAPI_URL: http://fastapi:8000
 
       TZ: Asia/Seoul
     ports:
