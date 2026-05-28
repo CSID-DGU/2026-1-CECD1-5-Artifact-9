@@ -25,11 +25,11 @@
 
 ---
 
-## 📌 한 줄 소개
+##  한 줄 소개
 
 피부 병변 이미지를 업로드하면 AI 모델이 **Top-5 후보 질환과 신뢰도(confidence)** 를 제시하고, 의료진이 이를 참고하여 **KCD 상병코드**와 **처방 약품**을 선택해 진료를 완료할 수 있도록 돕는 **진료 워크플로우 지원 시스템**이다.
 
-## 🎯 프로젝트 목적
+##  프로젝트 목적
 
 기존의 피부 병변 AI 서비스 다수는 "AI가 진단명을 알려주는 것"에 초점을 맞추지만, 실제 임상 현장에서는 **접수 → 진료 → 상병 확정 → 처방 → 이력 관리**로 이어지는 워크플로우 전체가 중요하다.
 
@@ -41,7 +41,7 @@
 
 ---
 
-## 🖼️ Demo / Screenshots
+##  Demo / Screenshots
 
 ### 1) 환자 등록 및 접수 생성 — `/`
 
@@ -69,9 +69,9 @@
 
 ---
 
-## ✨ 핵심 기능
+##  핵심 기능
 
-### 🔬 AI 피부 병변 분석 (구현됨)
+###  AI 피부 병변 분석 (구현됨)
 
 업로드한 이미지를 EfficientNet-B0 모델로 분석하여 **Top-1 / Top-5 후보 질환**과 confidence, inference time, model version을 반환한다. 신뢰도가 임계값(`MIN_TOP1_CONFIDENCE`) 미만이면 "피부 병변 이미지로 판단하기 어렵습니다…"라는 안내를 반환해 오용을 방지한다.
 
@@ -112,7 +112,7 @@
 
 ---
 
-## 🏗️ 시스템 아키텍처
+##  시스템 아키텍처
 
 ![System Architecture](docs/images/architecture.png)
 
@@ -132,7 +132,7 @@ flowchart LR
 
 ---
 
-## 🔁 데이터 흐름 (DFD / Clinical Workflow)
+##  데이터 흐름 (DFD / Clinical Workflow)
 
 ![Clinical Workflow DFD](docs/images/clinical-workflow-dfd.png)
 
@@ -153,7 +153,7 @@ flowchart TD
 
 ---
 
-## 🗄️ ERD / DB 설계 요약
+##  ERD / DB 설계 요약
 
 ![Database ERD](docs/images/database-erd.png)
 
@@ -190,7 +190,7 @@ erDiagram
 
 ---
 
-## 🧰 기술 스택
+##  기술 스택
 
 | 구분 | 기술 |
 | --- | --- |
@@ -202,7 +202,7 @@ erDiagram
 
 ---
 
-## 📂 폴더 구조
+##  폴더 구조
 
 ```text
 artifact-medical-ai/
@@ -223,7 +223,7 @@ artifact-medical-ai/
 
 ---
 
-## ⚙️ 실행 방법
+##  실행 방법
 
 > 실제 포트는 로컬 환경에 따라 달라질 수 있다.
 
@@ -260,7 +260,7 @@ npm run dev
 
 ---
 
-## 🔐 환경 변수 (`.env` 예시)
+##  환경 변수 (`.env` 예시)
 
 ```env
 DB_PASSWORD=rootpass
@@ -283,7 +283,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 🌐 API 요약
+##  API 요약
 
 | Domain | Method | Endpoint | Description |
 | --- | --- | --- | --- |
@@ -309,7 +309,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 🤖 AI 모델 설명
+##  AI 모델 설명
 
 | 항목 | 내용 |
 | --- | --- |
@@ -345,7 +345,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 🛠️ 트러블슈팅
+##  트러블슈팅
 
 | 증상 | 점검 사항 |
 | --- | --- |
@@ -359,7 +359,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 🚀 향후 개선 계획
+##  향후 개선 계획
 
 > 아래는 **예정 기능**이며, 위 "핵심 기능"의 구현 항목과 구분된다.
 
@@ -374,7 +374,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 🌿 팀 협업 / 브랜치 전략
+##  팀 협업 / 브랜치 전략
 
 | 브랜치 | 용도 |
 | --- | --- |
@@ -387,7 +387,7 @@ MIN_TOP1_CONFIDENCE=0.45
 
 ---
 
-## 📄 참고 사항
+##  참고 사항
 
 - 본 프로젝트는 **동국대학교 종합설계(캡스톤디자인)** 과정에서 EMR 솔루션 전문 기업 **비트컴퓨터(Bitcomputer)** 와의 산학 협력으로 진행되었다.
 - 사용된 KCD 상병코드 및 약품/처방코드 마스터 데이터는 학습/연구 목적의 데모용으로 적재되며, 라이선스 및 사용 범위는 원 데이터 제공처의 정책을 따른다.
