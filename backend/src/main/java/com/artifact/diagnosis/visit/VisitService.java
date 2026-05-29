@@ -33,6 +33,7 @@ public class VisitService {
                 .patientId(req.patientId())
                 .visitDate(LocalDateTime.now())
                 .status(VisitStatus.RECEIVED)
+                .receptionMemo(req.receptionMemo())
                 .build();
 
         return VisitResponse.from(visitRepository.save(visit));

@@ -12,4 +12,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
     /** 이름으로 부분 검색 (관리자 화면용). */
     List<Patient> findByNameContaining(String name);
+
+    /** 이름 + 전화번호로 기존 환자 검색 (중복 등록 방지). */
+    Optional<Patient> findFirstByNameAndPhone(String name, String phone);
 }

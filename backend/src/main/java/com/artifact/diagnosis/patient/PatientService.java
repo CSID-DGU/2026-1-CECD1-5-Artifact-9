@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 /**
  * 환자 등록/조회 서비스.
@@ -23,6 +24,14 @@ public class PatientService {
 
     /** 환자 등록 → 저장된 엔티티를 응답 DTO 로 변환해서 반환. */
     public PatientResponse register(PatientCreateRequest req) {
+        if (req.phone() != null && !req.phone().isBlank()) {
+            Optional<Patient> existing = patientRepository
+                    .findFirstByNameAndPhone(req.name().trim(), req.phone().trim());
+            if (existing.isPresent()) {
+                return PatientResponse.from(existing.get());
+            }
+        }
+        
         Patient saved = patientRepository.save(
                 Patient.builder()
                         .name(req.name())
