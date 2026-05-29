@@ -1,9 +1,10 @@
 import { useState } from "react";
+
 import { getPatient, searchPatients, type Patient } from "../api/patients";
 import { listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
+import { listVisitImages, type VisitImage } from "../api/images";
 import { Card } from "../components/Card";
-import { Table } from "../components/Table";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   RECEIVED: "접수",
@@ -69,6 +70,7 @@ export default function Lookup() {
   const [visits, setVisits] = useState<VisitWithPrescription[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<VisitWithPrescription | null>(null);
+  const [visitImages, setVisitImages] = useState<Record<number, VisitImage[]>>({});
 
   function parseChartNo(value: string) {
     const normalized = value.trim().toUpperCase().replace(/^P/, "");
@@ -100,7 +102,9 @@ export default function Lookup() {
     setSelectedPatient(null);
     setVisits([]);
     setSelectedVisit(null);
+    setVisitImages({});
     try {
+
       const results: Patient[] = [];
 
       if (parsedPatientId !== null && !hasInvalidChartNo) {
@@ -116,6 +120,7 @@ export default function Lookup() {
       }
 
       setPatients(dedupePatients(results));
+
       setHasSearched(true);
       if (hasInvalidChartNo) {
         setSearchError("차트번호 형식이 올바르지 않아 이름으로만 검색했습니다.");
@@ -160,33 +165,21 @@ export default function Lookup() {
         })
       );
       setVisits(withRx);
+
+      const imageMap: Record<number, VisitImage[]> = {};
+      await Promise.all(
+        visitList.map(async (v) => {
+          try { imageMap[v.id] = await listVisitImages(v.id); }
+          catch { imageMap[v.id] = []; }
+        })
+      );
+      setVisitImages(imageMap);
     } catch {
       setVisits([]);
     } finally {
       setIsLoadingVisits(false);
     }
   }
-
-  const visitTableData = visits.map((v, idx) => [
-    idx + 1,
-    `V${String(v.id).padStart(5, "0")}`,
-    formatDate(v.visitDate),
-    <span key={`s-${v.id}`} className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[v.status]}`}>
-      {STATUS_LABELS[v.status]}
-    </span>,
-    v.prescription ? (
-      <span key={`rx-${v.id}`} className="text-green-400 text-[10px]">처방있음</span>
-    ) : (
-      <span key={`rx-${v.id}`} className="text-gray-500 text-[10px]">-</span>
-    ),
-    <button
-      key={`sel-${v.id}`}
-      onClick={() => setSelectedVisit(v)}
-      className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
-    >
-      상세
-    </button>,
-  ]);
 
   return (
     <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
@@ -290,7 +283,7 @@ export default function Lookup() {
         )}
       </section>
 
-      {/* Center: Visit list */}
+      {/* Center: Visit image timeline */}
       <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
         <Card title="내원 기록" className="flex-1">
           {!selectedPatient ? (
@@ -300,10 +293,49 @@ export default function Lookup() {
           ) : visits.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-10">내원 기록이 없습니다</p>
           ) : (
-            <Table
-              headers={["순번", "접수번호", "내원일시", "상태", "처방", "상세"]}
-              data={visitTableData}
-            />
+            <div className="flex flex-col gap-3">
+              {visits.map((v) => {
+                const images = visitImages[v.id] ?? [];
+                return (
+                  <div key={v.id} className="border border-gray-700 rounded p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-blue-300">V{String(v.id).padStart(5, "0")}</span>
+                        <span className="text-xs text-white font-semibold">{formatDate(v.visitDate)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[v.status]}`}>
+                          {STATUS_LABELS[v.status]}
+                        </span>
+                        {v.prescription && (
+                          <span className="text-green-400 text-[10px]">처방있음</span>
+                        )}
+                        <button
+                          onClick={() => setSelectedVisit(v)}
+                          className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
+                        >
+                          상세
+                        </button>
+                      </div>
+                    </div>
+                    {images.length === 0 ? (
+                      <p className="text-[10px] text-gray-500">등록된 이미지 없음</p>
+                    ) : (
+                      <div className="flex gap-2 flex-wrap">
+                        {images.map((img) => (
+                          <img
+                            key={img.imageId}
+                            src={img.imageUrl}
+                            alt="내원 이미지"
+                            className="w-20 h-20 object-cover rounded border border-gray-600"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </Card>
       </section>
