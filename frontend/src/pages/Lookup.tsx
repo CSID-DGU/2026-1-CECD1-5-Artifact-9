@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { searchPatients, getPatient, type Patient } from "../api/patients";
+
+import { getPatient, searchPatients, type Patient } from "../api/patients";
 import { listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { listVisitImages, type VisitImage } from "../api/images";
@@ -59,39 +60,89 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | null };
 
 export default function Lookup() {
-  const [query, setQuery] = useState("");
+  const [chartNoQuery, setChartNoQuery] = useState("");
+  const [nameQuery, setNameQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<VisitWithPrescription[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<VisitWithPrescription | null>(null);
   const [visitImages, setVisitImages] = useState<Record<number, VisitImage[]>>({});
 
+  function parseChartNo(value: string) {
+    const normalized = value.trim().toUpperCase().replace(/^P/, "");
+    if (!normalized) return null;
+    if (!/^\d+$/.test(normalized)) return Number.NaN;
+    return Number(normalized);
+  }
+
+  function dedupePatients(items: Patient[]) {
+    return [...new Map(items.map((patient) => [patient.id, patient])).values()];
+  }
+
   async function handleSearch() {
-    if (!query.trim()) return;
+    const chartNo = chartNoQuery.trim();
+    const name = nameQuery.trim();
+    if (!chartNo && !name) return;
+
+    const parsedPatientId = chartNo ? parseChartNo(chartNo) : null;
+    const hasInvalidChartNo = Number.isNaN(parsedPatientId);
+    if (hasInvalidChartNo && !name) {
+      setPatients([]);
+      setHasSearched(true);
+      setSearchError("차트번호는 P00001 또는 숫자 형식으로 입력해 주세요.");
+      return;
+    }
+
     setIsSearching(true);
+    setSearchError(null);
     setSelectedPatient(null);
     setVisits([]);
     setSelectedVisit(null);
     setVisitImages({});
     try {
-      const match = query.trim().match(/^P?(\d+)$/i);
-      if (match) {
-        const patient = await getPatient(Number(match[1]));
-        setPatients([patient]);
-      } else {
-        const results = await searchPatients(query.trim());
-        setPatients(results);
+
+      const results: Patient[] = [];
+
+      if (parsedPatientId !== null && !hasInvalidChartNo) {
+        const patient = await getPatient(parsedPatientId).catch(() => null);
+        if (patient) {
+          results.push(patient);
+        }
       }
+
+      if (name) {
+        const nameResults = await searchPatients(name);
+        results.push(...nameResults);
+      }
+
+      setPatients(dedupePatients(results));
+
       setHasSearched(true);
+      if (hasInvalidChartNo) {
+        setSearchError("차트번호 형식이 올바르지 않아 이름으로만 검색했습니다.");
+      }
     } catch {
       setPatients([]);
       setHasSearched(true);
+      setSearchError("환자 조회 중 오류가 발생했습니다.");
     } finally {
       setIsSearching(false);
     }
+  }
+
+  function handleResetSearch() {
+    setChartNoQuery("");
+    setNameQuery("");
+    setPatients([]);
+    setHasSearched(false);
+    setSearchError(null);
+    setSelectedPatient(null);
+    setVisits([]);
+    setSelectedVisit(null);
   }
 
   async function handleSelectPatient(patient: Patient) {
@@ -133,49 +184,83 @@ export default function Lookup() {
   return (
     <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
       {/* Left: Search */}
-      <section className="w-[300px] flex flex-col shrink-0 gap-[8px]">
+      <section className="w-[360px] flex flex-col shrink-0 gap-[8px]">
         <Card title="환자 조회">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="환자 이름 입력 후 Enter"
-              className="flex-1 min-w-0 px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
-            />
-            <button
-              onClick={handleSearch}
-              disabled={isSearching || !query.trim()}
-              className="shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSearching ? "..." : "검색"}
-            </button>
+          <div className="flex flex-col gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400">차트번호</span>
+              <input
+                type="text"
+                value={chartNoQuery}
+                onChange={(e) => setChartNoQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="P00001 또는 숫자"
+                className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400">이름</span>
+              <input
+                type="text"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="환자 이름"
+                className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+              />
+            </label>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleSearch}
+                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim())}
+                className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSearching ? "검색 중..." : "검색"}
+              </button>
+              <button
+                onClick={handleResetSearch}
+                disabled={isSearching}
+                className="px-3 py-1.5 border border-gray-600 hover:bg-gray-700 text-xs text-gray-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                초기화
+              </button>
+            </div>
           </div>
+
+          {searchError && (
+            <p className="mt-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+              {searchError}
+            </p>
+          )}
 
           {hasSearched && (
             <div className="mt-3">
               {patients.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-4">검색 결과가 없습니다</p>
               ) : (
-                <div className="flex flex-col divide-y divide-gray-700">
+                <div className="overflow-x-auto rounded border border-gray-700">
+                  <div className="grid grid-cols-[86px_1fr_82px] bg-gray-950 px-2 py-2 text-[10px] font-semibold text-gray-400">
+                    <span>차트번호</span>
+                    <span>이름</span>
+                    <span>생년월일</span>
+                  </div>
                   {patients.map((p) => (
                     <button
                       key={p.id}
                       onClick={() => handleSelectPatient(p)}
-                      className={`w-full text-left px-2 py-2.5 hover:bg-gray-700/60 transition-colors rounded ${
+                      className={`grid w-full grid-cols-[86px_1fr_82px] items-center gap-0 px-2 py-2 text-left hover:bg-gray-700/60 transition-colors ${
                         selectedPatient?.id === p.id ? "bg-blue-600/20 border border-blue-600/40" : ""
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white font-medium">{p.name}</span>
-                        <span className="font-mono text-[10px] text-blue-300">P{String(p.id).padStart(5, "0")}</span>
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">
+                      <span className="font-mono text-[10px] text-blue-300">P{String(p.id).padStart(5, "0")}</span>
+                      <span className="min-w-0 truncate text-xs font-medium text-white">{p.name}</span>
+                      <span className="text-[10px] text-gray-400">{formatDateOnly(p.birthDate)}</span>
+                      <span className="col-span-3 mt-1 text-[10px] text-gray-400">
                         <GenderLabel gender={p.gender} />
-                        {p.birthDate ? ` · ${formatDateOnly(p.birthDate)}` : ""}
                         {p.phone ? ` · ${p.phone}` : ""}
-                      </div>
+                      </span>
                     </button>
                   ))}
                 </div>
