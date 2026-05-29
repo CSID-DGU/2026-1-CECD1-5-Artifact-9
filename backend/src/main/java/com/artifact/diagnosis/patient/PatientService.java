@@ -4,7 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 /**
  * 환자 등록/조회 서비스.
@@ -22,6 +24,14 @@ public class PatientService {
 
     /** 환자 등록 → 저장된 엔티티를 응답 DTO 로 변환해서 반환. */
     public PatientResponse register(PatientCreateRequest req) {
+        if (req.phone() != null && !req.phone().isBlank()) {
+            Optional<Patient> existing = patientRepository
+                    .findFirstByNameAndPhone(req.name().trim(), req.phone().trim());
+            if (existing.isPresent()) {
+                return PatientResponse.from(existing.get());
+            }
+        }
+        
         Patient saved = patientRepository.save(
                 Patient.builder()
                         .name(req.name())
@@ -40,5 +50,14 @@ public class PatientService {
         return patientRepository.findById(id)
                 .map(PatientResponse::from)
                 .orElseThrow(() -> new NoSuchElementException("환자를 찾을 수 없습니다. id=" + id));
+    }
+
+    /** 이름 부분 검색. 조회 화면에서 환자를 찾을 때 사용. */
+    @Transactional(readOnly = true)
+    public List<PatientResponse> searchByName(String name) {
+        return patientRepository.findByNameContaining(name)
+                .stream()
+                .map(PatientResponse::from)
+                .toList();
     }
 }
