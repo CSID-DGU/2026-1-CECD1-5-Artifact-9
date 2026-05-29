@@ -2,6 +2,8 @@ package com.artifact.diagnosis.visit;
 
 import com.artifact.diagnosis.image.ImageStorageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -49,7 +51,7 @@ public class VisitImageService {
         return new VisitImageResponse(
                 saved.getId(),
                 saved.getVisitId(),
-                imageStorageService.generatePresignedUrl(saved.getImageUrl()),
+                "/api/v1/visits/" + saved.getVisitId() + "/images/" + saved.getId() + "/content",
                 saved.getUploadedAt()
         );
     }
@@ -65,9 +67,29 @@ public class VisitImageService {
                 .map(img -> new VisitImageResponse(
                         img.getId(),
                         img.getVisitId(),
-                        imageStorageService.generatePresignedUrl(img.getImageUrl()),
+                        "/api/v1/visits/" + img.getVisitId() + "/images/" + img.getId() + "/content",
                         img.getUploadedAt()
                 ))
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> getImageContent(Long visitId, Long imageId) {
+        VisitImage image = visitImageRepository.findById(imageId)
+                .filter(img -> img.getVisitId().equals(visitId))
+                .orElseThrow(() -> new NoSuchElementException("이미지를 찾을 수 없습니다. id=" + imageId));
+
+        byte[] bytes = imageStorageService.download(image.getImageUrl());
+
+        String ext = image.getImageUrl().toLowerCase();
+        String contentType = ext.endsWith(".png") ? "image/png"
+                : ext.endsWith(".gif") ? "image/gif"
+                : ext.endsWith(".webp") ? "image/webp"
+                : "image/jpeg";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, contentType)
+                .header(HttpHeaders.CACHE_CONTROL, "max-age=31536000, immutable")
+                .body(bytes);
+        }
 }
