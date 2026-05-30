@@ -76,6 +76,8 @@ services:
 
       FASTAPI_URL: http://fastapi:8000
 
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
       TZ: Asia/Seoul
     ports:
       - "8080:8080"

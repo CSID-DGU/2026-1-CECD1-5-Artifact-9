@@ -16,6 +16,7 @@ export type Visit = {
   visitDate: string;
   status: VisitStatus;
   createdAt: string;
+  receptionMemo?: string | null;
 };
 
 export function getVisit(visitId: number) {

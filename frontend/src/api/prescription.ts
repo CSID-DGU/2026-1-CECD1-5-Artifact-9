@@ -50,3 +50,22 @@ export function savePrescription(visitId: number, req: PrescriptionRequest) {
 export function getPrescription(visitId: number) {
   return apiRequest<PrescriptionResponse>(`/api/v1/visits/${visitId}/prescription`);
 }
+
+export type PrescriptionCommentResponse = {
+  line1: string;
+  line2: string;
+};
+
+export function getAiPrescriptionComment(
+  visitId: number,
+  diseases: Array<{ kcdCode: string; kcdNameKr: string; isPrimary: boolean }>,
+  receptionMemo?: string | null
+) {
+  return apiRequest<PrescriptionCommentResponse>(
+    `/api/v1/visits/${visitId}/prescription/comment`,
+    {
+      method: "POST",
+      body: JSON.stringify({ diseases, receptionMemo: receptionMemo ?? null }),
+    }
+  );
+}

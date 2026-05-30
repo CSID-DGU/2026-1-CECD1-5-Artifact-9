@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
-import { getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
+import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, diagnoseVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
@@ -95,6 +95,10 @@ export default function Clinic() {
   const [isKcdModalOpen, setKcdModalOpen]   = useState(false);
   const [isDrugModalOpen, setDrugModalOpen] = useState(false);
 
+  // AI 처방 코멘트
+  const [aiComment, setAiComment] = useState<{ line1: string; line2: string } | null>(null);
+  const [isCommentLoading, setIsCommentLoading] = useState(false);
+
   // 로딩 / 메시지
   const [isLoading, setIsLoading]         = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
@@ -141,6 +145,7 @@ export default function Clinic() {
     setMessage(null);
     setPrescription(null);
     setSelectedKcds([]);
+    setAiComment(null);
     setSelectedDrug(null);
     setDrugDosage("");
     setDrugDays("");
@@ -556,6 +561,38 @@ export default function Clinic() {
                       >
                         + 상병코드 검색 (클릭하여 추가)
                       </button>
+                    </div>
+
+                    {/* AI 처방 코멘트 */}
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!selectedVisit || selectedKcds.length === 0) return;
+                          setIsCommentLoading(true);
+                          try {
+                            const result = await getAiPrescriptionComment(
+                              selectedVisit.id,
+                              selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary })),
+                              selectedVisit.receptionMemo
+                            );
+                            setAiComment(result);
+                          } catch { setAiComment(null); }
+                          finally { setIsCommentLoading(false); }
+                        }}
+                        disabled={selectedKcds.length === 0 || isCommentLoading}
+                        className="w-full px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isCommentLoading ? "AI 분석 중..." : "✨ AI 처방 코멘트 생성"}
+                      </button>
+                      {aiComment && (
+                        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 flex flex-col gap-1">
+                          {aiComment.line1 && <p className="text-[11px] text-indigo-200">• {aiComment.line1}</p>}
+                          {aiComment.line2 && <p className="text-[11px] text-indigo-200">• {aiComment.line2}</p>}
+                          {!aiComment.line1 && !aiComment.line2 && (
+                            <p className="text-[11px] text-red-300">응답을 받지 못했습니다. 백엔드 로그를 확인하세요.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 약품 */}
