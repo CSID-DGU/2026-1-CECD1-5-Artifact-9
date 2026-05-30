@@ -155,7 +155,9 @@ flowchart TD
 
 ##  ERD / DB 설계 요약
 
-![Database ERD](docs/images/database-erd.png)
+https://www.erdcloud.com/d/mXL5osaiZtmQivnFJ
+
+<img width="997" height="724" alt="image" src="https://github.com/user-attachments/assets/393ee50d-1a4f-4f72-8393-f9fda92b0417" />
 
 ```mermaid
 erDiagram
