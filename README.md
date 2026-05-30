@@ -114,7 +114,7 @@
 
 ##  시스템 아키텍처
 
-![System Architecture](docs/images/architecture.png)
+<img width="403" height="349" alt="image" src="https://github.com/user-attachments/assets/d391dab3-6081-4386-8207-9838587a4a31" />
 
 ```mermaid
 flowchart LR
