@@ -53,7 +53,7 @@
 
 접수된 환자를 선택해 진료를 시작하고, 피부 병변 이미지를 업로드한 뒤 AI 분석을 요청한다. 분석 결과를 참고해 상병코드와 처방을 입력하고 진료를 완료한다.
 
-![Clinic Screen](docs/images/screenshot-clinic.png)
+<img width="600" height="450" alt="image" src="https://github.com/user-attachments/assets/d0384825-c7fe-476f-8fac-2adbf567a93c" />
 
 ### 3) 환자별 내원 및 처방 이력 조회 — `/lookup`
 
