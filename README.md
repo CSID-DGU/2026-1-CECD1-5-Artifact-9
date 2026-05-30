@@ -59,7 +59,7 @@
 
 환자 이름으로 검색하여 내원 기록과 처방 상세 정보를 확인한다.
 
-![Lookup Screen](docs/images/screenshot-lookup.png)
+<img width="1167" height="562" alt="image" src="https://github.com/user-attachments/assets/22eb099c-b739-4102-a7f3-b2538d156fd4" />
 
 ### 4) 증명서 발급 화면 — `/certificate` *(준비 중 UI)*
 
