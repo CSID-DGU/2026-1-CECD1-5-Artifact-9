@@ -9,12 +9,17 @@ export type PrescriptionDetail = {
   notes: string | null;
 };
 
-export type PrescriptionResponse = {
-  prescriptionId: number;
-  visitId: number;
+export type PrescriptionDisease = {
   kcdDiseaseId: number;
   kcdCode: string;
   kcdNameKr: string;
+  isPrimary: boolean;
+};
+
+export type PrescriptionResponse = {
+  prescriptionId: number;
+  visitId: number;
+  diseases: PrescriptionDisease[];
   analysisId: number | null;
   prescribedAt: string;
   revisitRecommendedDate: string | null;
@@ -23,10 +28,11 @@ export type PrescriptionResponse = {
 };
 
 export type PrescriptionRequest = {
-  kcdDiseaseId: number;
+  diseases: Array<{ kcdDiseaseId: number; isPrimary: boolean }>;
   analysisId?: number | null;
   doctorNotes?: string | null;
   details: Array<{
+    drugId?: number | null;
     medicineName: string;
     dosage?: string | null;
     durationDays?: number | null;

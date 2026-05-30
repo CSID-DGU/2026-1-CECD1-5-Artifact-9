@@ -24,20 +24,23 @@ public class PrescriptionService {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
 
-        KcdDisease kcd = kcdDiseaseRepository.findById(req.kcdDiseaseId())
-                .orElseThrow(() -> new NoSuchElementException("KCD 상병코드를 찾을 수 없습니다: " + req.kcdDiseaseId()));
-
         // 이미 처방이 있으면 덮어쓰기 (재처방)
         prescriptionRepository.findByVisitId(visitId)
-                .ifPresent(existing -> prescriptionRepository.delete(existing));
+                .ifPresent(prescriptionRepository::delete);
 
         Prescription prescription = Prescription.builder()
                 .visitId(visitId)
-                .kcdDiseaseId(req.kcdDiseaseId())
                 .analysisId(req.analysisId())
                 .revisitRecommendedDate(req.revisitRecommendedDate())
                 .doctorNotes(req.doctorNotes())
                 .build();
+
+        req.diseases().forEach(d -> prescription.addDisease(
+                PrescriptionDisease.builder()
+                        .kcdDiseaseId(d.kcdDiseaseId())
+                        .primary(d.isPrimary())
+                        .build()
+        ));
 
         req.details().forEach(d -> prescription.addDetail(
                 PrescriptionDetail.builder()
@@ -50,11 +53,9 @@ public class PrescriptionService {
         ));
 
         Prescription saved = prescriptionRepository.save(prescription);
-
-        // visit 상태: DIAGNOSED → PRESCRIBED
         visit.markPrescribed();
 
-        return toResponse(saved, kcd);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -62,13 +63,18 @@ public class PrescriptionService {
         Prescription prescription = prescriptionRepository.findByVisitId(visitId)
                 .orElseThrow(() -> new NoSuchElementException("처방 정보가 없습니다: " + visitId));
 
-        KcdDisease kcd = kcdDiseaseRepository.findById(prescription.getKcdDiseaseId())
-                .orElseThrow();
-
-        return toResponse(prescription, kcd);
+        return toResponse(prescription);
     }
 
-    private PrescriptionResponse toResponse(Prescription p, KcdDisease kcd) {
+    private PrescriptionResponse toResponse(Prescription p) {
+        List<PrescriptionResponse.DiseaseResponse> diseases = p.getDiseases().stream()
+                .map(d -> {
+                    KcdDisease kcd = kcdDiseaseRepository.findById(d.getKcdDiseaseId()).orElseThrow();
+                    return new PrescriptionResponse.DiseaseResponse(
+                            d.getKcdDiseaseId(), kcd.getCode(), kcd.getNameKr(), d.isPrimary());
+                })
+                .toList();
+
         List<PrescriptionResponse.DetailResponse> details = p.getDetails().stream()
                 .map(d -> new PrescriptionResponse.DetailResponse(
                         d.getId(), d.getDrugId(), d.getMedicineName(),
@@ -76,11 +82,9 @@ public class PrescriptionService {
                 .toList();
 
         return new PrescriptionResponse(
-                p.getId(), p.getVisitId(),
-                kcd.getId(), kcd.getCode(), kcd.getNameKr(),
-                p.getAnalysisId(),
-                p.getPrescribedAt(), p.getRevisitRecommendedDate(),
-                p.getDoctorNotes(), details
+                p.getId(), p.getVisitId(), diseases,
+                p.getAnalysisId(), p.getPrescribedAt(),
+                p.getRevisitRecommendedDate(), p.getDoctorNotes(), details
         );
     }
 }

@@ -30,4 +30,4 @@ EXPOSE 8080
 ENV TZ=Asia/Seoul
 
 # 실행
-ENTRYPOINT ["java", "-Xms256m", "-Xmx512m", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-Xms256m", "-Xmx1g", "-jar", "/app/app.jar"]
