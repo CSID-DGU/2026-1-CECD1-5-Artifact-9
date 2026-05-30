@@ -150,7 +150,6 @@ CREATE TABLE analysis_image (
 CREATE TABLE prescription (
     prescription_id        BIGINT   NOT NULL AUTO_INCREMENT COMMENT '처방ID (PK)',
     visit_id               BIGINT   NOT NULL                COMMENT '접수ID (FK)',
-    kcd_disease_id         BIGINT   NOT NULL                COMMENT '의사 확정 KCD 상병코드 (FK)',
     analysis_id            BIGINT   NULL                    COMMENT '근거 AI 분석ID (FK, nullable)',
     prescribed_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '처방시각',
     revisit_recommended_date DATE   NULL                    COMMENT '재내원 권장일',
@@ -158,10 +157,19 @@ CREATE TABLE prescription (
     created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (prescription_id),
     CONSTRAINT fk_presc_visit    FOREIGN KEY (visit_id)       REFERENCES visit(visit_id),
-    CONSTRAINT fk_presc_kcd      FOREIGN KEY (kcd_disease_id) REFERENCES kcd_disease(kcd_id),
     CONSTRAINT fk_presc_analysis FOREIGN KEY (analysis_id)    REFERENCES analysis_result(analysis_id),
     INDEX idx_presc_visit (visit_id)
 ) ENGINE=InnoDB COMMENT='최종 처방 헤더';
+
+CREATE TABLE prescription_disease (
+    id              BIGINT      NOT NULL AUTO_INCREMENT,
+    prescription_id BIGINT      NOT NULL,
+    kcd_disease_id  BIGINT      NOT NULL,
+    is_primary      TINYINT(1)  NOT NULL DEFAULT 0  COMMENT '1=주상병 0=부상병',
+    PRIMARY KEY (id),
+    CONSTRAINT fk_pd_presc FOREIGN KEY (prescription_id) REFERENCES prescription(prescription_id) ON DELETE CASCADE,
+    CONSTRAINT fk_pd_kcd   FOREIGN KEY (kcd_disease_id)  REFERENCES kcd_disease(kcd_id)
+) ENGINE=InnoDB COMMENT='처방별 상병 (주/부상병)';
 
 -- ---------------------------------------------------------------------
 -- 10. 처방 상세 (prescription_detail)
@@ -183,16 +191,16 @@ CREATE TABLE prescription_detail (
 -- ---------------------------------------------------------------------
 -- 11. 처방 템플릿 (prescription_template) — 질병별 권장 처방 (관리용)
 -- ---------------------------------------------------------------------
-CREATE TABLE prescription_template (
-    template_id       BIGINT       NOT NULL AUTO_INCREMENT,
-    disease_id        BIGINT       NOT NULL COMMENT '질병ID (FK→disease)',
-    prescription_type ENUM('MEDICATION','TOPICAL','INJECTION','PROCEDURE','OBSERVATION','REFERRAL')
-                      NOT NULL,
-    medicine_name     VARCHAR(200) NOT NULL COMMENT '권장 약품/시술명',
-    dosage            VARCHAR(100) NULL,
-    duration_days     INT          NULL,
-    notes             TEXT         NULL,
-    PRIMARY KEY (template_id),
-    CONSTRAINT fk_tmpl_disease FOREIGN KEY (disease_id) REFERENCES disease(disease_id),
-    INDEX idx_tmpl_disease (disease_id)
-) ENGINE=InnoDB COMMENT='질병별 기본 처방 템플릿';
+-- CREATE TABLE prescription_template (
+--     template_id       BIGINT       NOT NULL AUTO_INCREMENT,
+--     disease_id        BIGINT       NOT NULL COMMENT '질병ID (FK→disease)',
+--     prescription_type ENUM('MEDICATION','TOPICAL','INJECTION','PROCEDURE','OBSERVATION','REFERRAL')
+--                       NOT NULL,
+--     medicine_name     VARCHAR(200) NOT NULL COMMENT '권장 약품/시술명',
+--     dosage            VARCHAR(100) NULL,
+--     duration_days     INT          NULL,
+--     notes             TEXT         NULL,
+--     PRIMARY KEY (template_id),
+--     CONSTRAINT fk_tmpl_disease FOREIGN KEY (disease_id) REFERENCES disease(disease_id),
+--     INDEX idx_tmpl_disease (disease_id)
+-- ) ENGINE=InnoDB COMMENT='질병별 기본 처방 템플릿';

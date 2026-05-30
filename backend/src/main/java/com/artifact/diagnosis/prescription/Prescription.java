@@ -33,10 +33,6 @@ public class Prescription {
     @Column(name = "visit_id", nullable = false)
     private Long visitId;
 
-    /** 의사가 선택한 KCD 상병코드 ID */
-    @Column(name = "kcd_disease_id", nullable = false)
-    private Long kcdDiseaseId;
-
     /** 어떤 AI 분석 결과를 근거로 했는지 (nullable) */
     @Column(name = "analysis_id")
     private Long analysisId;
@@ -55,10 +51,19 @@ public class Prescription {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "prescription")
+    @Builder.Default
+    private List<PrescriptionDisease> diseases = new ArrayList<>();
+
     /** 처방 상세 줄들 — Prescription 저장 시 함께 INSERT 됨. */
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY, mappedBy = "prescription")
     @Builder.Default
     private List<PrescriptionDetail> details = new ArrayList<>();
+
+    public void addDisease(PrescriptionDisease disease) {
+        disease.setPrescription(this);
+        this.diseases.add(disease);
+    }
 
     public void addDetail(PrescriptionDetail detail) {
         detail.setPrescription(this);

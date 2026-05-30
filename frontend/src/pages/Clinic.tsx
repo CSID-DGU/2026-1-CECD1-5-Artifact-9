@@ -81,7 +81,8 @@ export default function Clinic() {
   const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
 
   // 처방 폼
-  const [selectedKcd, setSelectedKcd]   = useState<SearchItem | null>(null);
+  type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean };
+  const [selectedKcds, setSelectedKcds] = useState<SelectedKcd[]>([]);
   const [selectedDrug, setSelectedDrug] = useState<SearchItem | null>(null);
   const [drugDosage, setDrugDosage]     = useState("");
   const [drugDays, setDrugDays]         = useState("");
@@ -136,7 +137,7 @@ export default function Clinic() {
     setErrorMessage(null);
     setMessage(null);
     setPrescription(null);
-    setSelectedKcd(null);
+    setSelectedKcds([]);
     setSelectedDrug(null);
     setDrugDosage("");
     setDrugDays("");
@@ -256,10 +257,9 @@ export default function Clinic() {
   }
 
   async function handleSavePrescription() {
-    if (!selectedVisit || !selectedKcd || !selectedDrug) return;
+    if (!selectedVisit || selectedKcds.length === 0 || !selectedDrug) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
-      // ANALYZED 상태면 진단확정 먼저 (내부 처리, UI 버튼 없음)
       let visit = selectedVisit;
       if (visit.status === "ANALYZED") {
         visit = await diagnoseVisit(visit.id);
@@ -267,7 +267,7 @@ export default function Clinic() {
       }
 
       const saved = await savePrescription(visit.id, {
-        kcdDiseaseId: selectedKcd.id,
+        diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
         analysisId:   analysis?.analysisId ?? null,
         doctorNotes:  doctorNotes.trim() || null,
         details: [{
@@ -310,7 +310,13 @@ export default function Clinic() {
       <SearchModal
         isOpen={isKcdModalOpen}
         onClose={() => setKcdModalOpen(false)}
-        onSelect={(item) => setSelectedKcd(item)}
+        onSelect={(item) => {
+          setSelectedKcds(prev => {
+            if (prev.find(k => k.id === item.id)) return prev;
+            const isFirst = prev.length === 0;
+            return [...prev, { id: item.id, code: item.code, nameKr: item.nameKr, isPrimary: isFirst }];
+          });
+        }}
         title="KCD 상병코드 검색"
         placeholder="상병명 검색 (예: 흑색종, 건선, 습진)"
         onSearch={searchKcdDiseases}
@@ -487,25 +493,42 @@ export default function Clinic() {
                       <span className="text-[10px] text-gray-400">
                         KCD 상병코드 <span className="text-red-400">*</span>
                       </span>
-                      {selectedKcd ? (
-                        <div className="flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-2">
-                          <span className="font-mono text-xs text-blue-300">{selectedKcd.code}</span>
-                          <span className="text-xs text-white flex-1">{selectedKcd.nameKr}</span>
-                          <button
-                            onClick={() => setSelectedKcd(null)}
-                            className="text-[10px] text-gray-400 hover:text-red-400 transition-colors"
-                          >
-                            변경
-                          </button>
+                      {selectedKcds.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          {selectedKcds.map((k) => (
+                            <div key={k.id} className="flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-2">
+                              <input
+                                type="radio"
+                                name="primaryKcd"
+                                checked={k.isPrimary}
+                                onChange={() => setSelectedKcds(prev =>
+                                  prev.map(item => ({ ...item, isPrimary: item.id === k.id }))
+                                )}
+                                className="accent-blue-500"
+                              />
+                              <span className="font-mono text-xs text-blue-300">{k.code}</span>
+                              <span className="text-xs text-white flex-1">{k.nameKr}</span>
+                              <span className="text-[10px] text-gray-400">{k.isPrimary ? "주상병" : "부상병"}</span>
+                              <button
+                                onClick={() => setSelectedKcds(prev => {
+                                  const next = prev.filter(item => item.id !== k.id);
+                                  if (k.isPrimary && next.length > 0) next[0].isPrimary = true;
+                                  return next;
+                                })}
+                                className="text-[10px] text-gray-400 hover:text-red-400 transition-colors"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => setKcdModalOpen(true)}
-                          className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
-                        >
-                          + 상병코드 검색 (클릭하여 선택)
-                        </button>
                       )}
+                      <button
+                        onClick={() => setKcdModalOpen(true)}
+                        className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
+                      >
+                        + 상병코드 검색 (클릭하여 추가)
+                      </button>
                     </div>
 
                     {/* 약품 */}
@@ -566,7 +589,7 @@ export default function Clinic() {
 
                     <Button
                       onClick={handleSavePrescription}
-                      disabled={!selectedKcd || !selectedDrug || isActionLoading}
+                      disabled={selectedKcds.length === 0 || !selectedDrug || isActionLoading}
                       className="py-2 text-xs w-full"
                     >
                       처방 저장
@@ -581,7 +604,14 @@ export default function Clinic() {
                     <div className="rounded border border-gray-600 bg-side-bg p-3 flex flex-col gap-1.5">
                       <div className="flex gap-2 text-xs">
                         <span className="text-gray-400 w-16 shrink-0">상병코드</span>
-                        <span className="text-white">{prescription.kcdCode} {prescription.kcdNameKr}</span>
+                        <div className="flex flex-col gap-0.5">
+                          {prescription.diseases.map(d => (
+                            <span key={d.kcdDiseaseId} className="text-white">
+                              {d.kcdCode} {d.kcdNameKr}
+                              {d.isPrimary && <span className="ml-1 text-[10px] text-yellow-400">주상병</span>}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       {prescription.details.map((d, i) => (
                         <div key={i} className="flex gap-2 text-xs">
@@ -611,7 +641,14 @@ export default function Clinic() {
                     <div className="rounded border border-gray-600 bg-side-bg p-3 flex flex-col gap-1.5">
                       <div className="flex gap-2 text-xs">
                         <span className="text-gray-400 w-16 shrink-0">상병코드</span>
-                        <span className="text-white">{prescription.kcdCode} {prescription.kcdNameKr}</span>
+                        <div className="flex flex-col gap-0.5">
+                          {prescription.diseases.map(d => (
+                            <span key={d.kcdDiseaseId} className="text-white">
+                              {d.kcdCode} {d.kcdNameKr}
+                              {d.isPrimary && <span className="ml-1 text-[10px] text-yellow-400">주상병</span>}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       {prescription.details.map((d, i) => (
                         <div key={i} className="flex gap-2 text-xs">
