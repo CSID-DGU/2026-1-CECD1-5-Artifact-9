@@ -121,7 +121,7 @@ public class AnalysisService {
                 result.getModelVersion(),
                 new AnalysisResponse.Top1Result(
                         disease.getDiseaseCode(),
-                        disease.getNameKo(),
+                        DISEASE_NAME_KO.getOrDefault(disease.getDiseaseCode(), disease.getDiseaseCode()),
                         result.getConfidence()
                 ),
                 top5,

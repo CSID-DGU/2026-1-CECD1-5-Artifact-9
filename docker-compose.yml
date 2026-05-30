@@ -13,14 +13,15 @@ services:
     container_name: artifact-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpass}    # 기본값 rootpass, .env로 덮을 수 있음
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpass}
       MYSQL_DATABASE: artifact_db
       TZ: Asia/Seoul
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"   # 호스트(내 PC):컨테이너 내부 포트 매핑
+      - "3306:3306"
     volumes:
-      - mysql-data:/var/lib/mysql                      # DB 데이터를 컨테이너 밖에 영구 저장
-      - ./docker/mysql/init:/docker-entrypoint-initdb.d  # 첫 실행 시 SQL 자동 실행
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-rootpass}"]
       interval: 10s
