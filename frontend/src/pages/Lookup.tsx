@@ -67,6 +67,8 @@ export default function Lookup() {
   const [hasSearched, setHasSearched] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [isLoadingPatientDetail, setIsLoadingPatientDetail] = useState(false);
+  const [patientDetailError, setPatientDetailError] = useState<string | null>(null);
   const [visits, setVisits] = useState<VisitWithPrescription[]>([]);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<VisitWithPrescription | null>(null);
@@ -100,6 +102,7 @@ export default function Lookup() {
     setIsSearching(true);
     setSearchError(null);
     setSelectedPatient(null);
+    setPatientDetailError(null);
     setVisits([]);
     setSelectedVisit(null);
     setVisitImages({});
@@ -141,16 +144,22 @@ export default function Lookup() {
     setHasSearched(false);
     setSearchError(null);
     setSelectedPatient(null);
+    setPatientDetailError(null);
     setVisits([]);
     setSelectedVisit(null);
   }
 
   async function handleSelectPatient(patient: Patient) {
     setSelectedPatient(patient);
+    setPatientDetailError(null);
     setSelectedVisit(null);
+    setIsLoadingPatientDetail(true);
     setIsLoadingVisits(true);
     try {
-      const visitList = await listVisitsByPatient(patient.id);
+      const [patientDetail, visitList] = await Promise.all([
+        getPatient(patient.id),
+        listVisitsByPatient(patient.id),
+      ]);
       const withRx: VisitWithPrescription[] = await Promise.all(
         visitList.map(async (v) => {
           if (v.status === "PRESCRIBED" || v.status === "COMPLETED") {
@@ -164,6 +173,7 @@ export default function Lookup() {
           return { ...v, prescription: null };
         })
       );
+      setSelectedPatient(patientDetail);
       setVisits(withRx);
 
       const imageMap: Record<number, VisitImage[]> = {};
@@ -175,8 +185,10 @@ export default function Lookup() {
       );
       setVisitImages(imageMap);
     } catch {
+      setPatientDetailError("환자 상세 정보를 불러오지 못했습니다.");
       setVisits([]);
     } finally {
+      setIsLoadingPatientDetail(false);
       setIsLoadingVisits(false);
     }
   }
@@ -251,7 +263,7 @@ export default function Lookup() {
                       key={p.id}
                       onClick={() => handleSelectPatient(p)}
                       className={`grid w-full grid-cols-[86px_1fr_82px] items-center gap-0 px-2 py-2 text-left hover:bg-gray-700/60 transition-colors ${
-                        selectedPatient?.id === p.id ? "bg-blue-600/20 border border-blue-600/40" : ""
+                        selectedPatient?.id === p.id ? "bg-blue-600/20 ring-1 ring-inset ring-blue-500/60" : ""
                       }`}
                     >
                       <span className="font-mono text-[10px] text-blue-300">P{String(p.id).padStart(5, "0")}</span>
@@ -269,18 +281,33 @@ export default function Lookup() {
           )}
         </Card>
 
-        {selectedPatient && (
-          <Card title="환자 정보">
-            <div className="flex flex-col gap-1.5">
-              <InfoRow label="환자번호" value={<span className="font-mono text-blue-300">P{String(selectedPatient.id).padStart(5, "0")}</span>} />
-              <InfoRow label="성명" value={selectedPatient.name} />
-              <InfoRow label="성별" value={<GenderLabel gender={selectedPatient.gender} />} />
-              <InfoRow label="생년월일" value={formatDateOnly(selectedPatient.birthDate)} />
-              <InfoRow label="연락처" value={selectedPatient.phone ?? "-"} />
-              {selectedPatient.memo && <InfoRow label="메모" value={selectedPatient.memo} />}
+        <Card title="환자 정보">
+          {!selectedPatient ? (
+            <p className="text-xs text-gray-400 text-center py-6">조회 결과에서 환자를 선택하세요</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {isLoadingPatientDetail && (
+                <p className="rounded bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+                  환자 상세 정보를 불러오는 중...
+                </p>
+              )}
+              {patientDetailError && (
+                <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                  {patientDetailError}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <InfoRow label="환자번호" value={<span className="font-mono text-blue-300">P{String(selectedPatient.id).padStart(5, "0")}</span>} />
+                <InfoRow label="성명" value={selectedPatient.name} />
+                <InfoRow label="성별" value={<GenderLabel gender={selectedPatient.gender} />} />
+                <InfoRow label="생년월일" value={formatDateOnly(selectedPatient.birthDate)} />
+                <InfoRow label="연락처" value={selectedPatient.phone ?? "-"} />
+                <InfoRow label="등록일시" value={formatDate(selectedPatient.createdAt)} />
+                {selectedPatient.memo && <InfoRow label="메모" value={selectedPatient.memo} />}
+              </div>
             </div>
-          </Card>
-        )}
+          )}
+        </Card>
       </section>
 
       {/* Center: Visit image timeline */}
