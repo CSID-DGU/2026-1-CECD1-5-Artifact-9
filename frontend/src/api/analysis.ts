@@ -14,6 +14,7 @@ export type AnalysisResponse = {
     diseaseCode: string;
     diseaseNameKo: string;
     confidence: number;
+    reason: string;
   }>;
   inferenceTimeMs: number;
   analyzedAt: string;

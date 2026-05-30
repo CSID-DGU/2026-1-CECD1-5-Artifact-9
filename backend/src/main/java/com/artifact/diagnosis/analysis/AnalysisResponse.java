@@ -26,6 +26,7 @@ public record AnalysisResponse(
             int rank,
             String diseaseCode,
             String diseaseNameKo,
-            double confidence
+            double confidence,
+            String reason
     ) {}
 }

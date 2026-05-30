@@ -80,6 +80,9 @@ export default function Clinic() {
   const [analysis, setAnalysis]       = useState<AnalysisResponse | null>(null);
   const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
 
+  // 분석 결과 상세 토글
+  const [expandedReason, setExpandedReason] = useState<number | null>(null);
+
   // 처방 폼
   type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean };
   const [selectedKcds, setSelectedKcds] = useState<SelectedKcd[]>([]);
@@ -461,13 +464,37 @@ export default function Clinic() {
                       신뢰도 {(Number(analysis.top1.confidence) * 100).toFixed(1)}%
                     </p>
                   </div>
-                  <Table
-                    headers={["순위", "상병코드", "상병명", "신뢰도"]}
-                    data={analysis.top5.map((item) => [
-                      item.rank, item.diseaseCode, item.diseaseNameKo,
-                      `${(item.confidence * 100).toFixed(1)}%`,
-                    ])}
-                  />
+                  <div className="border border-gray-700 rounded overflow-hidden">
+                    <div className="grid grid-cols-[40px_80px_1fr_70px_50px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                      <span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>
+                    </div>
+                    {analysis.top5.map((item) => (
+                      <div key={item.rank} className="border-t border-gray-800">
+                        <div className="grid grid-cols-[40px_80px_1fr_70px_50px] items-center px-3 py-2 text-xs">
+                          <span className="text-gray-400">{item.rank}</span>
+                          <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                          <span className="text-white">{item.diseaseNameKo}</span>
+                          <span className="text-right text-gray-200">{(item.confidence * 100).toFixed(1)}%</span>
+                          <span className="text-right">
+                            {item.reason && item.rank <= 2 && (
+                              <button
+                                onClick={() => setExpandedReason(expandedReason === item.rank ? null : item.rank)}
+                                className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
+                              >
+                                {expandedReason === item.rank ? "닫기" : "상세"}
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                        {expandedReason === item.rank && item.reason && (
+                          <div className="mx-3 mb-2 px-3 py-2 bg-gray-800 rounded text-[11px] text-gray-200 leading-relaxed relative">
+                            <span className="absolute -top-1.5 right-6 text-gray-800 text-base">▲</span>
+                            {item.reason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                   <p className="text-[10px] text-gray-400">
                     모델 {analysis.modelVersion} · {analysis.inferenceTimeMs}ms · {formatDateTime(analysis.analyzedAt)}
                   </p>

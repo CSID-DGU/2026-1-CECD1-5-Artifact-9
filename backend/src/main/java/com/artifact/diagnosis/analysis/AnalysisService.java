@@ -53,6 +53,16 @@ public class AnalysisService {
             "vasc",  "혈관성 병변"
     );
 
+    private static final Map<String, String> DISEASE_REASON = Map.of(
+            "nv",    "균일한 색소 분포와 규칙적인 경계선이 멜라닌세포모반의 특성과 일치합니다. 대부분 양성이나 크기 변화 시 추적 관찰이 필요합니다.",
+            "mel",   "불규칙한 색상 분포와 비대칭적 경계 패턴이 악성 흑색종의 특성과 일치합니다.",
+            "bkl",   "각질층의 과증식 및 지루성 표면 패턴이 관찰됩니다. 양성 경과가 많으나 급격한 변화 시 조직 검사를 권장합니다.",
+            "bcc",   "진주빛 경계와 확장된 모세혈관 패턴이 기저세포암의 특성과 일치합니다. 조기 외과적 제거가 권장됩니다.",
+            "akiec", "표피 세포의 이형성 패턴이 광선각화증/상피내암의 특성과 일치합니다. 전암성 병변으로 조기 치료가 중요합니다.",
+            "df",    "피부 내 경계 명확한 섬유성 결절 패턴이 피부섬유종의 특성과 일치합니다. 양성이며 경과 관찰만으로 충분합니다.",
+            "vasc",  "혈관 확장 및 혈관 내 이상 패턴이 감지되었습니다. 혈관 레이저 치료를 고려할 수 있습니다."
+    );
+
     @Transactional
     public AnalysisResponse analyze(Long visitId, List<Long> imageIds) {
         Visit visit = visitRepository.findById(visitId)
@@ -111,7 +121,8 @@ public class AnalysisService {
                         result.getTopKResults().indexOf(item) + 1,
                         item.code(),
                         DISEASE_NAME_KO.getOrDefault(item.code(), item.code()),
-                        item.confidence()
+                        item.confidence(),
+                        DISEASE_REASON.getOrDefault(item.code(), "")
                 ))
                 .toList();
 
@@ -162,7 +173,8 @@ public class AnalysisService {
                 .map(r -> new AnalysisResponse.TopKResult(
                         r.rank(), r.diseaseCode(),
                         DISEASE_NAME_KO.getOrDefault(r.diseaseCode(), r.diseaseCode()),
-                        r.confidence()
+                        r.confidence(),
+                        DISEASE_REASON.getOrDefault(r.diseaseCode(), "")
                 ))
                 .toList();
 
