@@ -582,7 +582,7 @@ export default function Clinic() {
                         disabled={selectedKcds.length === 0 || isCommentLoading}
                         className="w-full px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isCommentLoading ? "AI 분석 중..." : "✨ AI 처방 코멘트 생성"}
+                        {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}
                       </button>
                       {aiComment && (
                         <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 flex flex-col gap-1">

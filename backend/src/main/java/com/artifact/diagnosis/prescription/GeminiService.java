@@ -28,8 +28,9 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
+    // Gemini 무료 티어 3.5-flash 모델 일일 제한 출력 가능
     private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=";
 
     public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req) {
         if (apiKey == null || apiKey.isBlank()) {
