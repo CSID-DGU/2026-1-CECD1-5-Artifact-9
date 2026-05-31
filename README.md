@@ -53,7 +53,8 @@
 
 접수된 환자를 선택해 진료를 시작하고, 피부 병변 이미지를 업로드한 뒤 AI 분석을 요청한다. 분석 결과를 참고해 상병코드와 처방을 입력하고 진료를 완료한다.
 
-<img width="600" height="450" alt="image" src="https://github.com/user-attachments/assets/d0384825-c7fe-476f-8fac-2adbf567a93c" />
+<img width="596" height="859" alt="image" src="https://github.com/user-attachments/assets/c0ef739c-86ec-4d2e-8091-f039b0a09f46" />
+
 
 ### 3) 환자별 내원 및 처방 이력 조회 — `/lookup`
 
@@ -71,13 +72,13 @@
 
 ##  핵심 기능
 
-###  AI 피부 병변 분석 (구현됨)
+###  AI 피부 병변 분석 
 
-업로드한 이미지를 EfficientNet-B0 모델로 분석하여 **Top-1 / Top-5 후보 질환**과 confidence, inference time, model version을 반환한다. 신뢰도가 임계값(`MIN_TOP1_CONFIDENCE`) 미만이면 "피부 병변 이미지로 판단하기 어렵습니다…"라는 안내를 반환해 오용을 방지한다.
+업로드한 이미지를 EfficientNet-B0 모델(이후 개선된 모델로 계속 확장 예정)로 분석하여 **Top-1 / Top-5 후보 질환**과 confidence, inference time, model version을 반환한다. 신뢰도가 임계값(`MIN_TOP1_CONFIDENCE`) 미만이면 "피부 병변 이미지로 판단하기 어렵습니다…"라는 안내를 반환해 오용을 방지한다.
 
 ![AI Analysis Result](docs/images/screenshot-ai-analysis.png)
 
-### 🔎 KCD 상병코드 및 약품 검색 (구현됨)
+### 🔎 KCD 상병코드 및 약품 검색 
 
 검색 모달에서 KCD 상병코드와 약품/처방코드를 코드·명칭으로 검색하여 선택한다. 마스터 데이터는 Spring Boot 기동 시 Excel 파일에서 자동 적재된다(**KCD 약 2.4만 건, 약품/처방코드 약 49.6만 건 규모**).
 
