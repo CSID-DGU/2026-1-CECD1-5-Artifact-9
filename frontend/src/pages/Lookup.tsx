@@ -57,6 +57,14 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function VisitStatusBadge({ status }: { status: VisitStatus }) {
+  return (
+    <span className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[status]}`}>
+      {STATUS_LABELS[status]}
+    </span>
+  );
+}
+
 type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | null };
 
 export default function Lookup() {
@@ -147,6 +155,7 @@ export default function Lookup() {
     setPatientDetailError(null);
     setVisits([]);
     setSelectedVisit(null);
+    setVisitImages({});
   }
 
   async function handleSelectPatient(patient: Patient) {
@@ -281,6 +290,57 @@ export default function Lookup() {
           )}
         </Card>
 
+        <Card title="내원 타임라인">
+          {!selectedPatient ? (
+            <p className="text-xs text-gray-400 text-center py-6">환자를 선택하면 내원 이력이 표시됩니다</p>
+          ) : isLoadingVisits ? (
+            <p className="text-xs text-gray-400 text-center py-6">내원 이력을 불러오는 중...</p>
+          ) : visits.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-6">내원 이력이 없습니다</p>
+          ) : (
+            <div className="max-h-[300px] overflow-y-auto pr-1">
+              <div className="relative flex flex-col gap-2 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-gray-700">
+                {visits.map((visit) => {
+                  const isActive = selectedVisit?.id === visit.id;
+                  const imageCount = visitImages[visit.id]?.length ?? 0;
+
+                  return (
+                    <button
+                      key={visit.id}
+                      type="button"
+                      onClick={() => setSelectedVisit(visit)}
+                      className={`relative flex gap-3 rounded px-2 py-2 text-left transition-colors ${
+                        isActive
+                          ? "bg-blue-600/20 ring-1 ring-inset ring-blue-500/60"
+                          : "hover:bg-gray-700/60"
+                      }`}
+                    >
+                      <span className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                        isActive ? "border-blue-300 bg-blue-500" : "border-gray-500 bg-gray-800"
+                      }`} />
+                      <span className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] text-blue-300">
+                            V{String(visit.id).padStart(5, "0")}
+                          </span>
+                          <VisitStatusBadge status={visit.status} />
+                        </span>
+                        <span className="text-xs font-semibold text-white">
+                          {formatDate(visit.visitDate)}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          이미지 {imageCount}장
+                          {visit.prescription ? " · 처방있음" : ""}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Card>
+
         <Card title="환자 정보">
           {!selectedPatient ? (
             <p className="text-xs text-gray-400 text-center py-6">조회 결과에서 환자를 선택하세요</p>
@@ -331,9 +391,7 @@ export default function Lookup() {
                         <span className="text-xs text-white font-semibold">{formatDate(v.visitDate)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[v.status]}`}>
-                          {STATUS_LABELS[v.status]}
-                        </span>
+                        <VisitStatusBadge status={v.status} />
                         {v.prescription && (
                           <span className="text-green-400 text-[10px]">처방있음</span>
                         )}
@@ -376,9 +434,7 @@ export default function Lookup() {
                 <InfoRow label="접수번호" value={<span className="font-mono text-blue-300">V{String(selectedVisit.id).padStart(5, "0")}</span>} />
                 <InfoRow label="내원일시" value={formatDate(selectedVisit.visitDate)} />
                 <InfoRow label="상태" value={
-                  <span className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[selectedVisit.status]}`}>
-                    {STATUS_LABELS[selectedVisit.status]}
-                  </span>
+                  <VisitStatusBadge status={selectedVisit.status} />
                 } />
               </div>
             </Card>
