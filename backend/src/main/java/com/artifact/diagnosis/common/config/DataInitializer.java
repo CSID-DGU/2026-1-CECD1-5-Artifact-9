@@ -16,13 +16,17 @@ import org.apache.poi.xssf.usermodel.XSSFComment;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.io.InputStream;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -38,9 +42,13 @@ public class DataInitializer implements CommandLineRunner {
 
     private final KcdDiseaseRepository kcdDiseaseRepository;
     private final DrugMasterRepository drugMasterRepository;
+    private final DataSource dataSource;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public void run(String... args) {
+        ensureVisitReceptionMemoColumn();
+
         new Thread(() -> {
             try {
                 if (kcdDiseaseRepository.count() == 0) loadKcdDiseases();
@@ -52,6 +60,21 @@ public class DataInitializer implements CommandLineRunner {
                 log.error("데이터 초기화 중 오류 발생", e);
             }
         }, "data-initializer").start();
+    }
+
+    private void ensureVisitReceptionMemoColumn() {
+        try (Connection connection = dataSource.getConnection();
+             ResultSet columns = connection.getMetaData().getColumns(
+                     connection.getCatalog(), null, "visit", "reception_memo")) {
+            if (columns.next()) {
+                return;
+            }
+
+            jdbcTemplate.execute("ALTER TABLE visit ADD COLUMN reception_memo TEXT NULL");
+            log.info("visit.reception_memo 컬럼을 추가했습니다.");
+        } catch (Exception e) {
+            log.warn("visit.reception_memo 컬럼 확인/추가 중 오류: {}", e.getMessage());
+        }
     }
 
     /** KCD 상병코드 — 1.8MB, XSSFWorkbook으로 충분 */
