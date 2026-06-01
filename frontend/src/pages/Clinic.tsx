@@ -86,12 +86,15 @@ export default function Clinic() {
   const [imageViewMode, setImageViewMode] = useState<"none" | "original" | "heatmap">("none");
 
   // 처방 폼
-  type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean };
+  type AnalysisCandidate = AnalysisResponse["top5"][number];
+  type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean; sourceDiseaseCode?: string };
   const [selectedKcds, setSelectedKcds] = useState<SelectedKcd[]>([]);
   const [selectedDrug, setSelectedDrug] = useState<SearchItem | null>(null);
   const [drugDosage, setDrugDosage]     = useState("");
   const [drugDays, setDrugDays]         = useState("");
   const [doctorNotes, setDoctorNotes]   = useState("");
+  const [selectedAnalysisCandidateCodes, setSelectedAnalysisCandidateCodes] = useState<string[]>([]);
+  const [resolvingCandidateCode, setResolvingCandidateCode] = useState<string | null>(null);
 
   // 모달
   const [isKcdModalOpen, setKcdModalOpen]   = useState(false);
@@ -147,6 +150,7 @@ export default function Clinic() {
     setMessage(null);
     setPrescription(null);
     setSelectedKcds([]);
+    setSelectedAnalysisCandidateCodes([]);
     setAiComment(null);
     setSelectedDrug(null);
     setDrugDosage("");
@@ -257,6 +261,8 @@ export default function Clinic() {
     try {
       const result = await requestAnalysis(selectedVisit.id, selectedImageIds);
       setAnalysis(result);
+      setSelectedAnalysisCandidateCodes([]);
+      setSelectedKcds([]);
       setSelectedVisit((cur) => cur ? { ...cur, status: "ANALYZED" } : cur);
       await loadVisitLists();
       setMessage("AI 분석이 완료되었습니다. 결과를 확인하고 처방을 입력하세요.");
@@ -308,6 +314,60 @@ export default function Clinic() {
     setSelectedImageIds((cur) =>
       cur.includes(imageId) ? cur.filter((id) => id !== imageId) : [...cur, imageId]
     );
+  }
+
+  async function handleToggleAnalysisCandidate(item: AnalysisCandidate) {
+    const isSelectedCandidate = selectedAnalysisCandidateCodes.includes(item.diseaseCode);
+    if (isSelectedCandidate) {
+      setSelectedAnalysisCandidateCodes((prev) => prev.filter((code) => code !== item.diseaseCode));
+      setSelectedKcds((prev) => {
+        const next = prev.filter((kcd) => kcd.sourceDiseaseCode !== item.diseaseCode);
+        return next.some((kcd) => kcd.isPrimary) || next.length === 0
+          ? next
+          : next.map((kcd, index) => ({ ...kcd, isPrimary: index === 0 }));
+      });
+      return;
+    }
+
+    setSelectedAnalysisCandidateCodes((prev) => [...prev, item.diseaseCode]);
+    setResolvingCandidateCode(item.diseaseCode);
+    setErrorMessage(null);
+    try {
+      const result = await searchKcdDiseases(item.diseaseNameKo, 10);
+      const matched = result.content.find((disease) => disease.nameKr === item.diseaseNameKo)
+        ?? result.content.find((disease) => disease.nameKr.includes(item.diseaseNameKo) || item.diseaseNameKo.includes(disease.nameKr))
+        ?? result.content[0];
+
+      if (!matched) {
+        setMessage(`${item.diseaseNameKo} 후보를 선택했습니다. 매칭되는 KCD 상병코드는 상병코드 검색으로 직접 추가해 주세요.`);
+        return;
+      }
+
+      setSelectedKcds((prev) => {
+        if (prev.some((kcd) => kcd.id === matched.id)) {
+          return prev.map((kcd) =>
+            kcd.id === matched.id
+              ? { ...kcd, sourceDiseaseCode: item.diseaseCode }
+              : kcd
+          );
+        }
+        const isFirst = prev.length === 0;
+        return [
+          ...prev,
+          {
+            id: matched.id,
+            code: matched.code,
+            nameKr: matched.nameKr,
+            isPrimary: isFirst,
+            sourceDiseaseCode: item.diseaseCode,
+          },
+        ];
+      });
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setResolvingCandidateCode(null);
+    }
   }
 
   const status = selectedVisit?.status;
@@ -426,7 +486,7 @@ export default function Clinic() {
                   업로드
                 </Button>
                 <Button onClick={handleAnalyze} disabled={!canAnalyze || selectedImageIds.length === 0 || isActionLoading} className="py-1.5 text-xs">
-                  AI 분석
+                  {isActionLoading ? "분석 중..." : "AI 분석"}
                 </Button>
               </div>
 
@@ -557,35 +617,52 @@ export default function Clinic() {
                     );
                   })()}
                   <div className="border border-gray-700 rounded overflow-hidden">
-                    <div className="grid grid-cols-[40px_80px_1fr_70px_50px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
-                      <span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>
+                    <div className="grid grid-cols-[36px_40px_80px_1fr_70px_50px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                      <span>선택</span><span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>
                     </div>
-                    {analysis.top5.map((item) => (
-                      <div key={item.rank} className="border-t border-gray-800">
-                        <div className="grid grid-cols-[40px_80px_1fr_70px_50px] items-center px-3 py-2 text-xs">
-                          <span className="text-gray-400">{item.rank}</span>
-                          <span className="font-mono text-blue-300">{item.diseaseCode}</span>
-                          <span className="text-white">{item.diseaseNameKo}</span>
-                          <span className="text-right text-gray-200">{(item.confidence * 100).toFixed(1)}%</span>
-                          <span className="text-right">
-                            {item.reason && item.rank <= 2 && (
-                              <button
-                                onClick={() => setExpandedReason(expandedReason === item.rank ? null : item.rank)}
-                                className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
-                              >
-                                {expandedReason === item.rank ? "닫기" : "상세"}
-                              </button>
-                            )}
-                          </span>
-                        </div>
-                        {expandedReason === item.rank && item.reason && (
-                          <div className="mx-3 mb-2 px-3 py-2 bg-gray-800 rounded text-[11px] text-gray-200 leading-relaxed relative">
-                            <span className="absolute -top-1.5 right-6 text-gray-800 text-base">▲</span>
-                            {item.reason}
+                    {analysis.top5.map((item) => {
+                      const isCandidateSelected = selectedAnalysisCandidateCodes.includes(item.diseaseCode);
+                      const isResolvingCandidate = resolvingCandidateCode === item.diseaseCode;
+
+                      return (
+                        <div key={item.rank} className="border-t border-gray-800">
+                          <div className="grid grid-cols-[36px_40px_80px_1fr_70px_50px] items-center px-3 py-2 text-xs">
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={isCandidateSelected}
+                                disabled={isResolvingCandidate}
+                                onChange={() => void handleToggleAnalysisCandidate(item)}
+                                aria-label={`${item.diseaseNameKo} 후보 선택`}
+                                className="accent-blue-500 disabled:cursor-wait"
+                              />
+                            </span>
+                            <span className="text-gray-400">{item.rank}</span>
+                            <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                            <span className="text-white">{item.diseaseNameKo}</span>
+                            <span className="text-right text-gray-200">
+                              {isResolvingCandidate ? "검색 중" : `${(item.confidence * 100).toFixed(1)}%`}
+                            </span>
+                            <span className="text-right">
+                              {item.reason && item.rank <= 2 && (
+                                <button
+                                  onClick={() => setExpandedReason(expandedReason === item.rank ? null : item.rank)}
+                                  className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
+                                >
+                                  {expandedReason === item.rank ? "닫기" : "상세"}
+                                </button>
+                              )}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {expandedReason === item.rank && item.reason && (
+                            <div className="mx-3 mb-2 px-3 py-2 bg-gray-800 rounded text-[11px] text-gray-200 leading-relaxed relative">
+                              <span className="absolute -top-1.5 right-6 text-gray-800 text-base">▲</span>
+                              {item.reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   <p className="text-[10px] text-gray-400">
                     모델 {analysis.modelVersion} · {analysis.inferenceTimeMs}ms · {formatDateTime(analysis.analyzedAt)}

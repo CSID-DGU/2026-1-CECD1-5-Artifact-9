@@ -48,6 +48,7 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         ensureVisitReceptionMemoColumn();
+        ensureAnalysisResultHeatmapColumn();
 
         new Thread(() -> {
             try {
@@ -74,6 +75,21 @@ public class DataInitializer implements CommandLineRunner {
             log.info("visit.reception_memo 컬럼을 추가했습니다.");
         } catch (Exception e) {
             log.warn("visit.reception_memo 컬럼 확인/추가 중 오류: {}", e.getMessage());
+        }
+    }
+
+    private void ensureAnalysisResultHeatmapColumn() {
+        try (Connection connection = dataSource.getConnection();
+             ResultSet columns = connection.getMetaData().getColumns(
+                     connection.getCatalog(), null, "analysis_result", "heatmap_image_url")) {
+            if (columns.next()) {
+                return;
+            }
+
+            jdbcTemplate.execute("ALTER TABLE analysis_result ADD COLUMN heatmap_image_url VARCHAR(500) NULL");
+            log.info("analysis_result.heatmap_image_url 컬럼을 추가했습니다.");
+        } catch (Exception e) {
+            log.warn("analysis_result.heatmap_image_url 컬럼 확인/추가 중 오류: {}", e.getMessage());
         }
     }
 
