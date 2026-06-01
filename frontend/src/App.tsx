@@ -12,12 +12,12 @@ export default function App() {
     <AuthProvider>
     <BrowserRouter>
       <Routes>
-        {/* 사용자가 처음 접속( / )하면 무조건 로그인 페이지가 뜸 */}
+        {/* 사용자가 처음 접속( / )하면 로그인 페이지 호출 */}
         <Route path="/" element={<Login />} />
 
         {/* 로그인 성공 후 진입할 메인 레이아웃 구역 (/main) */}
         <Route path="/main" element={<MainLayout />}>
-          {/* 주소창이 /main 일 때 기본 대문 화면은 Reception */}
+          {/* 주소창이 /main 일 때 기본 화면 Reception */}
           <Route index element={<Reception />} />
           {/* 하위 메뉴 */}
           <Route path="clinic" element={<Clinic />} />
