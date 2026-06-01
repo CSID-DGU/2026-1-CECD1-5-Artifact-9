@@ -7,6 +7,7 @@ import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, diagnoseVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 
@@ -420,18 +421,15 @@ export default function Clinic() {
       <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
 
         {/* Left Column */}
-        <section className="w-[300px] flex flex-col shrink-0">
-          <Card title="환자 정보" className="flex-1">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 px-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                </span>
-                <span className="text-[11px] text-green-400 font-medium">진료중</span>
-              </div>
-              <Table headers={["항목", "내용"]} data={currentPatientInfo} />
-            </div>
+        <section className="w-[360px] flex shrink-0 flex-col gap-[8px] overflow-y-auto">
+          <ClinicPatientLookupPanel
+            selectedPatientId={selectedPatient?.id}
+            selectedVisitId={selectedVisit?.id}
+            onSelectVisit={(visitId) => void loadVisitDetail(visitId)}
+          />
+
+          <Card title="환자 정보">
+            <Table headers={["항목", "내용"]} data={currentPatientInfo} />
           </Card>
         </section>
 
