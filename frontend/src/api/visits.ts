@@ -31,6 +31,10 @@ export function listVisitsByPatient(patientId: number) {
   return apiRequest<Visit[]>(`/api/v1/visits?patientId=${patientId}`);
 }
 
+export function listVisitsByDate(date: string) {
+  return apiRequest<Visit[]>(`/api/v1/visits?date=${encodeURIComponent(date)}`);
+}
+
 export function createVisit(patientId: number) {
   return apiRequest<Visit>(`/api/v1/visits`, {
     method: "POST",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { getPatient, searchPatients, type Patient } from "../api/patients";
-import { listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { listVisitImages, type VisitImage } from "../api/images";
 import { Card } from "../components/Card";
@@ -70,6 +70,7 @@ type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | nul
 export default function Lookup() {
   const [chartNoQuery, setChartNoQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
+  const [visitDateQuery, setVisitDateQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -110,7 +111,8 @@ export default function Lookup() {
   async function handleSearch() {
     const chartNo = chartNoQuery.trim();
     const name = nameQuery.trim();
-    if (!chartNo && !name) return;
+    const visitDate = visitDateQuery.trim();
+    if (!chartNo && !name && !visitDate) return;
 
     const parsedPatientId = chartNo ? parseChartNo(chartNo) : null;
     const hasInvalidChartNo = Number.isNaN(parsedPatientId);
@@ -145,6 +147,14 @@ export default function Lookup() {
         results.push(...nameResults);
       }
 
+      if (visitDate) {
+        const visitResults = await listVisitsByDate(visitDate);
+        const patientsByVisit = await Promise.all(
+          visitResults.map((visit) => getPatient(visit.patientId).catch(() => null))
+        );
+        results.push(...patientsByVisit.filter((patient): patient is Patient => patient !== null));
+      }
+
       setPatients(dedupePatients(results));
 
       setHasSearched(true);
@@ -163,6 +173,7 @@ export default function Lookup() {
   function handleResetSearch() {
     setChartNoQuery("");
     setNameQuery("");
+    setVisitDateQuery("");
     setPatients([]);
     setHasSearched(false);
     setSearchError(null);
@@ -254,10 +265,21 @@ export default function Lookup() {
               />
             </label>
 
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400">내원일</span>
+              <input
+                type="date"
+                value={visitDateQuery}
+                onChange={(e) => setVisitDateQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+              />
+            </label>
+
             <div className="flex gap-2">
               <button
                 onClick={handleSearch}
-                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim())}
+                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery.trim())}
                 className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSearching ? "검색 중..." : "검색"}
