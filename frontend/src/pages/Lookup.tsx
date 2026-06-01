@@ -97,6 +97,14 @@ export default function Lookup() {
     return [...new Map(items.map((patient) => [patient.id, patient])).values()];
   }
 
+  function describeSearchConditions() {
+    const conditions = [];
+    if (chartNoQuery.trim()) conditions.push(`차트번호 ${chartNoQuery.trim()}`);
+    if (nameQuery.trim()) conditions.push(`이름 ${nameQuery.trim()}`);
+    if (visitDateQuery.trim()) conditions.push(`내원일 ${visitDateQuery.trim()}`);
+    return conditions;
+  }
+
   function handleSelectVisit(visit: VisitWithPrescription) {
     setSelectedVisit(visit);
     setSelectedImageIds([]);
@@ -307,6 +315,11 @@ export default function Lookup() {
 
           {hasSearched && (
             <div className="mt-3">
+              {describeSearchConditions().length > 0 && (
+                <p className="mb-2 rounded bg-gray-900/70 px-3 py-2 text-[11px] text-gray-300">
+                  {describeSearchConditions().join(" · ")} 조건으로 검색했습니다.
+                </p>
+              )}
               {patients.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-4">검색 결과가 없습니다</p>
               ) : (
