@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -50,6 +51,19 @@ public class PatientController {
             @Parameter(description = "환자 ID", example = "1")
             @PathVariable Long id) {
         return patientService.findById(id);
+    }
+
+    @Operation(summary = "환자 통합 검색", description = "차트번호(patientId), 이름, 내원일 조건을 조합해 환자를 조회한다.")
+    @ApiResponse(responseCode = "200", description = "조회 성공")
+    @GetMapping("/search")
+    public List<PatientResponse> searchByConditions(
+            @Parameter(description = "차트번호에 해당하는 환자 ID", example = "1")
+            @RequestParam(required = false) Long patientId,
+            @Parameter(description = "이름 검색어", example = "홍")
+            @RequestParam(required = false) String name,
+            @Parameter(description = "내원일", example = "2026-06-01")
+            @RequestParam(required = false) LocalDate visitDate) {
+        return patientService.search(patientId, name, visitDate);
     }
 
     @Operation(summary = "환자 이름 검색", description = "이름 일부를 포함하는 환자 목록을 반환한다.")
