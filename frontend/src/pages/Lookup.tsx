@@ -141,13 +141,13 @@ export default function Lookup() {
     const chartNo = chartNoQuery.trim();
     const name = nameQuery.trim();
     const visitDate = visitDateQuery.trim();
-    if (!chartNo && !name && !visitDate) return;
     if (hasPartialVisitDate) {
       setPatients([]);
       setHasSearched(true);
       setSearchError("내원일은 연도 4자리, 월 2자리, 일 2자리를 모두 입력해 주세요.");
       return;
     }
+    if (!chartNo && !name && !visitDate) return;
 
     const parsedPatientId = chartNo ? parseChartNo(chartNo) : null;
     const hasInvalidChartNo = Number.isNaN(parsedPatientId);
