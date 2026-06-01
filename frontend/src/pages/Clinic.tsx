@@ -3,6 +3,7 @@ import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../ap
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
+import { useAuth } from "../components/AuthContext";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, diagnoseVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
@@ -67,6 +68,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function Clinic() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab]     = useState<"대기" | "완료">("대기");
   const [waitingVisits, setWaiting]   = useState<Visit[]>([]);
   const [completedVisits, setCompleted] = useState<Visit[]>([]);
@@ -271,7 +273,7 @@ export default function Clinic() {
   }
 
   async function handleSavePrescription() {
-    if (!selectedVisit || selectedKcds.length === 0 || !selectedDrug) return;
+    if (!selectedVisit || selectedKcds.length === 0 || !selectedDrug || !user) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
       let visit = selectedVisit;
@@ -281,6 +283,7 @@ export default function Clinic() {
       }
 
       const saved = await savePrescription(visit.id, {
+        doctorId: user.doctorId,
         diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
         analysisId:   analysis?.analysisId ?? null,
         doctorNotes:  doctorNotes.trim() || null,
