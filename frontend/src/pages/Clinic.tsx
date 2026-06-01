@@ -486,7 +486,7 @@ export default function Clinic() {
                   업로드
                 </Button>
                 <Button onClick={handleAnalyze} disabled={!canAnalyze || selectedImageIds.length === 0 || isActionLoading} className="py-1.5 text-xs">
-                  AI 분석
+                  {isActionLoading ? "분석 중..." : "AI 분석"}
                 </Button>
               </div>
 
