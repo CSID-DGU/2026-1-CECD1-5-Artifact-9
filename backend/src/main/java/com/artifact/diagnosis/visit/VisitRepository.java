@@ -2,6 +2,7 @@ package com.artifact.diagnosis.visit;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface VisitRepository extends JpaRepository<Visit, Long> {
@@ -11,4 +12,7 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
 
     /** 대시보드 — 특정 상태의 visit 목록 (예: 접수 대기열). */
     List<Visit> findByStatusOrderByVisitDateAsc(VisitStatus status);
+
+    /** 특정 날짜의 내원 목록. */
+    List<Visit> findByVisitDateBetweenOrderByVisitDateAsc(LocalDateTime start, LocalDateTime end);
 }

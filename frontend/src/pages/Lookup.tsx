@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { getPatient, searchPatients, type Patient } from "../api/patients";
-import { listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { listVisitImages, type VisitImage } from "../api/images";
 import { Card } from "../components/Card";
@@ -70,6 +70,7 @@ type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | nul
 export default function Lookup() {
   const [chartNoQuery, setChartNoQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
+  const [visitDateQuery, setVisitDateQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -82,6 +83,8 @@ export default function Lookup() {
   const [selectedVisit, setSelectedVisit] = useState<VisitWithPrescription | null>(null);
   const [visitImages, setVisitImages] = useState<Record<number, VisitImage[]>>({});
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
+  const [activeVisitDateFilter, setActiveVisitDateFilter] = useState<string | null>(null);
+  const [dateVisitIdsByPatient, setDateVisitIdsByPatient] = useState<Record<number, number[]>>({});
 
   function parseChartNo(value: string) {
     const normalized = value.trim().toUpperCase().replace(/^P/, "");
@@ -110,11 +113,12 @@ export default function Lookup() {
   async function handleSearch() {
     const chartNo = chartNoQuery.trim();
     const name = nameQuery.trim();
-    if (!chartNo && !name) return;
+    const visitDate = visitDateQuery.trim();
+    if (!chartNo && !name && !visitDate) return;
 
     const parsedPatientId = chartNo ? parseChartNo(chartNo) : null;
     const hasInvalidChartNo = Number.isNaN(parsedPatientId);
-    if (hasInvalidChartNo && !name) {
+    if (hasInvalidChartNo && !name && !visitDate) {
       setPatients([]);
       setHasSearched(true);
       setSearchError("차트번호는 P00001 또는 숫자 형식으로 입력해 주세요.");
@@ -129,6 +133,8 @@ export default function Lookup() {
     setSelectedVisit(null);
     setVisitImages({});
     setSelectedImageIds([]);
+    setActiveVisitDateFilter(visitDate || null);
+    setDateVisitIdsByPatient({});
     try {
 
       const results: Patient[] = [];
@@ -143,6 +149,19 @@ export default function Lookup() {
       if (name) {
         const nameResults = await searchPatients(name);
         results.push(...nameResults);
+      }
+
+      if (visitDate) {
+        const visitResults = await listVisitsByDate(visitDate);
+        const visitIdsByPatient = visitResults.reduce<Record<number, number[]>>((acc, visit) => {
+          acc[visit.patientId] = [...(acc[visit.patientId] ?? []), visit.id];
+          return acc;
+        }, {});
+        const patientsByVisit = await Promise.all(
+          visitResults.map((visit) => getPatient(visit.patientId).catch(() => null))
+        );
+        setDateVisitIdsByPatient(visitIdsByPatient);
+        results.push(...patientsByVisit.filter((patient): patient is Patient => patient !== null));
       }
 
       setPatients(dedupePatients(results));
@@ -163,6 +182,7 @@ export default function Lookup() {
   function handleResetSearch() {
     setChartNoQuery("");
     setNameQuery("");
+    setVisitDateQuery("");
     setPatients([]);
     setHasSearched(false);
     setSearchError(null);
@@ -172,6 +192,8 @@ export default function Lookup() {
     setSelectedVisit(null);
     setVisitImages({});
     setSelectedImageIds([]);
+    setActiveVisitDateFilter(null);
+    setDateVisitIdsByPatient({});
   }
 
   async function handleSelectPatient(patient: Patient) {
@@ -186,8 +208,14 @@ export default function Lookup() {
         getPatient(patient.id),
         listVisitsByPatient(patient.id),
       ]);
+      const dateMatchedVisitIds = activeVisitDateFilter
+        ? new Set(dateVisitIdsByPatient[patient.id] ?? [])
+        : null;
+      const displayVisits = dateMatchedVisitIds && dateMatchedVisitIds.size > 0
+        ? visitList.filter((visit) => dateMatchedVisitIds.has(visit.id))
+        : visitList;
       const withRx: VisitWithPrescription[] = await Promise.all(
-        visitList.map(async (v) => {
+        displayVisits.map(async (v) => {
           if (v.status === "PRESCRIBED" || v.status === "COMPLETED") {
             try {
               const rx = await getPrescription(v.id);
@@ -205,7 +233,7 @@ export default function Lookup() {
 
       const imageMap: Record<number, VisitImage[]> = {};
       await Promise.all(
-        visitList.map(async (v) => {
+        displayVisits.map(async (v) => {
           try { imageMap[v.id] = await listVisitImages(v.id); }
           catch { imageMap[v.id] = []; }
         })
@@ -254,10 +282,21 @@ export default function Lookup() {
               />
             </label>
 
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400">내원일</span>
+              <input
+                type="date"
+                value={visitDateQuery}
+                onChange={(e) => setVisitDateQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+              />
+            </label>
+
             <div className="flex gap-2">
               <button
                 onClick={handleSearch}
-                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim())}
+                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery.trim())}
                 className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSearching ? "검색 중..." : "검색"}
@@ -318,9 +357,16 @@ export default function Lookup() {
           ) : isLoadingVisits ? (
             <p className="text-xs text-gray-400 text-center py-6">내원 이력을 불러오는 중...</p>
           ) : visits.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-6">내원 이력이 없습니다</p>
+            <p className="text-xs text-gray-400 text-center py-6">
+              {activeVisitDateFilter ? "선택한 날짜의 내원 이력이 없습니다" : "내원 이력이 없습니다"}
+            </p>
           ) : (
             <div className="max-h-[300px] overflow-y-auto pr-1">
+              {activeVisitDateFilter && (
+                <p className="mb-2 rounded bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+                  {activeVisitDateFilter} 내원 기록만 표시 중
+                </p>
+              )}
               <div className="relative flex flex-col gap-2 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-gray-700">
                 {visits.map((visit) => {
                   const isActive = selectedVisit?.id === visit.id;
