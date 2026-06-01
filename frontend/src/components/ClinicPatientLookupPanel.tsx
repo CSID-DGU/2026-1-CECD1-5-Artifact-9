@@ -228,9 +228,9 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
   }
 
   return (
-    <div className="flex flex-col gap-[8px]">
-      <Card title="환자 조회">
-        <div className="flex flex-col gap-2">
+    <div className="flex min-h-0 flex-col gap-[6px]">
+      <Card title="환자 조회" contentClassName="!p-2">
+        <div className="flex flex-col gap-1.5">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] text-gray-400">차트번호</span>
             <input
@@ -239,7 +239,7 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
               onChange={(e) => setChartNoQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               placeholder="P00001 또는 숫자"
-              className="w-full rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-sm text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
             />
           </label>
 
@@ -251,13 +251,13 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
               onChange={(e) => setNameQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               placeholder="환자 이름"
-              className="w-full rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-sm text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
             />
           </label>
 
           <label className="flex flex-col gap-1">
             <span className="text-[10px] text-gray-400">내원일</span>
-            <div className="grid grid-cols-[1fr_58px_58px] items-center gap-1.5">
+            <div className="grid grid-cols-[1fr_52px_52px] items-center gap-1.5">
               <input
                 type="text"
                 inputMode="numeric"
@@ -267,7 +267,7 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="YYYY"
                 aria-label="내원일 연도"
-                className="w-full rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-sm text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
               />
               <input
                 ref={monthInputRef}
@@ -279,7 +279,7 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="MM"
                 aria-label="내원일 월"
-                className="w-full rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-sm text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
               />
               <input
                 ref={dayInputRef}
@@ -291,7 +291,7 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="DD"
                 aria-label="내원일 일"
-                className="w-full rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-sm text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
               />
             </div>
           </label>
@@ -300,14 +300,14 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
             <button
               onClick={handleSearch}
               disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery && !hasPartialVisitDate)}
-              className="flex-1 rounded bg-blue-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded bg-blue-600 px-3 py-1 text-xs text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSearching ? "검색 중..." : "검색"}
             </button>
             <button
               onClick={handleReset}
               disabled={isSearching}
-              className="rounded border border-gray-600 px-3 py-1.5 text-xs text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded border border-gray-600 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               초기화
             </button>
@@ -315,23 +315,23 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
         </div>
 
         {searchError && (
-          <p className="mt-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+          <p className="mt-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
             {searchError}
           </p>
         )}
 
         {hasSearched && (
-          <div className="mt-3">
+          <div className="mt-2">
             {getSearchConditionLabels().length > 0 && (
-              <p className="mb-2 rounded bg-gray-900/70 px-3 py-2 text-[11px] leading-relaxed text-gray-300">
+              <p className="mb-1.5 rounded bg-gray-900/70 px-2 py-1.5 text-[10px] leading-relaxed text-gray-300">
                 {getSearchConditionLabels().join(" · ")} 조건으로 검색했습니다.
               </p>
             )}
             {patients.length === 0 ? (
-              <p className="py-4 text-center text-xs text-gray-400">검색 결과가 없습니다</p>
+              <p className="py-3 text-center text-xs text-gray-400">검색 결과가 없습니다</p>
             ) : (
-              <div className="max-h-[210px] overflow-y-auto rounded border border-gray-700">
-                <div className="grid grid-cols-[80px_1fr_80px] bg-gray-950 px-2 py-2 text-[10px] font-semibold text-gray-400">
+              <div className="max-h-[150px] overflow-y-auto rounded border border-gray-700">
+                <div className="grid grid-cols-[72px_1fr_72px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
                   <span>차트번호</span>
                   <span>이름</span>
                   <span>생년월일</span>
@@ -341,7 +341,7 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                     key={patient.id}
                     type="button"
                     onClick={() => void handleSelectPatient(patient)}
-                    className={`grid w-full grid-cols-[80px_1fr_80px] items-center px-2 py-2 text-left transition-colors hover:bg-gray-700/60 ${
+                    className={`grid w-full grid-cols-[72px_1fr_72px] items-center px-2 py-1.5 text-left transition-colors hover:bg-gray-700/60 ${
                       selectedLookupPatient?.id === patient.id || selectedPatientId === patient.id
                         ? "bg-blue-600/20 ring-1 ring-inset ring-blue-500/60"
                         : ""
@@ -362,14 +362,14 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
         )}
       </Card>
 
-      <Card title="내원 타임라인">
+      <Card title="내원 타임라인" contentClassName="!p-2">
         {!selectedLookupPatient ? (
-          <p className="py-6 text-center text-xs text-gray-400">환자를 선택하면 내원 이력이 표시됩니다</p>
+          <p className="py-4 text-center text-xs text-gray-400">환자를 선택하면 내원 이력이 표시됩니다</p>
         ) : isLoadingVisits ? (
           <p className="py-6 text-center text-xs text-gray-400">내원 이력을 불러오는 중...</p>
         ) : visits.length === 0 ? (
           <div className="flex flex-col gap-2">
-            <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+            <div className="rounded border border-gray-700 bg-gray-900/40 px-2 py-1.5">
               <p className="truncate text-xs font-semibold text-white">
                 P{String(selectedLookupPatient.id).padStart(5, "0")} {selectedLookupPatient.name}
               </p>
@@ -377,13 +377,13 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                 {formatGender(selectedLookupPatient.gender)} · {formatDateOnly(selectedLookupPatient.birthDate)}
               </p>
             </div>
-            <p className="py-4 text-center text-xs text-gray-400">
+              <p className="py-3 text-center text-xs text-gray-400">
               {activeVisitDateFilter ? "선택한 날짜의 내원 이력이 없습니다" : "내원 이력이 없습니다"}
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+            <div className="rounded border border-gray-700 bg-gray-900/40 px-2 py-1.5">
               <p className="truncate text-xs font-semibold text-white">
                 P{String(selectedLookupPatient.id).padStart(5, "0")} {selectedLookupPatient.name}
               </p>
@@ -393,11 +393,11 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
               </p>
             </div>
             {activeVisitDateFilter && (
-              <p className="rounded bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+              <p className="rounded bg-blue-500/10 px-2 py-1.5 text-[10px] text-blue-200">
                 {activeVisitDateFilter} 내원 기록만 표시 중
               </p>
             )}
-            <div className="relative flex max-h-[260px] flex-col gap-2 overflow-y-auto pr-1 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-gray-700">
+            <div className="relative flex max-h-[170px] flex-col gap-1.5 overflow-y-auto pr-1 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-gray-700">
               {visits.map((visit) => {
                 const isActive = selectedVisitId === visit.id;
                 return (
@@ -405,19 +405,19 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                     key={visit.id}
                     type="button"
                     onClick={() => onSelectVisit(visit.id)}
-                    className={`relative flex gap-3 rounded px-2 py-2 text-left transition-colors ${
+                    className={`relative flex gap-2 rounded px-2 py-1.5 text-left transition-colors ${
                       isActive ? "bg-blue-600/20 ring-1 ring-inset ring-blue-500/60" : "hover:bg-gray-700/60"
                     }`}
                   >
                     <span className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
                       isActive ? "border-blue-300 bg-blue-500" : "border-gray-500 bg-gray-800"
                     }`} />
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-mono text-[10px] text-blue-300">V{String(visit.id).padStart(5, "0")}</span>
                         <VisitStatusBadge status={visit.status} />
                       </span>
-                      <span className="text-xs font-semibold text-white">{formatDate(visit.visitDate)}</span>
+                      <span className="text-[11px] font-semibold text-white">{formatDate(visit.visitDate)}</span>
                       <span className="text-[10px] text-gray-400">이미지 {visitImageCounts[visit.id] ?? 0}장</span>
                     </span>
                   </button>

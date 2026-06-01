@@ -24,6 +24,7 @@ export type CardProps = {
   title?: string;
   children: React.ReactNode;
   className?: string;
+  contentClassName?: string;
 };
 
 export type TabsProps = {
