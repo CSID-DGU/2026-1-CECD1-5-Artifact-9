@@ -421,15 +421,21 @@ export default function Clinic() {
       <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
 
         {/* Left Column */}
-        <section className="w-[360px] flex shrink-0 flex-col gap-[8px] overflow-y-auto">
+        <section className="w-[380px] flex shrink-0 flex-col gap-[8px] overflow-y-auto">
           <ClinicPatientLookupPanel
             selectedPatientId={selectedPatient?.id}
             selectedVisitId={selectedVisit?.id}
             onSelectVisit={(visitId) => void loadVisitDetail(visitId)}
           />
 
-          <Card title="환자 정보">
-            <Table headers={["항목", "내용"]} data={currentPatientInfo} />
+          <Card title="선택 환자 정보">
+            {selectedPatient ? (
+              <Table headers={["항목", "내용"]} data={currentPatientInfo} />
+            ) : (
+              <p className="py-6 text-center text-xs text-gray-400">
+                조회 결과나 진료 현황에서 내원을 선택하면 환자 정보가 표시됩니다.
+              </p>
+            )}
           </Card>
         </section>
 
@@ -482,7 +488,7 @@ export default function Clinic() {
             />
           </Card>
 
-          <Card title="이미지 업로드 및 선택" className="flex-1">
+          <Card title="선택 내원 이미지 및 업로드" className="flex-1">
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${
@@ -506,7 +512,9 @@ export default function Clinic() {
               </div>
 
               {!selectedVisit && (
-                <p className="text-xs text-gray-400">진료 현황에서 접수를 선택하면 이미지 업로드와 AI 분석을 진행할 수 있습니다.</p>
+                <p className="rounded border border-gray-700 bg-gray-900/40 px-3 py-6 text-center text-xs text-gray-400">
+                  왼쪽 조회 패널 또는 진료 현황에서 내원을 선택하면 이미지 업로드와 AI 분석을 진행할 수 있습니다.
+                </p>
               )}
               {status === "RECEIVED" && (
                 <div className="flex items-center gap-3 rounded border border-orange-500/30 bg-orange-500/10 px-3 py-2">
@@ -522,25 +530,31 @@ export default function Clinic() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                {images.map((image) => {
-                  const selected = selectedImageIds.includes(image.imageId);
-                  return (
-                    <button
-                      key={image.imageId}
-                      onClick={() => toggleSelectedImage(image.imageId)}
-                      className={`overflow-hidden rounded border text-left transition-colors ${
-                        selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
-                      }`}
-                    >
-                      <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-28 w-full object-cover" />
-                      <div className="px-2 py-1 text-[10px] text-gray-300">
-                        #{image.imageId} · {formatDateTime(image.uploadedAt)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              {selectedVisit && images.length === 0 ? (
+                <p className="rounded border border-gray-700 bg-gray-900/40 px-3 py-6 text-center text-xs text-gray-400">
+                  선택한 내원에 등록된 이미지가 없습니다.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                  {images.map((image) => {
+                    const selected = selectedImageIds.includes(image.imageId);
+                    return (
+                      <button
+                        key={image.imageId}
+                        onClick={() => toggleSelectedImage(image.imageId)}
+                        className={`overflow-hidden rounded border text-left transition-colors ${
+                          selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
+                        }`}
+                      >
+                        <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-28 w-full object-cover" />
+                        <div className="px-2 py-1 text-[10px] text-gray-300">
+                          #{image.imageId} · {formatDateTime(image.uploadedAt)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </Card>
         </section>

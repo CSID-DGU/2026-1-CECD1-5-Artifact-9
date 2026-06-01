@@ -182,6 +182,14 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
     setSearchError(null);
   }
 
+  function getSearchConditionLabels() {
+    const labels: string[] = [];
+    if (chartNoQuery.trim()) labels.push(`차트번호 ${chartNoQuery.trim()}`);
+    if (nameQuery.trim()) labels.push(`이름 ${nameQuery.trim()}`);
+    if (visitDateQuery) labels.push(`내원일 ${visitDateQuery}`);
+    return labels;
+  }
+
   async function handleSelectPatient(patient: Patient) {
     setSelectedLookupPatient(patient);
     setIsLoadingVisits(true);
@@ -314,10 +322,15 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
 
         {hasSearched && (
           <div className="mt-3">
+            {getSearchConditionLabels().length > 0 && (
+              <p className="mb-2 rounded bg-gray-900/70 px-3 py-2 text-[11px] leading-relaxed text-gray-300">
+                {getSearchConditionLabels().join(" · ")} 조건으로 검색했습니다.
+              </p>
+            )}
             {patients.length === 0 ? (
               <p className="py-4 text-center text-xs text-gray-400">검색 결과가 없습니다</p>
             ) : (
-              <div className="overflow-hidden rounded border border-gray-700">
+              <div className="max-h-[210px] overflow-y-auto rounded border border-gray-700">
                 <div className="grid grid-cols-[80px_1fr_80px] bg-gray-950 px-2 py-2 text-[10px] font-semibold text-gray-400">
                   <span>차트번호</span>
                   <span>이름</span>
@@ -355,17 +368,36 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
         ) : isLoadingVisits ? (
           <p className="py-6 text-center text-xs text-gray-400">내원 이력을 불러오는 중...</p>
         ) : visits.length === 0 ? (
-          <p className="py-6 text-center text-xs text-gray-400">
-            {activeVisitDateFilter ? "선택한 날짜의 내원 이력이 없습니다" : "내원 이력이 없습니다"}
-          </p>
+          <div className="flex flex-col gap-2">
+            <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+              <p className="truncate text-xs font-semibold text-white">
+                P{String(selectedLookupPatient.id).padStart(5, "0")} {selectedLookupPatient.name}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                {formatGender(selectedLookupPatient.gender)} · {formatDateOnly(selectedLookupPatient.birthDate)}
+              </p>
+            </div>
+            <p className="py-4 text-center text-xs text-gray-400">
+              {activeVisitDateFilter ? "선택한 날짜의 내원 이력이 없습니다" : "내원 이력이 없습니다"}
+            </p>
+          </div>
         ) : (
-          <div className="max-h-[260px] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-2">
+            <div className="rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+              <p className="truncate text-xs font-semibold text-white">
+                P{String(selectedLookupPatient.id).padStart(5, "0")} {selectedLookupPatient.name}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                {formatGender(selectedLookupPatient.gender)} · {formatDateOnly(selectedLookupPatient.birthDate)}
+                {selectedLookupPatient.phone ? ` · ${selectedLookupPatient.phone}` : ""}
+              </p>
+            </div>
             {activeVisitDateFilter && (
-              <p className="mb-2 rounded bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
+              <p className="rounded bg-blue-500/10 px-3 py-2 text-[11px] text-blue-200">
                 {activeVisitDateFilter} 내원 기록만 표시 중
               </p>
             )}
-            <div className="relative flex flex-col gap-2 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-gray-700">
+            <div className="relative flex max-h-[260px] flex-col gap-2 overflow-y-auto pr-1 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-gray-700">
               {visits.map((visit) => {
                 const isActive = selectedVisitId === visit.id;
                 return (
