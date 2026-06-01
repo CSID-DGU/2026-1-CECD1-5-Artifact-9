@@ -81,6 +81,7 @@ export default function Lookup() {
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<VisitWithPrescription | null>(null);
   const [visitImages, setVisitImages] = useState<Record<number, VisitImage[]>>({});
+  const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
 
   function parseChartNo(value: string) {
     const normalized = value.trim().toUpperCase().replace(/^P/, "");
@@ -91,6 +92,19 @@ export default function Lookup() {
 
   function dedupePatients(items: Patient[]) {
     return [...new Map(items.map((patient) => [patient.id, patient])).values()];
+  }
+
+  function handleSelectVisit(visit: VisitWithPrescription) {
+    setSelectedVisit(visit);
+    setSelectedImageIds([]);
+  }
+
+  function toggleSelectedImage(imageId: number) {
+    setSelectedImageIds((current) =>
+      current.includes(imageId)
+        ? current.filter((id) => id !== imageId)
+        : [...current, imageId]
+    );
   }
 
   async function handleSearch() {
@@ -114,6 +128,7 @@ export default function Lookup() {
     setVisits([]);
     setSelectedVisit(null);
     setVisitImages({});
+    setSelectedImageIds([]);
     try {
 
       const results: Patient[] = [];
@@ -156,12 +171,14 @@ export default function Lookup() {
     setVisits([]);
     setSelectedVisit(null);
     setVisitImages({});
+    setSelectedImageIds([]);
   }
 
   async function handleSelectPatient(patient: Patient) {
     setSelectedPatient(patient);
     setPatientDetailError(null);
     setSelectedVisit(null);
+    setSelectedImageIds([]);
     setIsLoadingPatientDetail(true);
     setIsLoadingVisits(true);
     try {
@@ -184,6 +201,7 @@ export default function Lookup() {
       );
       setSelectedPatient(patientDetail);
       setVisits(withRx);
+      setSelectedVisit(withRx[0] ?? null);
 
       const imageMap: Record<number, VisitImage[]> = {};
       await Promise.all(
@@ -196,11 +214,15 @@ export default function Lookup() {
     } catch {
       setPatientDetailError("환자 상세 정보를 불러오지 못했습니다.");
       setVisits([]);
+      setSelectedVisit(null);
+      setSelectedImageIds([]);
     } finally {
       setIsLoadingPatientDetail(false);
       setIsLoadingVisits(false);
     }
   }
+
+  const selectedVisitImages = selectedVisit ? (visitImages[selectedVisit.id] ?? []) : [];
 
   return (
     <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
@@ -308,7 +330,7 @@ export default function Lookup() {
                     <button
                       key={visit.id}
                       type="button"
-                      onClick={() => setSelectedVisit(visit)}
+                      onClick={() => handleSelectVisit(visit)}
                       className={`relative flex gap-3 rounded px-2 py-2 text-left transition-colors ${
                         isActive
                           ? "bg-blue-600/20 ring-1 ring-inset ring-blue-500/60"
@@ -370,56 +392,77 @@ export default function Lookup() {
         </Card>
       </section>
 
-      {/* Center: Visit image timeline */}
+      {/* Center: Selected visit images */}
       <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
-        <Card title="내원 기록" className="flex-1">
+        <Card title="선택 내원 이미지" className="flex-1">
           {!selectedPatient ? (
             <p className="text-xs text-gray-400 text-center py-10">왼쪽에서 환자를 선택하세요</p>
           ) : isLoadingVisits ? (
-            <p className="text-xs text-gray-400 py-4">내원 기록을 불러오는 중...</p>
+            <p className="text-xs text-gray-400 py-4">내원 이미지를 불러오는 중...</p>
           ) : visits.length === 0 ? (
             <p className="text-xs text-gray-400 text-center py-10">내원 기록이 없습니다</p>
+          ) : !selectedVisit ? (
+            <p className="text-xs text-gray-400 text-center py-10">내원 타임라인에서 내원을 선택하세요</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {visits.map((v) => {
-                const images = visitImages[v.id] ?? [];
-                return (
-                  <div key={v.id} className="border border-gray-700 rounded p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] text-blue-300">V{String(v.id).padStart(5, "0")}</span>
-                        <span className="text-xs text-white font-semibold">{formatDate(v.visitDate)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <VisitStatusBadge status={v.status} />
-                        {v.prescription && (
-                          <span className="text-green-400 text-[10px]">처방있음</span>
-                        )}
-                        <button
-                          onClick={() => setSelectedVisit(v)}
-                          className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] rounded transition-colors"
-                        >
-                          상세
-                        </button>
-                      </div>
-                    </div>
-                    {images.length === 0 ? (
-                      <p className="text-[10px] text-gray-500">등록된 이미지 없음</p>
-                    ) : (
-                      <div className="flex gap-2 flex-wrap">
-                        {images.map((img) => (
-                          <img
-                            key={img.imageId}
-                            src={img.imageUrl}
-                            alt="내원 이미지"
-                            className="w-20 h-20 object-cover rounded border border-gray-600"
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              <div className="flex items-center justify-between rounded border border-gray-700 bg-gray-900/40 px-3 py-2">
+                <div className="flex flex-col gap-1">
+                  <span className="font-mono text-[10px] text-blue-300">
+                    V{String(selectedVisit.id).padStart(5, "0")}
+                  </span>
+                  <span className="text-xs font-semibold text-white">
+                    {formatDate(selectedVisit.visitDate)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <VisitStatusBadge status={selectedVisit.status} />
+                  <span className="text-[10px] text-gray-400">
+                    이미지 {selectedVisitImages.length}장
+                  </span>
+                  {selectedImageIds.length > 0 && (
+                    <span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] text-blue-200">
+                      선택 {selectedImageIds.length}장
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {selectedVisitImages.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-10">선택한 내원에 등록된 이미지가 없습니다</p>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+                  {selectedVisitImages.map((image) => {
+                    const isSelected = selectedImageIds.includes(image.imageId);
+
+                    return (
+                      <button
+                        key={image.imageId}
+                        type="button"
+                        onClick={() => toggleSelectedImage(image.imageId)}
+                        className={`overflow-hidden rounded border bg-gray-900 text-left transition-colors ${
+                          isSelected
+                            ? "border-blue-400 ring-2 ring-blue-500/50"
+                            : "border-gray-700 hover:border-blue-500/60"
+                        }`}
+                      >
+                        <img
+                          src={image.imageUrl}
+                          alt={`내원 이미지 ${image.imageId}`}
+                          className="h-32 w-full object-cover"
+                        />
+                        <div className="flex flex-col gap-1 px-2 py-2">
+                          <span className="font-mono text-[10px] text-blue-300">
+                            #{image.imageId}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {formatDate(image.uploadedAt)}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </Card>
@@ -436,16 +479,28 @@ export default function Lookup() {
                 <InfoRow label="상태" value={
                   <VisitStatusBadge status={selectedVisit.status} />
                 } />
+                <InfoRow label="이미지" value={`${selectedVisitImages.length}장`} />
               </div>
             </Card>
 
             {selectedVisit.prescription ? (
               <Card title="처방 정보">
                 <div className="flex flex-col gap-1.5 mb-3">
-                  <InfoRow label="상병코드" value={
-                    <span className="font-mono text-blue-300">{selectedVisit.prescription.kcdCode}</span>
+                  <InfoRow label="상병" value={
+                    selectedVisit.prescription.diseases.length > 0 ? (
+                      <span className="flex flex-col gap-1">
+                        {selectedVisit.prescription.diseases.map((disease) => (
+                          <span key={`${disease.kcdDiseaseId}-${disease.kcdCode}`}>
+                            <span className="font-mono text-blue-300">{disease.kcdCode}</span>
+                            <span className="ml-1">{disease.kcdNameKr}</span>
+                            <span className="ml-1 text-[10px] text-gray-400">
+                              {disease.isPrimary ? "주상병" : "부상병"}
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                    ) : "-"
                   } />
-                  <InfoRow label="상병명" value={selectedVisit.prescription.kcdNameKr} />
                   <InfoRow label="처방일시" value={formatDate(selectedVisit.prescription.prescribedAt)} />
                   {selectedVisit.prescription.revisitRecommendedDate && (
                     <InfoRow label="재방문권장일" value={formatDateOnly(selectedVisit.prescription.revisitRecommendedDate)} />

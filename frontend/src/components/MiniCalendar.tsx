@@ -60,7 +60,7 @@ export default function MiniCalendar() {
   };
 
   // 달력 팝업 등에서 날짜를 바꿨을 때의 처리
-  const handleCalendarChange = (value: any) => {
+  const handleCalendarChange = (value: Date | [Date | null, Date | null] | null) => {
     if (value instanceof Date) {
       setSelectedDate(value);
       const year = value.getFullYear();
