@@ -93,6 +93,7 @@ export default function Clinic() {
   const [drugDosage, setDrugDosage]     = useState("");
   const [drugDays, setDrugDays]         = useState("");
   const [doctorNotes, setDoctorNotes]   = useState("");
+  const [selectedAnalysisCandidateCodes, setSelectedAnalysisCandidateCodes] = useState<string[]>([]);
   const [resolvingCandidateCode, setResolvingCandidateCode] = useState<string | null>(null);
 
   // 모달
@@ -149,6 +150,7 @@ export default function Clinic() {
     setMessage(null);
     setPrescription(null);
     setSelectedKcds([]);
+    setSelectedAnalysisCandidateCodes([]);
     setAiComment(null);
     setSelectedDrug(null);
     setDrugDosage("");
@@ -259,6 +261,8 @@ export default function Clinic() {
     try {
       const result = await requestAnalysis(selectedVisit.id, selectedImageIds);
       setAnalysis(result);
+      setSelectedAnalysisCandidateCodes([]);
+      setSelectedKcds([]);
       setSelectedVisit((cur) => cur ? { ...cur, status: "ANALYZED" } : cur);
       await loadVisitLists();
       setMessage("AI 분석이 완료되었습니다. 결과를 확인하고 처방을 입력하세요.");
@@ -313,8 +317,9 @@ export default function Clinic() {
   }
 
   async function handleToggleAnalysisCandidate(item: AnalysisCandidate) {
-    const selectedByCandidate = selectedKcds.find((kcd) => kcd.sourceDiseaseCode === item.diseaseCode);
-    if (selectedByCandidate) {
+    const isSelectedCandidate = selectedAnalysisCandidateCodes.includes(item.diseaseCode);
+    if (isSelectedCandidate) {
+      setSelectedAnalysisCandidateCodes((prev) => prev.filter((code) => code !== item.diseaseCode));
       setSelectedKcds((prev) => {
         const next = prev.filter((kcd) => kcd.sourceDiseaseCode !== item.diseaseCode);
         return next.some((kcd) => kcd.isPrimary) || next.length === 0
@@ -324,6 +329,7 @@ export default function Clinic() {
       return;
     }
 
+    setSelectedAnalysisCandidateCodes((prev) => [...prev, item.diseaseCode]);
     setResolvingCandidateCode(item.diseaseCode);
     setErrorMessage(null);
     try {
@@ -333,7 +339,7 @@ export default function Clinic() {
         ?? result.content[0];
 
       if (!matched) {
-        setErrorMessage(`${item.diseaseNameKo}에 매칭되는 KCD 상병코드를 찾지 못했습니다. 상병코드 검색으로 직접 추가해 주세요.`);
+        setMessage(`${item.diseaseNameKo} 후보를 선택했습니다. 매칭되는 KCD 상병코드는 상병코드 검색으로 직접 추가해 주세요.`);
         return;
       }
 
@@ -615,7 +621,7 @@ export default function Clinic() {
                       <span>선택</span><span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>
                     </div>
                     {analysis.top5.map((item) => {
-                      const isCandidateSelected = selectedKcds.some((kcd) => kcd.sourceDiseaseCode === item.diseaseCode);
+                      const isCandidateSelected = selectedAnalysisCandidateCodes.includes(item.diseaseCode);
                       const isResolvingCandidate = resolvingCandidateCode === item.diseaseCode;
 
                       return (
