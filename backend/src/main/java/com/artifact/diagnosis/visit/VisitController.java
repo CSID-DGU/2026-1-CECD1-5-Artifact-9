@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -46,16 +47,21 @@ public class VisitController {
         return visitService.findById(id);
     }
 
-    @Operation(summary = "접수 목록 조회", description = "status로 필터링. 기본값: RECEIVED (대기열).")
+    @Operation(summary = "접수 목록 조회", description = "status, patientId 또는 date(yyyy-MM-dd)로 필터링합니다. 기본값: RECEIVED (대기열).")
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @GetMapping
     public List<VisitResponse> list(
             @Parameter(description = "상태 필터", example = "RECEIVED")
             @RequestParam(required = false) VisitStatus status,
             @Parameter(description = "환자 ID 필터")
-            @RequestParam(required = false) Long patientId) {
+            @RequestParam(required = false) Long patientId,
+            @Parameter(description = "내원일 필터", example = "2026-06-01")
+            @RequestParam(required = false) LocalDate date) {
         if (patientId != null) {
             return visitService.findByPatientId(patientId);
+        }
+        if (date != null) {
+            return visitService.findByVisitDate(date);
         }
         return visitService.findByStatus(status != null ? status : VisitStatus.RECEIVED);
     }

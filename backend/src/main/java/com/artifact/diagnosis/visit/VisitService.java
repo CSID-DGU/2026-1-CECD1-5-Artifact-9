@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -60,6 +61,18 @@ public class VisitService {
     @Transactional(readOnly = true)
     public List<VisitResponse> findByPatientId(Long patientId) {
         return visitRepository.findByPatientIdOrderByVisitDateDesc(patientId)
+                .stream()
+                .map(VisitResponse::from)
+                .toList();
+    }
+
+    /** 날짜별 내원 목록. 선택한 날짜의 00:00:00 이상, 다음 날 00:00:00 미만 범위로 조회한다. */
+    @Transactional(readOnly = true)
+    public List<VisitResponse> findByVisitDate(LocalDate date) {
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end = date.plusDays(1).atStartOfDay();
+
+        return visitRepository.findByVisitDateBetweenOrderByVisitDateAsc(start, end)
                 .stream()
                 .map(VisitResponse::from)
                 .toList();
