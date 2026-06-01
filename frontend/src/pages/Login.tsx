@@ -2,12 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
-<<<<<<< Updated upstream
-import { useAuth } from "../hooks/useAuth";
-=======
 import { useAuth } from "../components/AuthContext";
 import { ArtifactLogo } from "../components/ArtifactLogo";
->>>>>>> Stashed changes
 
 export default function Login() {
   const navigate = useNavigate();
