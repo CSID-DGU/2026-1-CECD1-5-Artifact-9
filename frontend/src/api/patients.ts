@@ -48,5 +48,5 @@ export function searchPatientsByConditions(params: PatientSearchParams) {
   if (params.name?.trim()) query.set("name", params.name.trim());
   if (params.visitDate?.trim()) query.set("visitDate", params.visitDate.trim());
 
-  return apiRequest<Patient[]>(`/api/v1/patients/search?${query.toString()}`);
+  return apiRequest<Patient[]>(`/api/v1/patients?${query.toString()}`);
 }
