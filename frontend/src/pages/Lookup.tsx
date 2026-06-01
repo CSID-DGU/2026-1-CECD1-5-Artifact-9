@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import { getPatient, searchPatients, type Patient } from "../api/patients";
+import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
 import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { listVisitImages, type VisitImage } from "../api/images";
@@ -70,7 +70,9 @@ type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | nul
 export default function Lookup() {
   const [chartNoQuery, setChartNoQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
-  const [visitDateQuery, setVisitDateQuery] = useState("");
+  const [visitYearQuery, setVisitYearQuery] = useState("");
+  const [visitMonthQuery, setVisitMonthQuery] = useState("");
+  const [visitDayQuery, setVisitDayQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -85,6 +87,14 @@ export default function Lookup() {
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
   const [activeVisitDateFilter, setActiveVisitDateFilter] = useState<string | null>(null);
   const [dateVisitIdsByPatient, setDateVisitIdsByPatient] = useState<Record<number, number[]>>({});
+  const monthInputRef = useRef<HTMLInputElement>(null);
+  const dayInputRef = useRef<HTMLInputElement>(null);
+
+  const visitDateQuery =
+    visitYearQuery.length === 4 && visitMonthQuery.length === 2 && visitDayQuery.length === 2
+      ? `${visitYearQuery}-${visitMonthQuery}-${visitDayQuery}`
+      : "";
+  const hasPartialVisitDate = Boolean(visitYearQuery || visitMonthQuery || visitDayQuery) && !visitDateQuery;
 
   function parseChartNo(value: string) {
     const normalized = value.trim().toUpperCase().replace(/^P/, "");
@@ -95,6 +105,23 @@ export default function Lookup() {
 
   function dedupePatients(items: Patient[]) {
     return [...new Map(items.map((patient) => [patient.id, patient])).values()];
+  }
+
+  function describeSearchConditions() {
+    const conditions = [];
+    if (chartNoQuery.trim()) conditions.push(`차트번호 ${chartNoQuery.trim()}`);
+    if (nameQuery.trim()) conditions.push(`이름 ${nameQuery.trim()}`);
+    if (visitDateQuery.trim()) conditions.push(`내원일 ${visitDateQuery.trim()}`);
+    return conditions;
+  }
+
+  function handleDatePartChange(value: string, maxLength: number, onChange: (next: string) => void, nextRef?: React.RefObject<HTMLInputElement | null>) {
+    const nextValue = value.replace(/\D/g, "").slice(0, maxLength);
+    onChange(nextValue);
+
+    if (nextValue.length === maxLength) {
+      nextRef?.current?.focus();
+    }
   }
 
   function handleSelectVisit(visit: VisitWithPrescription) {
@@ -114,6 +141,12 @@ export default function Lookup() {
     const chartNo = chartNoQuery.trim();
     const name = nameQuery.trim();
     const visitDate = visitDateQuery.trim();
+    if (hasPartialVisitDate) {
+      setPatients([]);
+      setHasSearched(true);
+      setSearchError("내원일은 연도 4자리, 월 2자리, 일 2자리를 모두 입력해 주세요.");
+      return;
+    }
     if (!chartNo && !name && !visitDate) return;
 
     const parsedPatientId = chartNo ? parseChartNo(chartNo) : null;
@@ -137,19 +170,11 @@ export default function Lookup() {
     setDateVisitIdsByPatient({});
     try {
 
-      const results: Patient[] = [];
-
-      if (parsedPatientId !== null && !hasInvalidChartNo) {
-        const patient = await getPatient(parsedPatientId).catch(() => null);
-        if (patient) {
-          results.push(patient);
-        }
-      }
-
-      if (name) {
-        const nameResults = await searchPatients(name);
-        results.push(...nameResults);
-      }
+      const results = await searchPatientsByConditions({
+        patientId: parsedPatientId !== null && !hasInvalidChartNo ? parsedPatientId : null,
+        name,
+        visitDate,
+      });
 
       if (visitDate) {
         const visitResults = await listVisitsByDate(visitDate);
@@ -157,11 +182,7 @@ export default function Lookup() {
           acc[visit.patientId] = [...(acc[visit.patientId] ?? []), visit.id];
           return acc;
         }, {});
-        const patientsByVisit = await Promise.all(
-          visitResults.map((visit) => getPatient(visit.patientId).catch(() => null))
-        );
         setDateVisitIdsByPatient(visitIdsByPatient);
-        results.push(...patientsByVisit.filter((patient): patient is Patient => patient !== null));
       }
 
       setPatients(dedupePatients(results));
@@ -182,7 +203,9 @@ export default function Lookup() {
   function handleResetSearch() {
     setChartNoQuery("");
     setNameQuery("");
-    setVisitDateQuery("");
+    setVisitYearQuery("");
+    setVisitMonthQuery("");
+    setVisitDayQuery("");
     setPatients([]);
     setHasSearched(false);
     setSearchError(null);
@@ -284,19 +307,49 @@ export default function Lookup() {
 
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-gray-400">내원일</span>
-              <input
-                type="date"
-                value={visitDateQuery}
-                onChange={(e) => setVisitDateQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
-              />
+              <div className="grid grid-cols-[1fr_58px_58px] items-center gap-1.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={visitYearQuery}
+                  onChange={(e) => handleDatePartChange(e.target.value, 4, setVisitYearQuery, monthInputRef)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="YYYY"
+                  aria-label="내원일 연도"
+                  className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+                />
+                <input
+                  ref={monthInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={visitMonthQuery}
+                  onChange={(e) => handleDatePartChange(e.target.value, 2, setVisitMonthQuery, dayInputRef)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="MM"
+                  aria-label="내원일 월"
+                  className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+                />
+                <input
+                  ref={dayInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={2}
+                  value={visitDayQuery}
+                  onChange={(e) => handleDatePartChange(e.target.value, 2, setVisitDayQuery)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="DD"
+                  aria-label="내원일 일"
+                  className="w-full px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+                />
+              </div>
             </label>
 
             <div className="flex gap-2">
               <button
                 onClick={handleSearch}
-                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery.trim())}
+                disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery.trim() && !hasPartialVisitDate)}
                 className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-xs text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSearching ? "검색 중..." : "검색"}
@@ -319,6 +372,11 @@ export default function Lookup() {
 
           {hasSearched && (
             <div className="mt-3">
+              {describeSearchConditions().length > 0 && (
+                <p className="mb-2 rounded bg-gray-900/70 px-3 py-2 text-[11px] text-gray-300">
+                  {describeSearchConditions().join(" · ")} 조건으로 검색했습니다.
+                </p>
+              )}
               {patients.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-4">검색 결과가 없습니다</p>
               ) : (

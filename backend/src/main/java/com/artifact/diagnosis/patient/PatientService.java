@@ -1,12 +1,17 @@
 package com.artifact.diagnosis.patient;
 
+import com.artifact.diagnosis.visit.VisitRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 환자 등록/조회 서비스.
@@ -21,6 +26,7 @@ import java.util.Optional;
 public class PatientService {
 
     private final PatientRepository patientRepository;
+    private final VisitRepository visitRepository;
 
     /** 환자 등록 → 저장된 엔티티를 응답 DTO 로 변환해서 반환. */
     public PatientResponse register(PatientCreateRequest req) {
@@ -59,5 +65,54 @@ public class PatientService {
                 .stream()
                 .map(PatientResponse::from)
                 .toList();
+    }
+
+    /** 차트번호, 이름, 내원일 조건을 모두 만족하는 환자를 조회한다. */
+    @Transactional(readOnly = true)
+    public List<PatientResponse> search(Long patientId, String name, LocalDate visitDate) {
+        Set<Long> candidateIds = null;
+
+        if (patientId != null) {
+            candidateIds = new LinkedHashSet<>();
+            if (patientRepository.existsById(patientId)) {
+                candidateIds.add(patientId);
+            }
+        }
+
+        if (name != null && !name.isBlank()) {
+            Set<Long> nameMatchedIds = new LinkedHashSet<>(
+                    patientRepository.findByNameContaining(name.trim()).stream()
+                            .map(Patient::getId)
+                            .toList()
+            );
+            candidateIds = intersect(candidateIds, nameMatchedIds);
+        }
+
+        if (visitDate != null) {
+            LocalDateTime start = visitDate.atStartOfDay();
+            LocalDateTime end = visitDate.plusDays(1).atStartOfDay();
+            Set<Long> dateMatchedIds = new LinkedHashSet<>(
+                    visitRepository.findByVisitDateBetweenOrderByVisitDateAsc(start, end).stream()
+                            .map(visit -> visit.getPatientId())
+                            .toList()
+            );
+            candidateIds = intersect(candidateIds, dateMatchedIds);
+        }
+
+        if (candidateIds == null || candidateIds.isEmpty()) {
+            return List.of();
+        }
+
+        return patientRepository.findAllById(candidateIds).stream()
+                .map(PatientResponse::from)
+                .toList();
+    }
+
+    private Set<Long> intersect(Set<Long> current, Set<Long> next) {
+        if (current == null) {
+            return next;
+        }
+        current.retainAll(next);
+        return current;
     }
 }

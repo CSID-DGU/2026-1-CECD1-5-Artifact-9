@@ -34,3 +34,19 @@ export function createPatient(req: PatientCreateRequest) {
 export function searchPatients(name: string) {
   return apiRequest<Patient[]>(`/api/v1/patients?name=${encodeURIComponent(name)}`);
 }
+
+export type PatientSearchParams = {
+  patientId?: number | null;
+  name?: string;
+  visitDate?: string;
+};
+
+export function searchPatientsByConditions(params: PatientSearchParams) {
+  const query = new URLSearchParams();
+
+  if (params.patientId != null) query.set("patientId", String(params.patientId));
+  if (params.name?.trim()) query.set("name", params.name.trim());
+  if (params.visitDate?.trim()) query.set("visitDate", params.visitDate.trim());
+
+  return apiRequest<Patient[]>(`/api/v1/patients?${query.toString()}`);
+}
