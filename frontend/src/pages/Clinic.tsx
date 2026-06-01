@@ -206,7 +206,6 @@ export default function Clinic() {
     ["현재상태", selectedVisit ? STATUS_LABELS[selectedVisit.status] : "-"],
   ], [selectedPatient, selectedVisit]);
 
-  // 환자번호 컬럼 제거 → 이름 + 5컬럼으로 줄여 선택 버튼이 잘리지 않도록
   const centerTableData = activeVisits.map((visit, idx) => [
     idx + 1,
     `V${String(visit.id).padStart(5, "0")}`,
@@ -215,30 +214,27 @@ export default function Clinic() {
     <span key={`st-${visit.id}`} className={`px-2 py-0.5 rounded text-[10px] whitespace-nowrap ${STATUS_COLORS[visit.status]}`}>
       {STATUS_LABELS[visit.status]}
     </span>,
-    <button
-      key={`sel-${visit.id}`}
-      onClick={() => loadVisitDetail(visit.id)}
-      className={`px-2 py-0.5 border text-[10px] rounded cursor-pointer transition-colors whitespace-nowrap ${
-        selectedVisit?.id === visit.id
-          ? "bg-blue-600 border-blue-500 text-white"
-          : "bg-gray-800 hover:bg-gray-700 border-gray-600"
-      }`}
-    >
-      선택
-    </button>,
   ]);
 
   // ── 핸들러 ───────────────────────────────────────────────────────
-  async function handleStartVisit() {
-    if (!selectedVisit) return;
+  async function handleStartVisit(targetVisit = selectedVisit) {
+    if (!targetVisit) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
-      const v = await startVisit(selectedVisit.id);
-      setSelectedVisit(v);
+      const v = await startVisit(targetVisit.id);
       await loadVisitLists();
+      await loadVisitDetail(v.id);
       setMessage("진료를 시작했습니다. 이미지를 업로드하세요.");
     } catch (e) { setErrorMessage(getErrorMessage(e)); }
     finally { setIsActionLoading(false); }
+  }
+
+  async function handleVisitRowDoubleClick(visit: Visit) {
+    if (visit.status === "RECEIVED") {
+      await handleStartVisit(visit);
+      return;
+    }
+    await loadVisitDetail(visit.id);
   }
 
   async function handleUploadImage() {
@@ -388,8 +384,26 @@ export default function Clinic() {
             {isLoading && <p className="mb-3 text-xs text-gray-400">목록 로딩 중...</p>}
 
             <Table
-              headers={["순번", "접수번호", "이름", "접수시간", "현재상태", "선택"]}
+              headers={["순번", "접수번호", "이름", "접수시간", "현재상태"]}
               data={centerTableData}
+              getRowProps={(_, rowIdx) => {
+                const visit = activeVisits[rowIdx];
+                const isSelected = selectedVisit?.id === visit.id;
+                const canStartByDoubleClick = visit.status === "RECEIVED";
+
+                return {
+                  onClick: () => loadVisitDetail(visit.id),
+                  onDoubleClick: () => handleVisitRowDoubleClick(visit),
+                  title: canStartByDoubleClick ? "더블클릭하면 진료를 시작합니다." : "클릭하면 진료 상세를 확인합니다.",
+                  className: `cursor-pointer ${
+                    isSelected
+                      ? "bg-blue-500/10 outline outline-1 outline-blue-500/40"
+                      : canStartByDoubleClick
+                        ? "hover:bg-blue-500/10"
+                        : ""
+                  }`,
+                };
+              }}
             />
           </Card>
 
@@ -421,8 +435,9 @@ export default function Clinic() {
               )}
               {status === "RECEIVED" && (
                 <div className="flex items-center gap-3 rounded border border-orange-500/30 bg-orange-500/10 px-3 py-2">
-                  <p className="flex-1 text-xs text-orange-100">이미지 업로드 전 진료를 시작해야 합니다.</p>
-                  <Button onClick={handleStartVisit} disabled={isActionLoading} className="py-1.5 text-xs">진료 시작</Button>
+                  <p className="flex-1 text-xs text-orange-100">
+                    이미지 업로드 전 진료 현황의 접수 행을 더블클릭해 진료를 시작해야 합니다.
+                  </p>
                 </div>
               )}
 

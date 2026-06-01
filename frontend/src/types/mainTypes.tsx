@@ -35,4 +35,5 @@ export type TabsProps = {
 export type TableProps = {
   headers: string[];
   data: React.ReactNode[][];
+  getRowProps?: (row: React.ReactNode[], rowIdx: number) => React.HTMLAttributes<HTMLTableRowElement>;
 };
