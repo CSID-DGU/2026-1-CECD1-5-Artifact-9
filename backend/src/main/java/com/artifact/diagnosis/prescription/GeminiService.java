@@ -28,9 +28,10 @@ public class GeminiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
-    // Gemini 무료 티어 3.5-flash 모델 일일 제한 출력 가능
     private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=";
+
+    private static final int MAX_RETRY = 3;
 
     public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req) {
         if (apiKey == null || apiKey.isBlank()) {
@@ -95,18 +96,33 @@ public class GeminiService {
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+            HttpClient client = HttpClient.newHttpClient();
+            HttpResponse<String> response = null;
 
-            log.debug("Gemini 응답 (status={}): {}", response.statusCode(), response.body());
+            // 503(서버 과부하) 한정으로 최대 MAX_RETRY회 재시도
+            for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                log.debug("Gemini 응답 (attempt={}, status={}): {}", attempt, response.statusCode(), response.body());
+
+                if (response.statusCode() != 503) break;
+
+                if (attempt < MAX_RETRY) {
+                    log.warn("Gemini 503 과부하, {}초 후 재시도 ({}/{})", attempt, attempt, MAX_RETRY);
+                    Thread.sleep(attempt * 1000L); // 1초, 2초 간격
+                }
+            }
 
             JsonNode root = objectMapper.readTree(response.body());
 
             // API 에러 응답 처리
             if (root.has("error")) {
+                int code = root.at("/error/code").asInt(0);
                 String errorMsg = root.at("/error/message").asText("알 수 없는 오류");
                 log.error("Gemini API 에러: {}", errorMsg);
-                return new PrescriptionCommentResponse("API 오류: " + errorMsg, "API 키와 모델 설정을 확인해주세요.");
+                String userMsg = (code == 503)
+                        ? "AI 서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요."
+                        : "API 오류: " + errorMsg;
+                return new PrescriptionCommentResponse(userMsg, "");
             }
 
             String text = root.at("/candidates/0/content/parts/0/text").asText("").trim();

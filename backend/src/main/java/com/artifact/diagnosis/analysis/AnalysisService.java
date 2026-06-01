@@ -89,6 +89,14 @@ public class AnalysisService {
                 .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
                 .toList();
 
+        // heatmap 스토리지 저장 (키만 DB에 보관, URL은 응답 시 생성)
+        String heatmapKey = null;
+        if (prediction.heatmapBase64() != null) {
+            byte[] heatmapBytes = Base64.getDecoder().decode(prediction.heatmapBase64());
+            String key = "heatmap/" + visitId + "/" + System.currentTimeMillis() + ".jpg";
+            heatmapKey = imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
+        }
+        
         AnalysisResult result = AnalysisResult.builder()
                 .visitId(visitId)
                 .modelVersion(MODEL_VERSION)
@@ -96,6 +104,7 @@ public class AnalysisService {
                 .confidence(BigDecimal.valueOf(prediction.top1().confidence()))
                 .topKResults(topK)
                 .inferenceTimeMs(inferenceMs)
+                .heatmapImageUrl(heatmapKey)
                 .build();
 
         analysisResultRepository.save(result);
@@ -137,8 +146,21 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getInferenceTimeMs(),
-                result.getAnalyzedAt()
+                result.getAnalyzedAt(),
+                heatmapApiUrl(result)
         );
+    }
+
+    public org.springframework.http.ResponseEntity<byte[]> getHeatmapContent(Long visitId) {
+        AnalysisResult result = analysisResultRepository
+                .findFirstByVisitIdOrderByAnalyzedAtDesc(visitId)
+                .filter(r -> r.getHeatmapImageUrl() != null)
+                .orElseThrow(() -> new NoSuchElementException("히트맵이 없습니다: " + visitId));
+        byte[] bytes = imageStorageService.download(result.getHeatmapImageUrl());
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "image/jpeg")
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "max-age=31536000, immutable")
+                .body(bytes);
     }
 
     private FastApiPredictResponse callFastApi(String imageUrl) {
@@ -189,8 +211,14 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getInferenceTimeMs(),
-                result.getAnalyzedAt()
+                result.getAnalyzedAt(),
+                heatmapApiUrl(result)
         );
+    }
+
+    private static String heatmapApiUrl(AnalysisResult result) {
+        if (result.getHeatmapImageUrl() == null) return null;
+        return "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap";
     }
 
     // FastAPI 응답 구조 (snake_case → camelCase 매핑)
@@ -199,7 +227,8 @@ public class AnalysisService {
             String message,
             Double threshold,
             FastApiTop1 top1,
-            List<FastApiTop5Item> top5
+            List<FastApiTop5Item> top5,
+            @JsonProperty("heatmap_base64") String heatmapBase64
     ) {
         private boolean isValidOrDefault() {
             return isValid == null || isValid;

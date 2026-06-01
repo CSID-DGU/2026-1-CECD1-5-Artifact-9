@@ -14,7 +14,8 @@ public record AnalysisResponse(
         Top1Result top1,
         List<TopKResult> top5,
         Integer inferenceTimeMs,
-        LocalDateTime analyzedAt
+        LocalDateTime analyzedAt,
+        String heatmapImageUrl
 ) {
     public record Top1Result(
             String diseaseCode,
