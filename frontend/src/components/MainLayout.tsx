@@ -8,25 +8,25 @@ export default function MainLayout() {
       <header className="h-10 bg-blue-500 flex items-center justify-between px-4 shrink-0 z-50">
         <div className="flex items-center gap-4">
             <Link 
-              to="/" 
+              to="/main" 
               className="group relative flex flex-col items-center"
             >
               <span className="group-hover:text-blue-400 transition-colors ml-2">접수</span>
             </Link>
             <Link
-              to="/clinic"
+              to="/main/clinic"
               className="group relative flex flex-col items-center"
             >
               <span className="group-hover:text-blue-400 transition-colors">진료</span>
             </Link>
             <Link
-              to="/lookup"
+              to="/main/lookup"
               className="group relative flex flex-col items-center"
             >
               <span className="group-hover:text-blue-400 transition-colors">조회</span>
             </Link>
             <Link
-              to="/certificate"
+              to="/main/certificate"
               className="group relative flex flex-col items-center"
             >
               <span className="group-hover:text-blue-400 transition-colors">증명</span>
