@@ -1,17 +1,7 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { useState } from "react";
+import type { ReactNode } from "react";
 
-interface User {
-  id: string;
-  name: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  login: (id: string, pw: string) => Promise<boolean>;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext, type User } from "../contexts/auth";
 
 // 하드코딩: 로그인 회원 정보
 const MOCK_USER_TABLE: Record<string, { pw: string; name: string }> = {
@@ -21,14 +11,17 @@ const MOCK_USER_TABLE: Record<string, { pw: string; name: string }> = {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem("his_user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    if (!savedUser) return null;
+
+    try {
+      return JSON.parse(savedUser) as User;
+    } catch {
+      localStorage.removeItem("his_user");
+      return null;
     }
-  }, []);
+  });
 
   const login = async (id: string, pw: string): Promise<boolean> => {
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -59,10 +52,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
-  return context;
 }
