@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { getPatient, searchPatients, type Patient } from "../api/patients";
+import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
 import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { listVisitImages, type VisitImage } from "../api/images";
@@ -137,19 +137,11 @@ export default function Lookup() {
     setDateVisitIdsByPatient({});
     try {
 
-      const results: Patient[] = [];
-
-      if (parsedPatientId !== null && !hasInvalidChartNo) {
-        const patient = await getPatient(parsedPatientId).catch(() => null);
-        if (patient) {
-          results.push(patient);
-        }
-      }
-
-      if (name) {
-        const nameResults = await searchPatients(name);
-        results.push(...nameResults);
-      }
+      const results = await searchPatientsByConditions({
+        patientId: parsedPatientId !== null && !hasInvalidChartNo ? parsedPatientId : null,
+        name,
+        visitDate,
+      });
 
       if (visitDate) {
         const visitResults = await listVisitsByDate(visitDate);
@@ -157,11 +149,7 @@ export default function Lookup() {
           acc[visit.patientId] = [...(acc[visit.patientId] ?? []), visit.id];
           return acc;
         }, {});
-        const patientsByVisit = await Promise.all(
-          visitResults.map((visit) => getPatient(visit.patientId).catch(() => null))
-        );
         setDateVisitIdsByPatient(visitIdsByPatient);
-        results.push(...patientsByVisit.filter((patient): patient is Patient => patient !== null));
       }
 
       setPatients(dedupePatients(results));
