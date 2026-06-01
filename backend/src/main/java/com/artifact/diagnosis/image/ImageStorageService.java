@@ -15,6 +15,11 @@ public interface ImageStorageService {
     String upload(MultipartFile file);
 
     /**
+     * raw 바이트를 지정 키로 저장한다. GradCAM 히트맵 등 프로그래매틱 업로드용.
+     */
+    String uploadBytes(String key, byte[] data, String contentType);
+
+    /**
      * 스토리지 키로 이미지 바이트를 읽어 반환한다.
      * VisitImageService.getImageContent() 에서 브라우저로 스트리밍한다.
      */

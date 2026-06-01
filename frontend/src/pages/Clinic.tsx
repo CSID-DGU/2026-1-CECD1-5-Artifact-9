@@ -82,6 +82,8 @@ export default function Clinic() {
 
   // 분석 결과 상세 토글
   const [expandedReason, setExpandedReason] = useState<number | null>(null);
+  // 이미지 뷰 모드: none → original → heatmap → original ...
+  const [imageViewMode, setImageViewMode] = useState<"none" | "original" | "heatmap">("none");
 
   // 처방 폼
   type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean };
@@ -180,6 +182,8 @@ export default function Clinic() {
   }
 
   useEffect(() => { loadVisitLists(); }, []);
+
+  useEffect(() => { setImageViewMode("none"); }, [analysis]);
 
   useEffect(() => {
     if (!selectedFile) { setPreviewUrl(null); return; }
@@ -469,6 +473,74 @@ export default function Clinic() {
                       신뢰도 {(Number(analysis.top1.confidence) * 100).toFixed(1)}%
                     </p>
                   </div>
+
+                  {/* 분석 이미지 / 히트맵 토글
+                      핵심: <img> 태그 하나만 두고 src만 교체 → 컨테이너 크기 고정, 커튼 효과 */}
+                  {(() => {
+                    const analyzedImageUrl =
+                      images.find((img) => img.imageId === selectedImageIds[0])?.imageUrl
+                      ?? images[0]?.imageUrl;
+                    const hasHeatmap = !!analysis.heatmapImageUrl;
+
+                    const buttonLabel =
+                      imageViewMode === "none"     ? "분석 이미지" :
+                      imageViewMode === "original" ? (hasHeatmap ? "히트맵 보기" : "이미지 닫기") :
+                                                     "원본 이미지";
+
+                    const buttonColor =
+                      imageViewMode === "heatmap"
+                        ? "bg-orange-600 hover:bg-orange-500 text-white"
+                        : "bg-gray-700 hover:bg-gray-600 text-gray-200";
+
+                    const handleClick = () => {
+                      if (imageViewMode === "none")          setImageViewMode("original");
+                      else if (imageViewMode === "original") setImageViewMode(hasHeatmap ? "heatmap" : "none");
+                      else                                   setImageViewMode("original");
+                    };
+
+                    // src만 바뀌고 <img> 태그는 유지 → 동일 위치·동일 크기 보장
+                    const displayUrl =
+                      imageViewMode === "heatmap" ? analysis.heatmapImageUrl! : analyzedImageUrl;
+
+                    return (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-gray-400">
+                            {imageViewMode === "heatmap" ? "AI 병변 분석 히트맵" : "분석 이미지"}
+                          </span>
+                          <button
+                            onClick={handleClick}
+                            className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${buttonColor}`}
+                          >
+                            {buttonLabel}
+                          </button>
+                        </div>
+
+                        {/* 이미지 컨테이너: imageViewMode가 none이어도 DOM에 존재 유지
+                            visibility로 숨겨서 크기가 절대 바뀌지 않음 */}
+                        <div
+                          className="rounded border border-gray-700 bg-gray-900 overflow-hidden"
+                          style={{ visibility: imageViewMode === "none" ? "hidden" : "visible", height: imageViewMode === "none" ? 0 : undefined }}
+                        >
+                          {displayUrl && (
+                            <>
+                              <img
+                                src={displayUrl}
+                                alt={imageViewMode === "heatmap" ? "GradCAM 히트맵" : "분석 이미지"}
+                                className="w-full"
+                                style={{ display: "block", transition: "opacity 0.15s ease" }}
+                              />
+                              {imageViewMode === "heatmap" && (
+                                <p className="px-2 py-1.5 text-[10px] text-gray-400">
+                                  🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · GradCAM 기반
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="border border-gray-700 rounded overflow-hidden">
                     <div className="grid grid-cols-[40px_80px_1fr_70px_50px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
                       <span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>

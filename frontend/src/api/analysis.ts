@@ -18,6 +18,7 @@ export type AnalysisResponse = {
   }>;
   inferenceTimeMs: number;
   analyzedAt: string;
+  heatmapImageUrl: string | null;
 };
 
 export function requestAnalysis(visitId: number, imageIds: number[]) {

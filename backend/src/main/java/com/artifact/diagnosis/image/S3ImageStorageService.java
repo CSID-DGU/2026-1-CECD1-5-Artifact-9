@@ -67,6 +67,23 @@ public class S3ImageStorageService implements ImageStorageService {
     }
 
     @Override
+    public String uploadBytes(String key, byte[] data, String contentType) {
+        PutObjectRequest putRequest = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
+                .contentLength((long) data.length)
+                .build();
+        try {
+            s3Client.putObject(putRequest, RequestBody.fromBytes(data));
+        } catch (S3Exception e) {
+            log.error("S3 upload failed. bucket={}, key={}", bucket, key, e);
+            throw new RuntimeException("S3 히트맵 업로드 실패: " + e.awsErrorDetails().errorMessage(), e);
+        }
+        return key;
+    }
+
+    @Override
     public byte[] download(String key) {
         GetObjectRequest request = GetObjectRequest.builder()
                 .bucket(bucket)

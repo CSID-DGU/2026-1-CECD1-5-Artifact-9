@@ -42,6 +42,21 @@ public class LocalImageStorageService implements ImageStorageService {
     }
 
     @Override
+    public String uploadBytes(String key, byte[] data, String contentType) {
+        Path target = uploadRoot.resolve(key).normalize();
+        if (!target.startsWith(uploadRoot)) {
+            throw new IllegalArgumentException("잘못된 경로입니다.");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            Files.write(target, data);
+        } catch (IOException e) {
+            throw new RuntimeException("로컬 히트맵 저장 실패.", e);
+        }
+        return key;
+    }
+
+    @Override
     public byte[] download(String key) {
         Path target = uploadRoot.resolve(key).normalize();
         if (!target.startsWith(uploadRoot)) {
