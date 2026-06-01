@@ -5,9 +5,11 @@ import Clinic from "./pages/Clinic";
 import Lookup from "./pages/Lookup";
 import Certificate from "./pages/Certificate";
 import Login from "./pages/Login";
+import { AuthProvider } from "./components/AuthContext";
 
 export default function App() {
   return (
+    <AuthProvider>
     <BrowserRouter>
       <Routes>
         {/* 사용자가 처음 접속( / )하면 무조건 로그인 페이지가 뜸 */}
@@ -27,5 +29,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/main" replace />} />
       </Routes>
     </BrowserRouter>
+    </AuthProvider>
   );
 }

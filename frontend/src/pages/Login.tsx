@@ -2,20 +2,24 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
+import { useAuth } from "../components/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
+  const { login } = useAuth();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (id.trim() && password.trim()) {
+    const success = await login(id, password);
+
+    if (success) {
       // 로그인 성공 시 /main 으로 리다이렉트
       navigate("/main"); 
     } else {
-      alert("아이디와 비밀번호를 입력해 주세요.");
+      alert("아이디와 비밀번호가 올바르지 않습니다.");
     }
   };
 
@@ -26,13 +30,13 @@ export default function Login() {
           <form onSubmit={handleLogin} className="flex flex-col gap-4 mt-2">
             <Input 
               label="아이디" 
-              placeholder="Username" 
+              placeholder="Testname: admin" 
               value={id}
               onChange={(v) => setId(v)} 
             />
             <Input 
               label="비밀번호" 
-              placeholder="Password" 
+              placeholder="Testpwd: 1234" 
               type="password"
               value={password}
               onChange={(v) => setPassword(v)} 
