@@ -316,6 +316,23 @@ export default function Clinic() {
     );
   }
 
+  function setPrimaryKcd(kcdId: number) {
+    setSelectedKcds((prev) =>
+      prev.map((item) => ({ ...item, isPrimary: item.id === kcdId }))
+    );
+  }
+
+  function removeSelectedKcd(kcdId: number) {
+    setSelectedKcds((prev) => {
+      const removed = prev.find((item) => item.id === kcdId);
+      const next = prev.filter((item) => item.id !== kcdId);
+      if (removed?.isPrimary && next.length > 0) {
+        return next.map((item, index) => ({ ...item, isPrimary: index === 0 }));
+      }
+      return next;
+    });
+  }
+
   async function handleToggleAnalysisCandidate(item: AnalysisCandidate) {
     const isSelectedCandidate = selectedAnalysisCandidateCodes.includes(item.diseaseCode);
     if (isSelectedCandidate) {
@@ -689,36 +706,42 @@ export default function Clinic() {
                       <span className="text-[10px] text-gray-400">
                         KCD 상병코드 <span className="text-red-400">*</span>
                       </span>
-                      {selectedKcds.length > 0 && (
-                        <div className="flex flex-col gap-1">
-                          {selectedKcds.map((k) => (
-                            <div key={k.id} className="flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-2">
-                              <input
-                                type="radio"
-                                name="primaryKcd"
-                                checked={k.isPrimary}
-                                onChange={() => setSelectedKcds(prev =>
-                                  prev.map(item => ({ ...item, isPrimary: item.id === k.id }))
-                                )}
-                                className="accent-blue-500"
-                              />
-                              <span className="font-mono text-xs text-blue-300">{k.code}</span>
-                              <span className="text-xs text-white flex-1">{k.nameKr}</span>
-                              <span className="text-[10px] text-gray-400">{k.isPrimary ? "주상병" : "부상병"}</span>
+                      <div className="overflow-hidden rounded border border-gray-700">
+                        <div className="grid grid-cols-[56px_82px_1fr_64px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                          <span>구분</span>
+                          <span>코드</span>
+                          <span>상병명</span>
+                          <span className="text-right">관리</span>
+                        </div>
+                        {selectedKcds.length > 0 ? (
+                          selectedKcds.map((k) => (
+                            <div key={k.id} className="grid grid-cols-[56px_82px_1fr_64px] items-center border-t border-gray-800 px-3 py-2 text-xs">
+                              <label className="flex items-center gap-1.5 text-[10px] text-gray-300">
+                                <input
+                                  type="radio"
+                                  name="primaryKcd"
+                                  checked={k.isPrimary}
+                                  onChange={() => setPrimaryKcd(k.id)}
+                                  className="accent-blue-500"
+                                />
+                                {k.isPrimary ? "주상병" : "부상병"}
+                              </label>
+                              <span className="font-mono text-blue-300">{k.code}</span>
+                              <span className="min-w-0 truncate text-white" title={k.nameKr}>{k.nameKr}</span>
                               <button
-                                onClick={() => setSelectedKcds(prev => {
-                                  const next = prev.filter(item => item.id !== k.id);
-                                  if (k.isPrimary && next.length > 0) next[0].isPrimary = true;
-                                  return next;
-                                })}
-                                className="text-[10px] text-gray-400 hover:text-red-400 transition-colors"
+                                onClick={() => removeSelectedKcd(k.id)}
+                                className="text-right text-[10px] text-gray-400 transition-colors hover:text-red-400"
                               >
                                 삭제
                               </button>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                          ))
+                        ) : (
+                          <div className="border-t border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+                            선택된 상병코드가 없습니다.
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={() => setKcdModalOpen(true)}
                         className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
@@ -764,43 +787,51 @@ export default function Clinic() {
                       <span className="text-[10px] text-gray-400">
                         처방 약품 <span className="text-red-400">*</span>
                       </span>
-                      {selectedDrug ? (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-2">
-                            <span className="font-mono text-xs text-blue-300">{selectedDrug.code}</span>
-                            <span className="text-xs text-white flex-1">{selectedDrug.nameKr}</span>
-                            <button
-                              onClick={() => setSelectedDrug(null)}
-                              className="text-[10px] text-gray-400 hover:text-red-400 transition-colors"
-                            >
-                              변경
-                            </button>
-                          </div>
-                          <div className="flex gap-2">
+                      <div className="overflow-hidden rounded border border-gray-700">
+                        <div className="grid grid-cols-[86px_1fr_1fr_76px_54px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                          <span>약품코드</span>
+                          <span>약품명</span>
+                          <span>용법</span>
+                          <span>기간</span>
+                          <span className="text-right">관리</span>
+                        </div>
+                        {selectedDrug ? (
+                          <div className="grid grid-cols-[86px_1fr_1fr_76px_54px] items-center gap-2 border-t border-gray-800 px-3 py-2 text-xs">
+                            <span className="font-mono text-blue-300">{selectedDrug.code}</span>
+                            <span className="min-w-0 truncate text-white" title={selectedDrug.nameKr}>{selectedDrug.nameKr}</span>
                             <input
                               type="text"
                               value={drugDosage}
                               onChange={(e) => setDrugDosage(e.target.value)}
-                              placeholder="용법 (예: 1일 2회 도포)"
-                              className="flex-1 px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-xs text-white focus:outline-none focus:border-blue-500"
+                              placeholder="1일 2회 도포"
+                              className="min-w-0 rounded border border-gray-600 bg-side-bg px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
                             />
                             <input
                               type="number"
                               value={drugDays}
                               onChange={(e) => setDrugDays(e.target.value)}
-                              placeholder="기간(일)"
-                              className="w-20 px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-xs text-white focus:outline-none focus:border-blue-500"
+                              placeholder="일"
+                              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
                             />
+                            <button
+                              onClick={() => setSelectedDrug(null)}
+                              className="text-right text-[10px] text-gray-400 transition-colors hover:text-red-400"
+                            >
+                              삭제
+                            </button>
                           </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDrugModalOpen(true)}
-                          className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
-                        >
-                          + 약품 검색 (클릭하여 선택)
-                        </button>
-                      )}
+                        ) : (
+                          <div className="border-t border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+                            선택된 약품이 없습니다.
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setDrugModalOpen(true)}
+                        className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
+                      >
+                        + 약품 검색 (클릭하여 선택)
+                      </button>
                     </div>
 
                     {/* 의사 소견 */}
