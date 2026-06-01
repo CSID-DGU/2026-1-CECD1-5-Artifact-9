@@ -85,6 +85,7 @@ export default function Lookup() {
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
   const [activeVisitDateFilter, setActiveVisitDateFilter] = useState<string | null>(null);
   const [dateVisitIdsByPatient, setDateVisitIdsByPatient] = useState<Record<number, number[]>>({});
+  const [dateInputResetKey, setDateInputResetKey] = useState(0);
 
   function parseChartNo(value: string) {
     const normalized = value.trim().toUpperCase().replace(/^P/, "");
@@ -179,6 +180,7 @@ export default function Lookup() {
     setChartNoQuery("");
     setNameQuery("");
     setVisitDateQuery("");
+    setDateInputResetKey((current) => current + 1);
     setPatients([]);
     setHasSearched(false);
     setSearchError(null);
@@ -281,6 +283,7 @@ export default function Lookup() {
             <label className="flex flex-col gap-1">
               <span className="text-[10px] text-gray-400">내원일</span>
               <input
+                key={dateInputResetKey}
                 type="date"
                 value={visitDateQuery}
                 onChange={(e) => setVisitDateQuery(e.target.value)}
