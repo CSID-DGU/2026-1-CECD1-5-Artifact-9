@@ -7,6 +7,7 @@ import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, diagnoseVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 
@@ -417,33 +418,36 @@ export default function Clinic() {
         onSearch={searchDrugs}
       />
 
-      <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
+      <div className="flex-1 min-h-0 p-[6px] flex gap-[6px] overflow-hidden">
 
         {/* Left Column */}
-        <section className="w-[300px] flex flex-col shrink-0">
-          <Card title="환자 정보" className="flex-1">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 px-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-                </span>
-                <span className="text-[11px] text-green-400 font-medium">진료중</span>
-              </div>
+        <section className="w-[340px] flex shrink-0 flex-col gap-[6px] overflow-hidden">
+          <ClinicPatientLookupPanel
+            selectedPatientId={selectedPatient?.id}
+            selectedVisitId={selectedVisit?.id}
+            onSelectVisit={(visitId) => void loadVisitDetail(visitId)}
+          />
+
+          <Card title="선택 환자 정보" className="min-h-0" contentClassName="!p-2 [&_td]:!px-2 [&_td]:!py-1.5 [&_th]:!px-2 [&_th]:!py-1.5">
+            {selectedPatient ? (
               <Table headers={["항목", "내용"]} data={currentPatientInfo} />
-            </div>
+            ) : (
+              <p className="py-4 text-center text-xs text-gray-400">
+                조회 결과나 진료 현황에서 내원을 선택하면 환자 정보가 표시됩니다.
+              </p>
+            )}
           </Card>
         </section>
 
         {/* Center Column */}
-        <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
-          <Card title="진료 현황" className="shrink-0">
-            <div className="flex border-b border-gray-700 mb-3 pb-1 gap-2">
+        <section className="flex-1 min-w-0 flex flex-col gap-[6px] overflow-hidden">
+          <Card title="진료 현황" className="shrink-0" contentClassName="!p-2 [&_td]:!px-3 [&_td]:!py-1.5 [&_th]:!px-3 [&_th]:!py-1.5">
+            <div className="flex border-b border-gray-700 mb-2 pb-1 gap-2">
               {(["대기", "완료"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
                     activeTab === tab ? "bg-blue-600 text-white font-bold" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                   }`}
                 >
@@ -453,12 +457,12 @@ export default function Clinic() {
             </div>
 
             {errorMessage && (
-              <p className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">{errorMessage}</p>
+              <p className="mb-2 rounded border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">{errorMessage}</p>
             )}
             {message && (
-              <p className="mb-3 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">{message}</p>
+              <p className="mb-2 rounded border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-100">{message}</p>
             )}
-            {isLoading && <p className="mb-3 text-xs text-gray-400">목록 로딩 중...</p>}
+            {isLoading && <p className="mb-2 text-xs text-gray-400">목록 로딩 중...</p>}
 
             <Table
               headers={["순번", "접수번호", "이름", "접수시간", "현재상태"]}
@@ -484,9 +488,9 @@ export default function Clinic() {
             />
           </Card>
 
-          <Card title="이미지 업로드 및 선택" className="flex-1">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3 flex-wrap">
+          <Card title="선택 내원 이미지 및 업로드" className="min-h-0 flex-1" contentClassName="!p-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${
                   canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
                 }`}>
@@ -499,20 +503,22 @@ export default function Clinic() {
                   />
                 </label>
                 <span className="text-xs text-gray-300">{selectedFile?.name ?? "선택된 파일 없음"}</span>
-                <Button onClick={handleUploadImage} disabled={!selectedFile || !canUploadImage || isActionLoading} className="py-1.5 text-xs">
+                <Button onClick={handleUploadImage} disabled={!selectedFile || !canUploadImage || isActionLoading} className="py-1 text-xs">
                   업로드
                 </Button>
-                <Button onClick={handleAnalyze} disabled={!canAnalyze || selectedImageIds.length === 0 || isActionLoading} className="py-1.5 text-xs">
+                <Button onClick={handleAnalyze} disabled={!canAnalyze || selectedImageIds.length === 0 || isActionLoading} className="py-1 text-xs">
                   {isActionLoading ? "분석 중..." : "AI 분석"}
                 </Button>
               </div>
 
               {!selectedVisit && (
-                <p className="text-xs text-gray-400">진료 현황에서 접수를 선택하면 이미지 업로드와 AI 분석을 진행할 수 있습니다.</p>
+                <p className="rounded border border-gray-700 bg-gray-900/40 px-3 py-4 text-center text-xs text-gray-400">
+                  왼쪽 조회 패널 또는 진료 현황에서 내원을 선택하면 이미지 업로드와 AI 분석을 진행할 수 있습니다.
+                </p>
               )}
               {status === "RECEIVED" && (
                 <div className="flex items-center gap-3 rounded border border-orange-500/30 bg-orange-500/10 px-3 py-2">
-                  <p className="flex-1 text-xs text-orange-100">
+                  <p className="flex-1 text-[11px] text-orange-100">
                     이미지 업로드 전 진료 현황의 접수 행을 더블클릭해 진료를 시작해야 합니다.
                   </p>
                 </div>
@@ -520,48 +526,54 @@ export default function Clinic() {
 
               {previewUrl && (
                 <div className="w-full max-w-[360px] overflow-hidden rounded border border-gray-700 bg-gray-900">
-                  <img src={previewUrl} alt="미리보기" className="h-56 w-full object-contain" />
+                  <img src={previewUrl} alt="미리보기" className="h-40 w-full object-contain" />
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                {images.map((image) => {
-                  const selected = selectedImageIds.includes(image.imageId);
-                  return (
-                    <button
-                      key={image.imageId}
-                      onClick={() => toggleSelectedImage(image.imageId)}
-                      className={`overflow-hidden rounded border text-left transition-colors ${
-                        selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
-                      }`}
-                    >
-                      <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-28 w-full object-cover" />
-                      <div className="px-2 py-1 text-[10px] text-gray-300">
-                        #{image.imageId} · {formatDateTime(image.uploadedAt)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              {selectedVisit && images.length === 0 ? (
+                <p className="rounded border border-gray-700 bg-gray-900/40 px-3 py-4 text-center text-xs text-gray-400">
+                  선택한 내원에 등록된 이미지가 없습니다.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                  {images.map((image) => {
+                    const selected = selectedImageIds.includes(image.imageId);
+                    return (
+                      <button
+                        key={image.imageId}
+                        onClick={() => toggleSelectedImage(image.imageId)}
+                        className={`overflow-hidden rounded border text-left transition-colors ${
+                          selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
+                        }`}
+                      >
+                        <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-20 w-full object-cover" />
+                        <div className="px-2 py-1 text-[10px] text-gray-300">
+                          #{image.imageId} · {formatDateTime(image.uploadedAt)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </Card>
         </section>
 
         {/* Right Column */}
-        <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto">
+        <section className="flex-1 min-w-0 flex flex-col gap-[6px] overflow-hidden">
           {/* AI 분석 결과 */}
-          <Card title="AI 분석 결과">
-            <div className="flex flex-col gap-3">
+          <Card title="AI 분석 결과" className="shrink-0" contentClassName="!p-2">
+            <div className="flex flex-col gap-2">
               {!analysis ? (
                 <p className="text-xs text-gray-300">이미지를 선택하고 AI 분석을 요청하면 결과가 표시됩니다.</p>
               ) : (
                 <>
-                  <div className="rounded border border-blue-500/30 bg-blue-500/10 p-3">
+                  <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
                     <p className="text-xs text-gray-300">Top 1</p>
-                    <p className="mt-1 text-sm font-semibold text-white">
+                    <p className="mt-0.5 text-sm font-semibold text-white">
                       {analysis.top1.diseaseNameKo} ({analysis.top1.diseaseCode})
                     </p>
-                    <p className="mt-1 text-xs text-blue-100">
+                    <p className="mt-0.5 text-xs text-blue-100">
                       신뢰도 {(Number(analysis.top1.confidence) * 100).toFixed(1)}%
                     </p>
                   </div>
@@ -595,7 +607,7 @@ export default function Clinic() {
                       imageViewMode === "heatmap" ? analysis.heatmapImageUrl! : analyzedImageUrl;
 
                     return (
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-gray-400">
                             {imageViewMode === "heatmap" ? "AI 병변 분석 히트맵" : "분석 이미지"}
@@ -623,7 +635,7 @@ export default function Clinic() {
                                 style={{ display: "block", transition: "opacity 0.15s ease" }}
                               />
                               {imageViewMode === "heatmap" && (
-                                <p className="px-2 py-1.5 text-[10px] text-gray-400">
+                                <p className="px-2 py-1 text-[10px] text-gray-400">
                                   🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · GradCAM 기반
                                 </p>
                               )}
@@ -634,7 +646,7 @@ export default function Clinic() {
                     );
                   })()}
                   <div className="border border-gray-700 rounded overflow-hidden">
-                    <div className="grid grid-cols-[36px_40px_80px_1fr_70px_50px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                    <div className="grid grid-cols-[32px_34px_72px_1fr_64px_44px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
                       <span>선택</span><span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span><span></span>
                     </div>
                     {analysis.top5.map((item) => {
@@ -643,7 +655,7 @@ export default function Clinic() {
 
                       return (
                         <div key={item.rank} className="border-t border-gray-800">
-                          <div className="grid grid-cols-[36px_40px_80px_1fr_70px_50px] items-center px-3 py-2 text-xs">
+                          <div className="grid grid-cols-[32px_34px_72px_1fr_64px_44px] items-center px-2 py-1.5 text-xs">
                             <span>
                               <input
                                 type="checkbox"
@@ -691,23 +703,23 @@ export default function Clinic() {
 
           {/* 처방 카드 — 분석완료(ANALYZED) 이후 바로 표시, 진단확정 버튼 없음 */}
           {selectedVisit && ["ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"].includes(selectedVisit.status) && (
-            <Card title="처방">
-              <div className="flex flex-col gap-4">
+            <Card title="처방" className="min-h-0 flex-1" contentClassName="!p-2">
+              <div className="flex flex-col gap-2">
 
                 {/* 처방 입력 폼 — ANALYZED 또는 DIAGNOSED */}
                 {canPrescribe && (
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2">
                     {status === "DIAGNOSED" && (
                       <p className="text-[10px] text-indigo-400 font-medium">진단 확정됨</p>
                     )}
 
                     {/* KCD 상병코드 */}
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1">
                       <span className="text-[10px] text-gray-400">
                         KCD 상병코드 <span className="text-red-400">*</span>
                       </span>
                       <div className="overflow-hidden rounded border border-gray-700">
-                        <div className="grid grid-cols-[56px_82px_1fr_64px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                        <div className="grid grid-cols-[52px_74px_1fr_48px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
                           <span>구분</span>
                           <span>코드</span>
                           <span>상병명</span>
@@ -715,7 +727,7 @@ export default function Clinic() {
                         </div>
                         {selectedKcds.length > 0 ? (
                           selectedKcds.map((k) => (
-                            <div key={k.id} className="grid grid-cols-[56px_82px_1fr_64px] items-center border-t border-gray-800 px-3 py-2 text-xs">
+                            <div key={k.id} className="grid grid-cols-[52px_74px_1fr_48px] items-center border-t border-gray-800 px-2 py-1.5 text-xs">
                               <label className="flex items-center gap-1.5 text-[10px] text-gray-300">
                                 <input
                                   type="radio"
@@ -737,21 +749,21 @@ export default function Clinic() {
                             </div>
                           ))
                         ) : (
-                          <div className="border-t border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+                          <div className="border-t border-gray-800 px-2 py-2 text-center text-[11px] text-gray-500">
                             선택된 상병코드가 없습니다.
                           </div>
                         )}
                       </div>
                       <button
                         onClick={() => setKcdModalOpen(true)}
-                        className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
+                        className="w-full px-2 py-1.5 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
                       >
                         + 상병코드 검색 (클릭하여 추가)
                       </button>
                     </div>
 
                     {/* AI 처방 코멘트 */}
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5">
                       <button
                         onClick={async () => {
                           if (!selectedVisit || selectedKcds.length === 0) return;
@@ -767,12 +779,12 @@ export default function Clinic() {
                           finally { setIsCommentLoading(false); }
                         }}
                         disabled={selectedKcds.length === 0 || isCommentLoading}
-                        className="w-full px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}
                       </button>
                       {aiComment && (
-                        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 flex flex-col gap-1">
+                        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1.5 flex flex-col gap-1">
                           {aiComment.line1 && <p className="text-[11px] text-indigo-200">• {aiComment.line1}</p>}
                           {aiComment.line2 && <p className="text-[11px] text-indigo-200">• {aiComment.line2}</p>}
                           {!aiComment.line1 && !aiComment.line2 && (
@@ -783,12 +795,12 @@ export default function Clinic() {
                     </div>
 
                     {/* 약품 */}
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1">
                       <span className="text-[10px] text-gray-400">
                         처방 약품 <span className="text-red-400">*</span>
                       </span>
                       <div className="overflow-hidden rounded border border-gray-700">
-                        <div className="grid grid-cols-[86px_1fr_1fr_76px_54px] bg-gray-950 px-3 py-2 text-[10px] font-semibold text-gray-400">
+                        <div className="grid grid-cols-[72px_1fr_1fr_58px_44px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
                           <span>약품코드</span>
                           <span>약품명</span>
                           <span>용법</span>
@@ -796,7 +808,7 @@ export default function Clinic() {
                           <span className="text-right">관리</span>
                         </div>
                         {selectedDrug ? (
-                          <div className="grid grid-cols-[86px_1fr_1fr_76px_54px] items-center gap-2 border-t border-gray-800 px-3 py-2 text-xs">
+                          <div className="grid grid-cols-[72px_1fr_1fr_58px_44px] items-center gap-1.5 border-t border-gray-800 px-2 py-1.5 text-xs">
                             <span className="font-mono text-blue-300">{selectedDrug.code}</span>
                             <span className="min-w-0 truncate text-white" title={selectedDrug.nameKr}>{selectedDrug.nameKr}</span>
                             <input
@@ -804,14 +816,14 @@ export default function Clinic() {
                               value={drugDosage}
                               onChange={(e) => setDrugDosage(e.target.value)}
                               placeholder="1일 2회 도포"
-                              className="min-w-0 rounded border border-gray-600 bg-side-bg px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+                              className="min-w-0 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
                             />
                             <input
                               type="number"
                               value={drugDays}
                               onChange={(e) => setDrugDays(e.target.value)}
                               placeholder="일"
-                              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+                              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
                             />
                             <button
                               onClick={() => setSelectedDrug(null)}
@@ -821,14 +833,14 @@ export default function Clinic() {
                             </button>
                           </div>
                         ) : (
-                          <div className="border-t border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+                          <div className="border-t border-gray-800 px-2 py-2 text-center text-[11px] text-gray-500">
                             선택된 약품이 없습니다.
                           </div>
                         )}
                       </div>
                       <button
                         onClick={() => setDrugModalOpen(true)}
-                        className="w-full px-3 py-2 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
+                        className="w-full px-2 py-1.5 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
                       >
                         + 약품 검색 (클릭하여 선택)
                       </button>
@@ -841,7 +853,7 @@ export default function Clinic() {
                         value={doctorNotes}
                         onChange={(e) => setDoctorNotes(e.target.value)}
                         placeholder="소견을 입력하세요"
-                        rows={2}
+                        rows={1}
                         className="px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
                       />
                     </div>
@@ -849,7 +861,7 @@ export default function Clinic() {
                     <Button
                       onClick={handleSavePrescription}
                       disabled={selectedKcds.length === 0 || !selectedDrug || isActionLoading}
-                      className="py-2 text-xs w-full"
+                      className="py-1.5 text-xs w-full"
                     >
                       처방 저장
                     </Button>
@@ -925,8 +937,8 @@ export default function Clinic() {
           )}
 
           {/* 진료정보 */}
-          <Card title="진료정보" className="flex-1">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <Card title="진료정보" className="shrink-0" contentClassName="!p-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               <InfoItem label="접수번호"    value={selectedVisit  ? `V${String(selectedVisit.id).padStart(5, "0")}` : "-"} />
               <InfoItem label="환자번호"    value={selectedPatient ? `P${String(selectedPatient.id).padStart(5, "0")}` : "-"} />
               <InfoItem label="접수시간"    value={formatDateTime(selectedVisit?.visitDate)} />
@@ -944,9 +956,9 @@ export default function Clinic() {
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-20 shrink-0 text-right text-xs text-gray-200">{label}</span>
-      <span className="min-h-[30px] flex-1 rounded border border-gray-600 bg-side-bg px-3 py-1.5 text-xs text-gray-100">
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 text-right text-[11px] text-gray-200">{label}</span>
+      <span className="min-h-[24px] flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-gray-100">
         {value}
       </span>
     </div>

@@ -1,6 +1,6 @@
 import type { CardProps } from "../types/mainTypes";
 
-export const Card = ({ title, children, className = "" }: CardProps) => {
+export const Card = ({ title, children, className = "", contentClassName = "" }: CardProps) => {
   return (
     <div 
       className={`bg-card-bg rounded-xl overflow-hidden flex flex-col shadow-sm border border-gray-700 ${className}`}
@@ -15,7 +15,7 @@ export const Card = ({ title, children, className = "" }: CardProps) => {
       )}
       
       {/* 콘텐츠 */}
-      <div className="flex-1 p-4 overflow-y-auto">
+      <div className={`flex-1 p-4 overflow-y-auto ${contentClassName}`}>
         {children}
       </div>
     </div>
