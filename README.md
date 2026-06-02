@@ -17,7 +17,8 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
 </div>
-<img width="1280" height="320" alt="artifact-banner" src="https://github.com/user-attachments/assets/7ca7c28e-f22a-45ae-9cf2-f85810eff4c0" />
+<img width="2560" height="640" alt="image" src="https://github.com/user-attachments/assets/946c06d5-e2e5-4023-9e6c-e1b752260d31" />
+
 
 
 
