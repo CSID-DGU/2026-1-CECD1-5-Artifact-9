@@ -5,24 +5,27 @@ import { Input } from "../components/Input";
 import { useAuth } from "../components/AuthContext";
 import { ArtifactLogo } from "../components/ArtifactLogo";
 
+const ROLE_OPTIONS = [
+  { value: "DOCTOR", label: "의사" },
+  { value: "NURSE",  label: "간호사" },
+  { value: "STAFF",  label: "일반 (접수)" },
+];
+
 export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [licenseNumber, setLicenseNumber] = useState("");
-  const [department, setDepartment] = useState("");
+  const [role, setRole] = useState("DOCTOR");
+  const [department, setDepartment] = useState("피부과");
   const { login, signup } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const success = await login(id, password);
-
     if (success) {
-      // 로그인 성공 시 /main 으로 리다이렉트
-      navigate("/main"); 
+      navigate("/main");
     } else {
       alert("아이디와 비밀번호가 올바르지 않습니다.");
     }
@@ -30,15 +33,13 @@ export default function Login() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const success = await signup({
       loginId: id,
       password,
       name,
-      licenseNumber: licenseNumber.trim() || null,
+      role,
       department: department.trim() || null,
     });
-
     if (success) {
       navigate("/main");
     } else {
@@ -52,7 +53,7 @@ export default function Login() {
         <div className="mb-7">
           <ArtifactLogo />
         </div>
-        <Card title={mode === "login" ? "의사 로그인" : "의사 회원가입"}>
+        <Card title={mode === "login" ? "로그인" : "회원가입"}>
           <div className="mb-4 grid grid-cols-2 gap-1 rounded bg-gray-800 p-1 text-xs">
             <button
               type="button"
@@ -73,17 +74,23 @@ export default function Login() {
             {mode === "signup" && (
               <>
                 <Input
-                  label="의사 이름"
+                  label="이름"
                   placeholder="홍길동"
                   value={name}
                   onChange={(v) => setName(v)}
                 />
-                <Input
-                  label="면허번호"
-                  placeholder="선택 입력"
-                  value={licenseNumber}
-                  onChange={(v) => setLicenseNumber(v)}
-                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-400">직책</label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="h-9 rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 focus:outline-none focus:border-blue-500"
+                  >
+                    {ROLE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
                 <Input
                   label="진료과"
                   placeholder="피부과"
@@ -92,18 +99,18 @@ export default function Login() {
                 />
               </>
             )}
-            <Input 
-              label="아이디" 
-              placeholder="Testname: admin" 
+            <Input
+              label="아이디"
+              placeholder="Testname: admin"
               value={id}
-              onChange={(v) => setId(v)} 
+              onChange={(v) => setId(v)}
             />
-            <Input 
-              label="비밀번호" 
-              placeholder="Testpwd: 1234" 
+            <Input
+              label="비밀번호"
+              placeholder="Testpwd: 1234"
               type="password"
               value={password}
-              onChange={(v) => setPassword(v)} 
+              onChange={(v) => setPassword(v)}
             />
             <button
               type="submit"

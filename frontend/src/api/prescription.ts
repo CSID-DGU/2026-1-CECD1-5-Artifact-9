@@ -19,8 +19,8 @@ export type PrescriptionDisease = {
 export type PrescriptionResponse = {
   prescriptionId: number;
   visitId: number;
-  doctorId: number;
-  doctorName: string;
+  memberId: number;
+  memberName: string;
   diseases: PrescriptionDisease[];
   analysisId: number | null;
   prescribedAt: string;
@@ -30,7 +30,7 @@ export type PrescriptionResponse = {
 };
 
 export type PrescriptionRequest = {
-  doctorId: number;
+  memberId: number;
   diseases: Array<{ kcdDiseaseId: number; isPrimary: boolean }>;
   analysisId?: number | null;
   doctorNotes?: string | null;

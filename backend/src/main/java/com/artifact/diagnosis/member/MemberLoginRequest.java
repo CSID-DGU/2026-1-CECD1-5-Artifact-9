@@ -1,8 +1,8 @@
-package com.artifact.diagnosis.doctor;
+package com.artifact.diagnosis.member;
 
 import jakarta.validation.constraints.NotBlank;
 
-public record DoctorLoginRequest(
+public record MemberLoginRequest(
         @NotBlank String loginId,
         @NotBlank String password
 ) {

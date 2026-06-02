@@ -15,16 +15,16 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
     @Query("""
             select new com.artifact.diagnosis.prescription.PrescriptionPatientSummaryResponse(
                 p.id, v.id, patient.id, patient.name, patient.birthDate, patient.gender,
-                v.visitDate, v.status, p.doctorId, p.doctorName, p.prescribedAt
+                v.visitDate, v.status, p.memberId, p.memberName, p.prescribedAt
             )
             from Prescription p
             join Visit v on v.id = p.visitId
             join Patient patient on patient.id = v.patientId
-            where p.doctorId = :doctorId
+            where p.memberId = :memberId
               and v.visitDate >= :start
               and v.visitDate < :end
             order by v.visitDate desc
             """)
-    List<PrescriptionPatientSummaryResponse> findPatientSummariesByDoctorIdAndVisitDateRange(
-            Long doctorId, LocalDateTime start, LocalDateTime end);
+    List<PrescriptionPatientSummaryResponse> findPatientSummariesByMemberIdAndVisitDateRange(
+            Long memberId, LocalDateTime start, LocalDateTime end);
 }

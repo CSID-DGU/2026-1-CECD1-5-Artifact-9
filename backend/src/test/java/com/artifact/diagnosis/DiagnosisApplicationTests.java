@@ -2,10 +2,10 @@ package com.artifact.diagnosis;
 
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
-import com.artifact.diagnosis.doctor.DoctorLoginRequest;
-import com.artifact.diagnosis.doctor.DoctorResponse;
-import com.artifact.diagnosis.doctor.DoctorService;
-import com.artifact.diagnosis.doctor.DoctorSignupRequest;
+import com.artifact.diagnosis.member.MemberLoginRequest;
+import com.artifact.diagnosis.member.MemberResponse;
+import com.artifact.diagnosis.member.MemberService;
+import com.artifact.diagnosis.member.MemberSignupRequest;
 import com.artifact.diagnosis.patient.Gender;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.patient.PatientRepository;
@@ -41,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DiagnosisApplicationTests {
 
 	@Autowired
-	DoctorService doctorService;
+	MemberService memberService;
 
 	@Autowired
 	PrescriptionService prescriptionService;
@@ -60,12 +60,12 @@ class DiagnosisApplicationTests {
 	}
 
 	@Test
-	void doctorSignupLoginAndPrescriptionStoresDoctorName() {
-		DoctorResponse doctor = doctorService.signup(new DoctorSignupRequest(
-				"derm01", "1234", "김진료", "LIC-1001", "피부과"));
-		DoctorResponse loggedIn = doctorService.login(new DoctorLoginRequest("derm01", "1234"));
+	void memberSignupLoginAndPrescriptionStoresMemberName() {
+		MemberResponse member = memberService.signup(new MemberSignupRequest(
+				"derm01", "1234", "김진료", "LIC-1001", "피부과", null));
+		MemberResponse loggedIn = memberService.login(new MemberLoginRequest("derm01", "1234"));
 
-		assertThat(loggedIn.doctorId()).isEqualTo(doctor.doctorId());
+		assertThat(loggedIn.memberId()).isEqualTo(member.memberId());
 		assertThat(loggedIn.name()).isEqualTo("김진료");
 
 		Patient patient = patientRepository.save(Patient.builder()
@@ -84,7 +84,7 @@ class DiagnosisApplicationTests {
 				.build());
 
 		PrescriptionResponse saved = prescriptionService.save(visit.getId(), new PrescriptionRequest(
-				doctor.doctorId(),
+				member.memberId(),
 				List.of(new PrescriptionRequest.DiseaseRequest(disease.getId(), true)),
 				null,
 				LocalDate.of(2026, 6, 9),
@@ -92,17 +92,17 @@ class DiagnosisApplicationTests {
 				List.of(new PrescriptionRequest.DetailRequest(null, "보습제", "1일 2회", 7, null))
 		));
 
-		assertThat(saved.doctorId()).isEqualTo(doctor.doctorId());
-		assertThat(saved.doctorName()).isEqualTo("김진료");
+		assertThat(saved.memberId()).isEqualTo(member.memberId());
+		assertThat(saved.memberName()).isEqualTo("김진료");
 		assertThat(saved.details()).hasSize(1);
 
 		List<PrescriptionPatientSummaryResponse> summaries =
 				prescriptionService.findPatientsByDoctorAndDate(
-						doctor.doctorId(), LocalDate.of(2026, 6, 2), LocalDate.of(2026, 6, 2));
+						member.memberId(), LocalDate.of(2026, 6, 2), LocalDate.of(2026, 6, 2));
 
 		assertThat(summaries).hasSize(1);
 		assertThat(summaries.get(0).patientName()).isEqualTo("이환자");
-		assertThat(summaries.get(0).doctorName()).isEqualTo("김진료");
+		assertThat(summaries.get(0).memberName()).isEqualTo("김진료");
 	}
 
 }

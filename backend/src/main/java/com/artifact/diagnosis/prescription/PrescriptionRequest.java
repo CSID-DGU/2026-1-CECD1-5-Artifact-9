@@ -12,8 +12,8 @@ import java.util.List;
 public record PrescriptionRequest(
 
         @NotNull
-        @Schema(description = "처방 작성 의사 ID", example = "1")
-        Long doctorId,
+        @Schema(description = "처방 작성 회원 ID", example = "1")
+        Long memberId,
 
         @NotEmpty
         @Valid

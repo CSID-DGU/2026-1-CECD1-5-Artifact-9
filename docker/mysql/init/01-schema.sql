@@ -19,24 +19,26 @@ CREATE DATABASE IF NOT EXISTS artifact_db
 USE artifact_db;
 
 -- ---------------------------------------------------------------------
--- 0. 의사 계정 (doctor)
+-- 0. 회원 계정 (member) — 의사/간호사/일반(접수) 통합
 -- ---------------------------------------------------------------------
-CREATE TABLE doctor (
-    doctor_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '의사ID (PK)',
+CREATE TABLE member (
+    member_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '회원ID (PK)',
     login_id       VARCHAR(50)  NOT NULL                COMMENT '로그인 ID',
-    password       VARCHAR(100) NOT NULL                COMMENT '비밀번호',
-    name           VARCHAR(50)  NOT NULL                COMMENT '의사명',
-    license_number VARCHAR(50)  NULL                    COMMENT '의사 면허번호',
+    password       VARCHAR(100) NOT NULL                COMMENT '비밀번호 (BCrypt)',
+    name           VARCHAR(50)  NOT NULL                COMMENT '이름',
+    license_number VARCHAR(50)  NULL                    COMMENT '면허번호 (의사/간호사)',
     department     VARCHAR(100) NULL                    COMMENT '진료과',
+    role           VARCHAR(20)  NOT NULL DEFAULT 'DOCTOR' COMMENT '역할 (DOCTOR/NURSE/STAFF/ADMIN)',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (doctor_id),
-    UNIQUE KEY uk_doctor_login_id (login_id),
-    UNIQUE KEY uk_doctor_license_number (license_number)
-) ENGINE=InnoDB COMMENT='의사 계정';
+    PRIMARY KEY (member_id),
+    UNIQUE KEY uk_member_login_id (login_id),
+    UNIQUE KEY uk_member_license_number (license_number)
+) ENGINE=InnoDB COMMENT='회원 계정 (의사/간호사/일반)';
 
-INSERT INTO doctor (login_id, password, name, license_number, department) VALUES
-  ('admin', '1234', '관리 의사', 'TEST-0001', '피부과');
+INSERT INTO member (login_id, password, name, license_number, department, role) VALUES
+  ('admin', '$2b$10$4/MYOFj/eAOxU64eE0sOpO0hujwKyfmEETSQwLgY8a3.pRc1czsrW', '관리자', 'TEST-0001', '피부과', 'ADMIN');
+-- 위 해시는 '1234'의 BCrypt 암호화값
 
 -- ---------------------------------------------------------------------
 -- 1. 환자정보 (patient)
@@ -171,8 +173,8 @@ CREATE TABLE analysis_image (
 CREATE TABLE prescription (
     prescription_id        BIGINT   NOT NULL AUTO_INCREMENT COMMENT '처방ID (PK)',
     visit_id               BIGINT   NOT NULL                COMMENT '접수ID (FK)',
-    doctor_id              BIGINT   NOT NULL                COMMENT '작성 의사ID (FK)',
-    doctor_name            VARCHAR(50) NOT NULL             COMMENT '처방 당시 의사명 스냅샷',
+    member_id              BIGINT   NOT NULL                COMMENT '처방 작성 회원ID (FK)',
+    member_name            VARCHAR(50) NOT NULL             COMMENT '처방 당시 작성자명 스냅샷',
     analysis_id            BIGINT   NULL                    COMMENT '근거 AI 분석ID (FK, nullable)',
     prescribed_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '처방시각',
     revisit_recommended_date DATE   NULL                    COMMENT '재내원 권장일',
@@ -180,10 +182,10 @@ CREATE TABLE prescription (
     created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (prescription_id),
     CONSTRAINT fk_presc_visit    FOREIGN KEY (visit_id)       REFERENCES visit(visit_id),
-    CONSTRAINT fk_presc_doctor   FOREIGN KEY (doctor_id)      REFERENCES doctor(doctor_id),
+    CONSTRAINT fk_presc_member   FOREIGN KEY (member_id)      REFERENCES member(member_id),
     CONSTRAINT fk_presc_analysis FOREIGN KEY (analysis_id)    REFERENCES analysis_result(analysis_id),
     INDEX idx_presc_visit (visit_id),
-    INDEX idx_presc_doctor_date (doctor_id, prescribed_at)
+    INDEX idx_presc_member_date (member_id, prescribed_at)
 ) ENGINE=InnoDB COMMENT='최종 처방 헤더';
 
 CREATE TABLE prescription_disease (
@@ -213,19 +215,3 @@ CREATE TABLE prescription_detail (
     CONSTRAINT fk_detail_drug  FOREIGN KEY (drug_id) REFERENCES drug_master(drug_id)
 ) ENGINE=InnoDB COMMENT='처방 상세 항목';
 
--- ---------------------------------------------------------------------
--- 11. 처방 템플릿 (prescription_template) — 질병별 권장 처방 (관리용)
--- ---------------------------------------------------------------------
--- CREATE TABLE prescription_template (
---     template_id       BIGINT       NOT NULL AUTO_INCREMENT,
---     disease_id        BIGINT       NOT NULL COMMENT '질병ID (FK→disease)',
---     prescription_type ENUM('MEDICATION','TOPICAL','INJECTION','PROCEDURE','OBSERVATION','REFERRAL')
---                       NOT NULL,
---     medicine_name     VARCHAR(200) NOT NULL COMMENT '권장 약품/시술명',
---     dosage            VARCHAR(100) NULL,
---     duration_days     INT          NULL,
---     notes             TEXT         NULL,
---     PRIMARY KEY (template_id),
---     CONSTRAINT fk_tmpl_disease FOREIGN KEY (disease_id) REFERENCES disease(disease_id),
---     INDEX idx_tmpl_disease (disease_id)
--- ) ENGINE=InnoDB COMMENT='질병별 기본 처방 템플릿';

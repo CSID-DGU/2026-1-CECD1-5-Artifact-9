@@ -1,4 +1,4 @@
-package com.artifact.diagnosis.doctor;
+package com.artifact.diagnosis.member;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,16 +10,16 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final DoctorService doctorService;
+    private final MemberService memberService;
 
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
-    public DoctorResponse signup(@Valid @RequestBody DoctorSignupRequest request) {
-        return doctorService.signup(request);
+    public MemberResponse signup(@Valid @RequestBody MemberSignupRequest request) {
+        return memberService.signup(request);
     }
 
     @PostMapping("/login")
-    public DoctorResponse login(@Valid @RequestBody DoctorLoginRequest request) {
-        return doctorService.login(request);
+    public MemberResponse login(@Valid @RequestBody MemberLoginRequest request) {
+        return memberService.login(request);
     }
 }
