@@ -74,56 +74,37 @@
 
 Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함께 **GradCAM 오버레이 이미지**가 반환된다. 신뢰도가 임계값(`MIN_TOP1_CONFIDENCE`) 미만이면 "피부 병변 이미지로 판단하기 어렵습니다…" 안내를 반환해 오용을 방지한다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: AI 분석 결과 카드 + 히트맵                         │ -->
-<!-- │ 경로 : docs/images/screenshot-ai-analysis.png                 │ -->
-<!-- │ 화면 : Top-1 / Top-5 리스트 + confidence + 히트맵 오버레이    │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![AI Analysis Result](docs/images/screenshot-ai-analysis.png)
+<img width="302" height="418" alt="image" src="https://github.com/user-attachments/assets/47273a55-5133-4dca-a35c-ce2dfa25d6bc" />
+<img width="272" height="452" alt="image" src="https://github.com/user-attachments/assets/585c2fde-9dcf-400a-a17e-b1196d55ef6d" />
+
 
 ### 4) LLM AI 처방 코멘트
 
 주상병/부상병/접수 메모를 바탕으로 LLM이 **추천 처방 방향 1줄 + 환자 주의사항 1줄**, 정확히 2줄의 코멘트를 생성해 처방 카드에 노출한다. API 키 미설정·503 과부하 시에도 사용자 친화적 메시지를 반환한다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: Gemini AI 코멘트 영역                              │ -->
-<!-- │ 경로 : docs/images/screenshot-ai-comment.png                  │ -->
-<!-- │ 화면 : 처방 카드 안 2줄 코멘트 (약품명+코드 / 주의사항)        │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![AI Prescription Comment](docs/images/screenshot-ai-comment.png)
+<img width="570" height="771" alt="image" src="https://github.com/user-attachments/assets/ab301424-fad5-44b9-a3a6-75d5e2b3f91f" />
+
 
 ### 5) KCD / 약품 검색 모달
 
 검색 모달에서 KCD 상병코드와 약품/처방코드를 **코드 또는 한글명**으로 검색하여 선택한다. 마스터 데이터는 Spring Boot 기동 시 Excel 파일에서 자동 적재된다 (**KCD 약 2.4만 건, 약품/처방코드 약 49.6만 건 규모**).
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 검색 모달                                          │ -->
-<!-- │ 경로 : docs/images/screenshot-search-modal.png                │ -->
-<!-- │ 화면 : KCD/약품 검색 모달, 코드+명칭+선택 버튼                 │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Search Modal](docs/images/screenshot-search-modal.png)
+<img width="450" height="628" alt="image" src="https://github.com/user-attachments/assets/8f99f869-18ae-44c9-9e91-78a624a33012" />
+<img width="450" height="632" alt="image" src="https://github.com/user-attachments/assets/ed9579a8-3509-4976-8633-e868da77aa2c" />
+
 
 ### 6) 환자 / 내원 이력 조회 — `/main/lookup`
 
 차트번호, 이름, 내원일 조건을 조합해 환자를 검색한다. 환자별 내원 기록과 처방 상세를 확인한다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 조회 화면                                          │ -->
-<!-- │ 경로 : docs/images/screenshot-lookup.png                      │ -->
-<!-- │ 화면 : 환자 검색 결과 + 내원 기록 + 처방 상세                  │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Lookup Screen](docs/images/screenshot-lookup.png)
+<img width="3024" height="1938" alt="image" src="https://github.com/user-attachments/assets/fdc2c7a9-eef3-4740-a172-ff63d97e6495" />
+
 
 ### 7) 증명서 발급 화면 — `/main/certificate` *(준비 중 UI)*
 
-진단서 · 소견서 · 진료확인서 · 처방전 발급 UI 목업이 구성되어 있으며, **실제 발급 기능은 추후 구현 예정**이다.
+진단서 · 소견서 · 진료확인서 · 처방전 발급 UI 목업이 구성되어 있으며, **실제 서류 목적별 AI 생성 발급 기능은 추후 구현 예정**이다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 증명서 화면                                        │ -->
-<!-- │ 경로 : docs/images/screenshot-certificate.png                 │ -->
-<!-- │ 화면 : 발급 UI 목업 (준비중 안내가 보이게)                     │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Certificate Screen](docs/images/screenshot-certificate.png)
+<img width="1327" height="455" alt="image" src="https://github.com/user-attachments/assets/a021d5aa-02f6-4f9c-ba78-fb47da97094a" />
 
 ---
 
@@ -218,12 +199,8 @@ stateDiagram-v2
 
 ## 🏗️ 시스템 아키텍처
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 시스템 아키텍처 다이어그램                          │ -->
-<!-- │ 경로 : docs/images/architecture.png                           │ -->
-<!-- │ 도구 : Mermaid → PNG export 추천                              │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![System Architecture](docs/images/architecture.png)
+<img width="1050" height="936" alt="image" src="https://github.com/user-attachments/assets/ec888259-ec48-4aa4-9793-b6169f24e9c1" />
+
 
 ```mermaid
 flowchart LR
@@ -303,8 +280,7 @@ flowchart TD
 
 ## 🗄️ ERD / DB 설계 요약
 
-
-<img width="2303" height="863" alt="image" src="https://github.com/user-attachments/assets/62b9fc0c-d983-44df-bc02-317f829419c4" />
+<img width="2206" height="863" alt="image" src="https://github.com/user-attachments/assets/e9f5cfa2-d2b4-4a04-a1b3-68b0ed66ac7e" />
 
 
 ```mermaid
