@@ -15,8 +15,8 @@ public record PrescriptionPatientSummaryResponse(
         Gender gender,
         LocalDateTime visitDate,
         VisitStatus status,
-        Long doctorId,
-        String doctorName,
+        Long memberId,
+        String memberName,
         LocalDateTime prescribedAt
 ) {
 }

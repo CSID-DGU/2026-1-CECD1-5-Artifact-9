@@ -33,11 +33,11 @@ public class Prescription {
     @Column(name = "visit_id", nullable = false)
     private Long visitId;
 
-    @Column(name = "doctor_id", nullable = false)
-    private Long doctorId;
+    @Column(name = "member_id", nullable = false)
+    private Long memberId;
 
-    @Column(name = "doctor_name", nullable = false, length = 50)
-    private String doctorName;
+    @Column(name = "member_name", nullable = false, length = 50)
+    private String memberName;
 
     /** 어떤 AI 분석 결과를 근거로 했는지 (nullable) */
     @Column(name = "analysis_id")

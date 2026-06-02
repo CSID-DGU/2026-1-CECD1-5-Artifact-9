@@ -294,7 +294,7 @@ export default function Clinic() {
       }
 
       const saved = await savePrescription(visit.id, {
-        doctorId: user.doctorId,
+        memberId: user.memberId,
         diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
         analysisId: analysis?.analysisId ?? null,
         doctorNotes: doctorNotes.trim() || null,

@@ -2,8 +2,8 @@ package com.artifact.diagnosis.prescription;
 
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
-import com.artifact.diagnosis.doctor.Doctor;
-import com.artifact.diagnosis.doctor.DoctorRepository;
+import com.artifact.diagnosis.member.Member;
+import com.artifact.diagnosis.member.MemberRepository;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -20,14 +23,14 @@ public class PrescriptionService {
     private final PrescriptionRepository prescriptionRepository;
     private final KcdDiseaseRepository kcdDiseaseRepository;
     private final VisitRepository visitRepository;
-    private final DoctorRepository doctorRepository;
+    private final MemberRepository memberRepository;
 
     @Transactional
     public PrescriptionResponse save(Long visitId, PrescriptionRequest req) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
-        Doctor doctor = doctorRepository.findById(req.doctorId())
-                .orElseThrow(() -> new NoSuchElementException("의사를 찾을 수 없습니다: " + req.doctorId()));
+        Member member = memberRepository.findById(req.memberId())
+                .orElseThrow(() -> new NoSuchElementException("회원을 찾을 수 없습니다: " + req.memberId()));
 
         // 이미 처방이 있으면 덮어쓰기 (재처방)
         prescriptionRepository.findByVisitId(visitId)
@@ -35,8 +38,8 @@ public class PrescriptionService {
 
         Prescription prescription = Prescription.builder()
                 .visitId(visitId)
-                .doctorId(doctor.getId())
-                .doctorName(doctor.getName())
+                .memberId(member.getId())
+                .memberName(member.getName())
                 .analysisId(req.analysisId())
                 .revisitRecommendedDate(req.revisitRecommendedDate())
                 .doctorNotes(req.doctorNotes())
@@ -74,9 +77,16 @@ public class PrescriptionService {
     }
 
     private PrescriptionResponse toResponse(Prescription p) {
+        List<Long> kcdIds = p.getDiseases().stream()
+                .map(PrescriptionDisease::getKcdDiseaseId)
+                .toList();
+        Map<Long, KcdDisease> kcdMap = kcdDiseaseRepository.findAllById(kcdIds).stream()
+                .collect(Collectors.toMap(KcdDisease::getId, Function.identity()));
+
         List<PrescriptionResponse.DiseaseResponse> diseases = p.getDiseases().stream()
                 .map(d -> {
-                    KcdDisease kcd = kcdDiseaseRepository.findById(d.getKcdDiseaseId()).orElseThrow();
+                    KcdDisease kcd = kcdMap.get(d.getKcdDiseaseId());
+                    if (kcd == null) throw new NoSuchElementException("KCD 코드를 찾을 수 없습니다: " + d.getKcdDiseaseId());
                     return new PrescriptionResponse.DiseaseResponse(
                             d.getKcdDiseaseId(), kcd.getCode(), kcd.getNameKr(), d.isPrimary());
                 })
@@ -89,7 +99,7 @@ public class PrescriptionService {
                 .toList();
 
         return new PrescriptionResponse(
-                p.getId(), p.getVisitId(), p.getDoctorId(), p.getDoctorName(), diseases,
+                p.getId(), p.getVisitId(), p.getMemberId(), p.getMemberName(), diseases,
                 p.getAnalysisId(), p.getPrescribedAt(),
                 p.getRevisitRecommendedDate(), p.getDoctorNotes(), details
         );
@@ -100,6 +110,6 @@ public class PrescriptionService {
             Long doctorId, java.time.LocalDate from, java.time.LocalDate to) {
         java.time.LocalDateTime start = from.atStartOfDay();
         java.time.LocalDateTime end = to.plusDays(1).atStartOfDay();
-        return prescriptionRepository.findPatientSummariesByDoctorIdAndVisitDateRange(doctorId, start, end);
+        return prescriptionRepository.findPatientSummariesByMemberIdAndVisitDateRange(doctorId, start, end);
     }
 }

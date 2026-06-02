@@ -1,15 +1,17 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { apiRequest } from "../api/client";
+import { STORAGE_KEYS } from "../constants";
 
-export interface Doctor {
-  doctorId: number;
+export interface Member {
+  memberId: number;
   loginId: string;
   name: string;
+  role: string;
 }
 
 interface AuthContextType {
-  user: Doctor | null;
+  user: Member | null;
   login: (loginId: string, password: string) => Promise<boolean>;
   signup: (payload: SignupPayload) => Promise<boolean>;
   logout: () => void;
@@ -17,32 +19,37 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = "his_doctor";
+export function getToken(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.TOKEN);
+}
 
 export type SignupPayload = {
   loginId: string;
   password: string;
   name: string;
+  role?: string;
   licenseNumber?: string | null;
   department?: string | null;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Doctor | null>(null);
+  const [user, setUser] = useState<Member | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEYS.USER);
     if (saved) setUser(JSON.parse(saved));
   }, []);
 
   const login = async (loginId: string, password: string): Promise<boolean> => {
     try {
-      const doctor = await apiRequest<Doctor>("/api/v1/auth/login", {
+      const res = await apiRequest<Member & { token: string }>("/api/v1/auth/login", {
         method: "POST",
         body: JSON.stringify({ loginId, password }),
       });
-      setUser(doctor);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(doctor));
+      const { token, ...member } = res;
+      setUser(member);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(member));
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
       return true;
     } catch {
       return false;
@@ -51,12 +58,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signup = async (payload: SignupPayload): Promise<boolean> => {
     try {
-      const doctor = await apiRequest<Doctor>("/api/v1/auth/signup", {
+      const res = await apiRequest<Member & { token: string }>("/api/v1/auth/signup", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setUser(doctor);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(doctor));
+      const { token, ...member } = res;
+      setUser(member);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(member));
+      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
       return true;
     } catch {
       return false;
@@ -65,7 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
   };
 
   return (
