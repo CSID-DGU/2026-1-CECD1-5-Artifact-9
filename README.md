@@ -208,7 +208,7 @@ stateDiagram-v2
 9. Top-1 / Top-5 후보 + GradCAM 오버레이가 저장된다(`ANALYZING → ANALYZED`).
 10. 의료진이 결과를 참고해 KCD **주상병**(필수) + **부상병**(선택)을 검색·확정한다(`ANALYZED → DIAGNOSED`).
 11. 약품/처방코드를 검색해 다중 약품 처방(용법·기간·주의사항)을 입력한다.
-12. (옵션) **Gemini AI 처방 코멘트** 를 생성해 작성을 보조받는다.
+12. (옵션) **LLM AI 처방 코멘트** 를 생성해 작성을 보조받는다.
 13. 처방을 저장한다(`DIAGNOSED → PRESCRIBED`).
 14. 진료를 완료한다(`PRESCRIBED → COMPLETED`).
 15. 조회 화면에서 환자별 내원·처방 이력을 확인한다.
