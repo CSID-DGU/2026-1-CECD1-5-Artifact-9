@@ -17,8 +17,9 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
 </div>
+<img width="1280" height="320" alt="artifact-banner" src="https://github.com/user-attachments/assets/7ca7c28e-f22a-45ae-9cf2-f85810eff4c0" />
 
-![Artifact Medical AI Banner](docs/images/readme-banner.png)
+
 
 > ⚠️ **본 시스템은 의료진의 의사결정을 보조하는 prototype이며, 실제 의료 진단을 대체하지 않습니다.**
 > AI는 단일 정답이 아니라 **Top-5 후보 질환**을 제시하고, 최종 진단·상병코드·처방 결정은 항상 의료진이 수행합니다.
