@@ -125,8 +125,8 @@ export default function Clinic() {
 
   const canUploadImage = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
   const canAnalyze = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
-  // 처방 폼: 분석완료(ANALYZED) 또는 진단완료(DIAGNOSED) 상태에서 바로 표시
-  const canPrescribe = selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED";
+  // 처방 폼: 진료중(IN_PROGRESS) 이후 상태에서 표시
+  const canPrescribe = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED";
 
   // ── 목록 로드 ────────────────────────────────────────────────────
   async function loadVisitLists() {
@@ -736,8 +736,8 @@ export default function Clinic() {
             </div>
           </Card>
 
-          {/* 처방 카드 — 분석완료(ANALYZED) 이후 바로 표시, 진단확정 버튼 없음 */}
-          {selectedVisit && ["ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"].includes(selectedVisit.status) && (
+          {/* 처방 카드 — 진료중(IN_PROGRESS) 이후 바로 표시 */}
+          {selectedVisit && ["IN_PROGRESS", "ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"].includes(selectedVisit.status) && (
             <Card title="처방" className="min-h-0 flex-1" contentClassName="!p-2">
               <div className="flex flex-col gap-2">
 
