@@ -81,7 +81,7 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 <!-- └─────────────────────────────────────────────────────────────┘ -->
 ![AI Analysis Result](docs/images/screenshot-ai-analysis.png)
 
-### 4) Gemini AI 처방 코멘트
+### 4) LLM AI 처방 코멘트
 
 주상병/부상병/접수 메모를 바탕으로 LLM이 **추천 처방 방향 1줄 + 환자 주의사항 1줄**, 정확히 2줄의 코멘트를 생성해 처방 카드에 노출한다. API 키 미설정·503 과부하 시에도 사용자 친화적 메시지를 반환한다.
 
