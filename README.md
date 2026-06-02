@@ -51,8 +51,8 @@
 
 직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 초기 테스트 계정은 `admin / 1234` 이다.
 
-<img width="434" height="466" alt="로그인" src="https://github.com/user-attachments/assets/00aa036a-1ad2-4ed7-a560-374a4890e958" />
-<img width="428" height="598" alt="회원가입" src="https://github.com/user-attachments/assets/9cd12b9f-10a8-4a49-a585-a4ca1ea80206" />
+<img width="400" height="466" alt="로그인" src="https://github.com/user-attachments/assets/00aa036a-1ad2-4ed7-a560-374a4890e958" />
+<img width="400" height="598" alt="회원가입" src="https://github.com/user-attachments/assets/9cd12b9f-10a8-4a49-a585-a4ca1ea80206" />
 
 
 
@@ -89,8 +89,8 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 
 검색 모달에서 KCD 상병코드와 약품/처방코드를 **코드 또는 한글명**으로 검색하여 선택한다. 마스터 데이터는 Spring Boot 기동 시 Excel 파일에서 자동 적재된다 (**KCD 약 2.4만 건, 약품/처방코드 약 49.6만 건 규모**).
 
-<img width="450" height="628" alt="image" src="https://github.com/user-attachments/assets/8f99f869-18ae-44c9-9e91-78a624a33012" />
-<img width="450" height="632" alt="image" src="https://github.com/user-attachments/assets/ed9579a8-3509-4976-8633-e868da77aa2c" />
+<img width="400" height="628" alt="image" src="https://github.com/user-attachments/assets/8f99f869-18ae-44c9-9e91-78a624a33012" />
+<img width="400" height="632" alt="image" src="https://github.com/user-attachments/assets/ed9579a8-3509-4976-8633-e868da77aa2c" />
 
 
 ### 6) 환자 / 내원 이력 조회 — `/main/lookup`
