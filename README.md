@@ -51,34 +51,24 @@
 
 직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 초기 테스트 계정은 `admin / 1234` 이다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 로그인/회원가입 화면                                │ -->
-<!-- │ 경로 : docs/images/screenshot-login.png                       │ -->
-<!-- │ 화면 : 로그인/회원가입 탭 토글, 직책 선택 dropdown 보이게      │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Login Screen](docs/images/screenshot-login.png)
+<img width="434" height="466" alt="로그인" src="https://github.com/user-attachments/assets/00aa036a-1ad2-4ed7-a560-374a4890e958" />
+<img width="428" height="598" alt="회원가입" src="https://github.com/user-attachments/assets/9cd12b9f-10a8-4a49-a585-a4ca1ea80206" />
+
+
 
 ### 1) 환자 등록 및 접수 생성 — `/main`
 
 접수 화면에서 환자 정보를 등록하면 동시에 내원(Visit)이 생성되고, 진료대기/진료완료 현황이 한눈에 표시된다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 접수 화면                                          │ -->
-<!-- │ 경로 : docs/images/screenshot-reception.png                   │ -->
-<!-- │ 화면 : 환자정보 입력 폼 + 진료 현황 테이블 + 최근 접수         │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Reception Screen](docs/images/screenshot-reception.png)
+<img width="1277" height="556" alt="image" src="https://github.com/user-attachments/assets/c51559de-2d54-4cb2-b502-cdb0069a7daf" />
+
 
 ### 2) 진료 · AI 분석 · 처방 — `/main/clinic`
 
 접수된 환자를 선택해 진료를 시작하고, 피부 병변 이미지를 업로드한 뒤 AI 분석을 요청한다. Top-5 후보와 **GradCAM 히트맵**이 함께 표시되며, 의료진은 결과를 참고해 KCD 상병(주/부상병)과 약품 처방을 입력한다. 처방 작성 직전 **Gemini AI 처방 코멘트(2줄)** 를 생성해 작성을 보조한다.
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: 진료 메인 화면                                      │ -->
-<!-- │ 경로 : docs/images/screenshot-clinic.png                      │ -->
-<!-- │ 화면 : 환자 정보 + 이미지 업로드/선택 + AI 분석 결과 + 처방   │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Clinic Screen](docs/images/screenshot-clinic.png)
+<img width="2570" height="1904" alt="image" src="https://github.com/user-attachments/assets/daae55c2-ecbc-49e3-83c5-e69ef8c30efe" />
+
 
 ### 3) AI 분석 결과 + GradCAM 설명 히트맵
 
@@ -139,22 +129,22 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 
 ## ✨ 핵심 기능
 
-### 🔐 JWT 기반 인증 · 역할 관리 (구현됨, 신규)
+### JWT 기반 인증 · 역할 관리 
 
 - BCrypt로 해시된 비밀번호로 회원가입/로그인하고, 발급된 JWT를 모든 API 호출에 `Authorization: Bearer …` 헤더로 첨부한다.
 - 역할(`MemberRole`): `DOCTOR`, `NURSE`, `STAFF`, `ADMIN`
 - Spring Security + 커스텀 `JwtFilter`로 stateless 인증을 구성한다.
 - 기본 테스트 계정: `admin / 1234`
 
-### 🔬 AI 피부 병변 분석 + GradCAM 설명 히트맵 (구현됨, 신규)
+### AI 피부 병변 분석 + GradCAM 설명 히트맵 
 
 업로드 이미지를 EfficientNet-B0 모델로 분석하여 **Top-1 / Top-5 후보 질환 + confidence + inference time + model version** 을 반환한다. 동시에 **GradCAM 오버레이 이미지(JPEG)** 를 함께 생성·저장해 의료진이 "AI가 어디를 보고 판단했는지"를 시각적으로 확인할 수 있다. GradCAM은 cv2/grad-cam 라이브러리 의존 없이 **순수 PyTorch + Pillow** 로 구현되어 컨테이너 이미지가 가볍다.
 
-### 💬 Gemini LLM 처방 코멘트 (구현됨, 신규)
+### LLM 처방 코멘트 
 
 처방 작성 직전 `POST /api/v1/visits/{visitId}/prescription/comment` 호출 시, 백엔드가 **주상병/부상병/접수 메모**와 **DB의 피부 치료 약품 풀(연고·크림 10개)** 을 프롬프트로 조합해 Gemini API에 요청한다. 응답은 **정확히 2줄** 로 파싱된다(약품명+코드 포함 처방 방향, 환자 주의사항). 503 과부하에 대해서는 1초·2초 간격으로 최대 3회 자동 재시도한다.
 
-### 🧭 8-state Visit State Machine (구현됨)
+### 8-state Visit State Machine
 
 진료 진행은 도메인 엔티티(`Visit`)에 캡슐화된 상태머신으로 관리된다. 잘못된 순서의 호출은 `IllegalStateException`으로 거부된다.
 
@@ -186,7 +176,7 @@ stateDiagram-v2
     CANCELLED --> [*]
 ```
 
-### 📋 진료 워크플로우 (구현됨)
+### 진료 워크플로우
 
 | 영역 | 기능 |
 | --- | --- |
@@ -197,7 +187,7 @@ stateDiagram-v2
 | 의사별 조회 | `doctorId + from~to` 기간으로 의사별 환자 처방 이력 조회 |
 | 증명서 | 발급 UI 목업 *(실제 발급 예정)* |
 
-### 🔎 KCD 상병코드 / 약품코드 검색 (구현됨)
+### KCD 상병코드 / 약품코드 검색 
 
 - KCD 상병코드: **약 50,941행 / 고유 24,328건** (`상병코드`, `상병명`, `상병명 영문`)
 - 처방(약품) 코드: **약 505,968행 / 고유 496,148건** (`처방코드`, `처방명`, `처방명 영문`)
@@ -313,12 +303,9 @@ flowchart TD
 
 ## 🗄️ ERD / DB 설계 요약
 
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: ERD                                                │ -->
-<!-- │ 경로 : docs/images/database-erd.png                           │ -->
-<!-- │ 도구 : Mermaid → PNG export 추천                              │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Database ERD](docs/images/database-erd.png)
+
+<img width="2303" height="863" alt="image" src="https://github.com/user-attachments/assets/62b9fc0c-d983-44df-bc02-317f829419c4" />
+
 
 ```mermaid
 erDiagram
@@ -441,7 +428,7 @@ npm run dev
 | Frontend | `http://localhost:5173` |
 | Backend | `http://localhost:8080` |
 | FastAPI | `http://localhost:8000` |
-| Swagger / OpenAPI | `http://localhost:8080/swagger-ui/index.html` |
+| Swagger | `http://localhost:8080/swagger-ui/index.html` |
 
 ### 기본 테스트 계정
 
@@ -631,5 +618,4 @@ JWT_EXPIRATION_MS=86400000
 - 본 프로젝트는 **동국대학교 종합설계(캡스톤디자인)** 과정에서 EMR 솔루션 전문 기업 **비트컴퓨터(Bitcomputer)** 와의 산학 협력으로 진행되었다.
 - 사용된 KCD 상병코드 및 약품/처방코드 마스터 데이터는 학습/연구 목적의 데모용이며, 라이선스 및 사용 범위는 원 데이터 제공처의 정책을 따른다.
 - HAM10000 등 공개 데이터셋은 각 데이터셋의 라이선스 및 DUA(Data Use Agreement)를 준수한다.
-- 본 README의 화면 캡처/다이어그램은 `docs/images/` 경로의 이미지로 대체된다.
 - Gemini API 사용 시 Google Cloud / Generative Language API의 요금 및 정책을 준수한다.
