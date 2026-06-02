@@ -10,6 +10,8 @@ import java.util.List;
 public record PrescriptionResponse(
         Long prescriptionId,
         Long visitId,
+        Long doctorId,
+        String doctorName,
         List<DiseaseResponse> diseases,
         Long analysisId,
         LocalDateTime prescribedAt,

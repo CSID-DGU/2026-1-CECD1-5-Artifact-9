@@ -9,6 +9,7 @@
 --   v0.4: visit 상태 IN_PROGRESS 추가, image_url 제거
 --         visit_image / analysis_image / kcd_disease / drug_master 추가
 --         prescription → kcd_disease_id, prescription_detail → drug_id
+--   v0.5: doctor 테이블 및 prescription 작성 의사 스냅샷 추가
 -- =====================================================================
 
 CREATE DATABASE IF NOT EXISTS artifact_db
@@ -16,6 +17,26 @@ CREATE DATABASE IF NOT EXISTS artifact_db
   DEFAULT COLLATE utf8mb4_unicode_ci;
 
 USE artifact_db;
+
+-- ---------------------------------------------------------------------
+-- 0. 의사 계정 (doctor)
+-- ---------------------------------------------------------------------
+CREATE TABLE doctor (
+    doctor_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '의사ID (PK)',
+    login_id       VARCHAR(50)  NOT NULL                COMMENT '로그인 ID',
+    password       VARCHAR(100) NOT NULL                COMMENT '비밀번호',
+    name           VARCHAR(50)  NOT NULL                COMMENT '의사명',
+    license_number VARCHAR(50)  NULL                    COMMENT '의사 면허번호',
+    department     VARCHAR(100) NULL                    COMMENT '진료과',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (doctor_id),
+    UNIQUE KEY uk_doctor_login_id (login_id),
+    UNIQUE KEY uk_doctor_license_number (license_number)
+) ENGINE=InnoDB COMMENT='의사 계정';
+
+INSERT INTO doctor (login_id, password, name, license_number, department) VALUES
+  ('admin', '1234', '관리 의사', 'TEST-0001', '피부과');
 
 -- ---------------------------------------------------------------------
 -- 1. 환자정보 (patient)
@@ -150,6 +171,8 @@ CREATE TABLE analysis_image (
 CREATE TABLE prescription (
     prescription_id        BIGINT   NOT NULL AUTO_INCREMENT COMMENT '처방ID (PK)',
     visit_id               BIGINT   NOT NULL                COMMENT '접수ID (FK)',
+    doctor_id              BIGINT   NOT NULL                COMMENT '작성 의사ID (FK)',
+    doctor_name            VARCHAR(50) NOT NULL             COMMENT '처방 당시 의사명 스냅샷',
     analysis_id            BIGINT   NULL                    COMMENT '근거 AI 분석ID (FK, nullable)',
     prescribed_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '처방시각',
     revisit_recommended_date DATE   NULL                    COMMENT '재내원 권장일',
@@ -157,8 +180,10 @@ CREATE TABLE prescription (
     created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (prescription_id),
     CONSTRAINT fk_presc_visit    FOREIGN KEY (visit_id)       REFERENCES visit(visit_id),
+    CONSTRAINT fk_presc_doctor   FOREIGN KEY (doctor_id)      REFERENCES doctor(doctor_id),
     CONSTRAINT fk_presc_analysis FOREIGN KEY (analysis_id)    REFERENCES analysis_result(analysis_id),
-    INDEX idx_presc_visit (visit_id)
+    INDEX idx_presc_visit (visit_id),
+    INDEX idx_presc_doctor_date (doctor_id, prescribed_at)
 ) ENGINE=InnoDB COMMENT='최종 처방 헤더';
 
 CREATE TABLE prescription_disease (

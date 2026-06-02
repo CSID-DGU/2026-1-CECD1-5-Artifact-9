@@ -2,6 +2,8 @@ package com.artifact.diagnosis.prescription;
 
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
+import com.artifact.diagnosis.doctor.Doctor;
+import com.artifact.diagnosis.doctor.DoctorRepository;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,11 +20,14 @@ public class PrescriptionService {
     private final PrescriptionRepository prescriptionRepository;
     private final KcdDiseaseRepository kcdDiseaseRepository;
     private final VisitRepository visitRepository;
+    private final DoctorRepository doctorRepository;
 
     @Transactional
     public PrescriptionResponse save(Long visitId, PrescriptionRequest req) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
+        Doctor doctor = doctorRepository.findById(req.doctorId())
+                .orElseThrow(() -> new NoSuchElementException("의사를 찾을 수 없습니다: " + req.doctorId()));
 
         // 이미 처방이 있으면 덮어쓰기 (재처방)
         prescriptionRepository.findByVisitId(visitId)
@@ -30,6 +35,8 @@ public class PrescriptionService {
 
         Prescription prescription = Prescription.builder()
                 .visitId(visitId)
+                .doctorId(doctor.getId())
+                .doctorName(doctor.getName())
                 .analysisId(req.analysisId())
                 .revisitRecommendedDate(req.revisitRecommendedDate())
                 .doctorNotes(req.doctorNotes())
@@ -82,9 +89,17 @@ public class PrescriptionService {
                 .toList();
 
         return new PrescriptionResponse(
-                p.getId(), p.getVisitId(), diseases,
+                p.getId(), p.getVisitId(), p.getDoctorId(), p.getDoctorName(), diseases,
                 p.getAnalysisId(), p.getPrescribedAt(),
                 p.getRevisitRecommendedDate(), p.getDoctorNotes(), details
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<PrescriptionPatientSummaryResponse> findPatientsByDoctorAndDate(
+            Long doctorId, java.time.LocalDate from, java.time.LocalDate to) {
+        java.time.LocalDateTime start = from.atStartOfDay();
+        java.time.LocalDateTime end = to.plusDays(1).atStartOfDay();
+        return prescriptionRepository.findPatientSummariesByDoctorIdAndVisitDateRange(doctorId, start, end);
     }
 }

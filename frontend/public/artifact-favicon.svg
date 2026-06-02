@@ -1,0 +1,8 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Artifact">
+  <rect width="64" height="64" rx="16" fill="#2563EB"/>
+  <polyline points="8,34 22,34 27,18 34,49 39,31 56,31" fill="none" stroke="#EAF2FF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="8" cy="34" r="2.2" fill="#EAF2FF"/>
+  <circle cx="56" cy="31" r="2.2" fill="#EAF2FF"/>
+  <circle cx="34" cy="49" r="2.7" fill="#EAF2FF"/>
+  <circle cx="27" cy="18" r="4" fill="#93C5FD"/>
+</svg>

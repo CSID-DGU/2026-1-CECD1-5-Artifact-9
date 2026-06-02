@@ -11,6 +11,10 @@ import java.util.List;
 @Schema(description = "처방 저장 요청")
 public record PrescriptionRequest(
 
+        @NotNull
+        @Schema(description = "처방 작성 의사 ID", example = "1")
+        Long doctorId,
+
         @NotEmpty
         @Valid
         @Schema(description = "상병 목록 (주상병 1개 + 부상병 n개)")
