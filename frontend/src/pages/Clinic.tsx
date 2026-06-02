@@ -12,30 +12,40 @@ import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 
+const DISEASE_TO_KCD_CODE: Record<string, string> = {
+  nv:    'D22',
+  mel:   'C43',
+  bkl:   'L82',
+  bcc:   'C44',
+  akiec: 'L57.0',
+  df:    'D23',
+  vasc:  'D18',
+};
+
 const STATUS_LABELS: Record<VisitStatus, string> = {
-  RECEIVED:   "접수",
-  IN_PROGRESS:"진료중",
-  ANALYZING:  "분석중",
-  ANALYZED:   "분석완료",
-  DIAGNOSED:  "진단완료",
+  RECEIVED: "접수",
+  IN_PROGRESS: "진료중",
+  ANALYZING: "분석중",
+  ANALYZED: "분석완료",
+  DIAGNOSED: "진단완료",
   PRESCRIBED: "처방완료",
-  COMPLETED:  "진료완료",
-  CANCELLED:  "취소",
+  COMPLETED: "진료완료",
+  CANCELLED: "취소",
 };
 
 const STATUS_COLORS: Record<VisitStatus, string> = {
-  RECEIVED:   "bg-orange-500/20 text-orange-300",
-  IN_PROGRESS:"bg-blue-500/20 text-blue-300",
-  ANALYZING:  "bg-yellow-500/20 text-yellow-300",
-  ANALYZED:   "bg-purple-500/20 text-purple-300",
-  DIAGNOSED:  "bg-indigo-500/20 text-indigo-300",
+  RECEIVED: "bg-orange-500/20 text-orange-300",
+  IN_PROGRESS: "bg-blue-500/20 text-blue-300",
+  ANALYZING: "bg-yellow-500/20 text-yellow-300",
+  ANALYZED: "bg-purple-500/20 text-purple-300",
+  DIAGNOSED: "bg-indigo-500/20 text-indigo-300",
   PRESCRIBED: "bg-green-500/20 text-green-300",
-  COMPLETED:  "bg-gray-500/20 text-gray-400",
-  CANCELLED:  "bg-red-500/20 text-red-300",
+  COMPLETED: "bg-gray-500/20 text-gray-400",
+  CANCELLED: "bg-red-500/20 text-red-300",
 };
 
 // 진료대기: 아직 의사 액션 필요 / 진료완료: 처방 이후만
-const WAITING_STATUSES: VisitStatus[]  = ["RECEIVED", "IN_PROGRESS", "ANALYZING", "ANALYZED", "DIAGNOSED"];
+const WAITING_STATUSES: VisitStatus[] = ["RECEIVED", "IN_PROGRESS", "ANALYZING", "ANALYZED", "DIAGNOSED"];
 const COMPLETED_STATUSES: VisitStatus[] = ["PRESCRIBED", "COMPLETED"];
 
 function formatDateTime(value?: string) {
@@ -70,17 +80,17 @@ function getErrorMessage(error: unknown) {
 
 export default function Clinic() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab]     = useState<"대기" | "완료">("대기");
-  const [waitingVisits, setWaiting]   = useState<Visit[]>([]);
+  const [activeTab, setActiveTab] = useState<"대기" | "완료">("대기");
+  const [waitingVisits, setWaiting] = useState<Visit[]>([]);
   const [completedVisits, setCompleted] = useState<Visit[]>([]);
-  const [patientNameMap, setNameMap]  = useState<Map<number, string>>(new Map());
-  const [selectedVisit, setSelectedVisit]   = useState<Visit | null>(null);
+  const [patientNameMap, setNameMap] = useState<Map<number, string>>(new Map());
+  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [images, setImages]           = useState<VisitImage[]>([]);
+  const [images, setImages] = useState<VisitImage[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl]   = useState<string | null>(null);
-  const [analysis, setAnalysis]       = useState<AnalysisResponse | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
 
   // 분석 결과 상세 토글
@@ -93,14 +103,14 @@ export default function Clinic() {
   type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean; sourceDiseaseCode?: string };
   const [selectedKcds, setSelectedKcds] = useState<SelectedKcd[]>([]);
   const [selectedDrug, setSelectedDrug] = useState<SearchItem | null>(null);
-  const [drugDosage, setDrugDosage]     = useState("");
-  const [drugDays, setDrugDays]         = useState("");
-  const [doctorNotes, setDoctorNotes]   = useState("");
+  const [drugDosage, setDrugDosage] = useState("");
+  const [drugDays, setDrugDays] = useState("");
+  const [doctorNotes, setDoctorNotes] = useState("");
   const [selectedAnalysisCandidateCodes, setSelectedAnalysisCandidateCodes] = useState<string[]>([]);
   const [resolvingCandidateCode, setResolvingCandidateCode] = useState<string | null>(null);
 
   // 모달
-  const [isKcdModalOpen, setKcdModalOpen]   = useState(false);
+  const [isKcdModalOpen, setKcdModalOpen] = useState(false);
   const [isDrugModalOpen, setDrugModalOpen] = useState(false);
 
   // AI 처방 코멘트
@@ -108,15 +118,15 @@ export default function Clinic() {
   const [isCommentLoading, setIsCommentLoading] = useState(false);
 
   // 로딩 / 메시지
-  const [isLoading, setIsLoading]         = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
-  const [message, setMessage]             = useState<string | null>(null);
-  const [errorMessage, setErrorMessage]   = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const canUploadImage = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
-  const canAnalyze     = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
+  const canAnalyze = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
   // 처방 폼: 분석완료(ANALYZED) 또는 진단완료(DIAGNOSED) 상태에서 바로 표시
-  const canPrescribe   = selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED";
+  const canPrescribe = selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED";
 
   // ── 목록 로드 ────────────────────────────────────────────────────
   async function loadVisitLists() {
@@ -124,19 +134,19 @@ export default function Clinic() {
     setErrorMessage(null);
     try {
       const allGroups = await Promise.all([
-        ...WAITING_STATUSES.map((s)  => listVisits(s)),
+        ...WAITING_STATUSES.map((s) => listVisits(s)),
         ...COMPLETED_STATUSES.map((s) => listVisits(s)),
       ]);
-      const waiting   = allGroups.slice(0, WAITING_STATUSES.length).flat();
+      const waiting = allGroups.slice(0, WAITING_STATUSES.length).flat();
       const completed = allGroups.slice(WAITING_STATUSES.length).flat();
       setWaiting(waiting);
       setCompleted(completed);
 
       // 이름 일괄 조회
-      const allVisits  = [...waiting, ...completed];
-      const uniqueIds  = [...new Set(allVisits.map((v) => v.patientId))];
-      const patients   = await Promise.all(uniqueIds.map((id) => getPatient(id).catch(() => null)));
-      const nameMap    = new Map<number, string>();
+      const allVisits = [...waiting, ...completed];
+      const uniqueIds = [...new Set(allVisits.map((v) => v.patientId))];
+      const patients = await Promise.all(uniqueIds.map((id) => getPatient(id).catch(() => null)));
+      const nameMap = new Map<number, string>();
       uniqueIds.forEach((id, i) => { if (patients[i]) nameMap.set(id, patients[i]!.name); });
       setNameMap(nameMap);
     } catch (error) {
@@ -203,12 +213,12 @@ export default function Clinic() {
   const activeVisits = activeTab === "대기" ? waitingVisits : completedVisits;
 
   const currentPatientInfo = useMemo(() => [
-    ["이름",     selectedPatient?.name ? <span key="n" className="font-semibold">{selectedPatient.name}</span> : "-"],
+    ["이름", selectedPatient?.name ? <span key="n" className="font-semibold">{selectedPatient.name}</span> : "-"],
     ["환자번호", selectedPatient ? `P${String(selectedPatient.id).padStart(5, "0")}` : "-"],
-    ["나이",     calculateAge(selectedPatient?.birthDate)],
-    ["성별",     formatGender(selectedPatient?.gender)],
-    ["연락처",   selectedPatient?.phone ?? "-"],
-    ["메모",     selectedPatient?.memo ?? "-"],
+    ["나이", calculateAge(selectedPatient?.birthDate)],
+    ["성별", formatGender(selectedPatient?.gender)],
+    ["연락처", selectedPatient?.phone ?? "-"],
+    ["메모", selectedPatient?.memo ?? "-"],
     ["접수번호", selectedVisit ? `V${String(selectedVisit.id).padStart(5, "0")}` : "-"],
     ["현재상태", selectedVisit ? STATUS_LABELS[selectedVisit.status] : "-"],
   ], [selectedPatient, selectedVisit]);
@@ -286,11 +296,11 @@ export default function Clinic() {
       const saved = await savePrescription(visit.id, {
         doctorId: user.doctorId,
         diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
-        analysisId:   analysis?.analysisId ?? null,
-        doctorNotes:  doctorNotes.trim() || null,
+        analysisId: analysis?.analysisId ?? null,
+        doctorNotes: doctorNotes.trim() || null,
         details: [{
           medicineName: selectedDrug.nameKr,
-          dosage:       drugDosage.trim() || null,
+          dosage: drugDosage.trim() || null,
           durationDays: drugDays ? Number(drugDays) : null,
         }],
       });
@@ -360,6 +370,32 @@ export default function Clinic() {
         ?? result.content[0];
 
       if (!matched) {
+        const fallbackCode = DISEASE_TO_KCD_CODE[item.diseaseCode];
+        if (fallbackCode) {
+          const fallbackResult = await searchKcdDiseases(fallbackCode, 5);
+          const fallbackMatched = fallbackResult.content.find(d => d.code === fallbackCode)
+            ?? fallbackResult.content[0];
+          if (fallbackMatched) {
+            setSelectedKcds((prev) => {
+              if (prev.some((kcd) => kcd.id === fallbackMatched.id)) {
+                return prev.map((kcd) =>
+                  kcd.id === fallbackMatched.id
+                    ? { ...kcd, sourceDiseaseCode: item.diseaseCode }
+                    : kcd
+                );
+              }
+              const isFirst = prev.length === 0;
+              return [...prev, {
+                id: fallbackMatched.id,
+                code: fallbackMatched.code,
+                nameKr: fallbackMatched.nameKr,
+                isPrimary: isFirst,
+                sourceDiseaseCode: item.diseaseCode,
+              }];
+            });
+            return;
+          }
+        }
         setMessage(`${item.diseaseNameKo} 후보를 선택했습니다. 매칭되는 KCD 상병코드는 상병코드 검색으로 직접 추가해 주세요.`);
         return;
       }
@@ -450,9 +486,8 @@ export default function Clinic() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                    activeTab === tab ? "bg-blue-600 text-white font-bold" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                  }`}
+                  className={`px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${activeTab === tab ? "bg-blue-600 text-white font-bold" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+                    }`}
                 >
                   {tab === "대기" ? "진료대기" : "진료완료"}
                 </button>
@@ -479,13 +514,12 @@ export default function Clinic() {
                   onClick: () => loadVisitDetail(visit.id),
                   onDoubleClick: () => handleVisitRowDoubleClick(visit),
                   title: canStartByDoubleClick ? "더블클릭하면 진료를 시작합니다." : "클릭하면 진료 상세를 확인합니다.",
-                  className: `cursor-pointer ${
-                    isSelected
+                  className: `cursor-pointer ${isSelected
                       ? "bg-blue-500/10 outline outline-1 outline-blue-500/40"
                       : canStartByDoubleClick
                         ? "hover:bg-blue-500/10"
                         : ""
-                  }`,
+                    }`,
                 };
               }}
             />
@@ -494,9 +528,8 @@ export default function Clinic() {
           <Card title="선택 내원 이미지 및 업로드" className="min-h-0 flex-1" contentClassName="!p-2">
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${
-                  canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                }`}>
+                <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                  }`}>
                   파일 선택
                   <input
                     type="file" accept="image/*"
@@ -545,9 +578,8 @@ export default function Clinic() {
                       <button
                         key={image.imageId}
                         onClick={() => toggleSelectedImage(image.imageId)}
-                        className={`overflow-hidden rounded border text-left transition-colors ${
-                          selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
-                        }`}
+                        className={`overflow-hidden rounded border text-left transition-colors ${selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
+                          }`}
                       >
                         <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-20 w-full object-cover" />
                         <div className="px-2 py-1 text-[10px] text-gray-300">
@@ -590,9 +622,9 @@ export default function Clinic() {
                     const hasHeatmap = !!analysis.heatmapImageUrl;
 
                     const buttonLabel =
-                      imageViewMode === "none"     ? "분석 이미지" :
-                      imageViewMode === "original" ? (hasHeatmap ? "히트맵 보기" : "이미지 닫기") :
-                                                     "원본 이미지";
+                      imageViewMode === "none" ? "분석 이미지" :
+                        imageViewMode === "original" ? (hasHeatmap ? "히트맵 보기" : "이미지 닫기") :
+                          "원본 이미지";
 
                     const buttonColor =
                       imageViewMode === "heatmap"
@@ -600,9 +632,9 @@ export default function Clinic() {
                         : "bg-gray-700 hover:bg-gray-600 text-gray-200";
 
                     const handleClick = () => {
-                      if (imageViewMode === "none")          setImageViewMode("original");
+                      if (imageViewMode === "none") setImageViewMode("original");
                       else if (imageViewMode === "original") setImageViewMode(hasHeatmap ? "heatmap" : "none");
-                      else                                   setImageViewMode("original");
+                      else setImageViewMode("original");
                     };
 
                     // src만 바뀌고 <img> 태그는 유지 → 동일 위치·동일 크기 보장
@@ -942,12 +974,12 @@ export default function Clinic() {
           {/* 진료정보 */}
           <Card title="진료정보" className="shrink-0" contentClassName="!p-2">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              <InfoItem label="접수번호"    value={selectedVisit  ? `V${String(selectedVisit.id).padStart(5, "0")}` : "-"} />
-              <InfoItem label="환자번호"    value={selectedPatient ? `P${String(selectedPatient.id).padStart(5, "0")}` : "-"} />
-              <InfoItem label="접수시간"    value={formatDateTime(selectedVisit?.visitDate)} />
-              <InfoItem label="진료상태"    value={selectedVisit ? STATUS_LABELS[selectedVisit.status] : "-"} />
+              <InfoItem label="접수번호" value={selectedVisit ? `V${String(selectedVisit.id).padStart(5, "0")}` : "-"} />
+              <InfoItem label="환자번호" value={selectedPatient ? `P${String(selectedPatient.id).padStart(5, "0")}` : "-"} />
+              <InfoItem label="접수시간" value={formatDateTime(selectedVisit?.visitDate)} />
+              <InfoItem label="진료상태" value={selectedVisit ? STATUS_LABELS[selectedVisit.status] : "-"} />
               <InfoItem label="업로드 이미지" value={images.length > 0 ? `${images.length}장` : "-"} />
-              <InfoItem label="분석 결과"   value={analysis ? `${analysis.top5.length}개 후보` : "-"} />
+              <InfoItem label="분석 결과" value={analysis ? `${analysis.top5.length}개 후보` : "-"} />
             </div>
           </Card>
         </section>
