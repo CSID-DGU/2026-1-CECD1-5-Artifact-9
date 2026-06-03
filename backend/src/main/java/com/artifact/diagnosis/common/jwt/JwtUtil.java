@@ -9,6 +9,11 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.util.Date;
 
+/**
+ * JWT 생성/검증 유틸.
+ * generate: memberId·loginId·role 을 클레임으로 담아 서명 토큰 발급.
+ * parse:    토큰 검증 후 Claims 반환 — 서명 불일치·만료 시 예외 발생.
+ */
 @Component
 public class JwtUtil {
 

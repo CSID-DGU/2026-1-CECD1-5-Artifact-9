@@ -6,8 +6,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * CORS 설정.
- * 학기 1: 모든 origin 허용 (로컬 개발 편의).
- * 학기 2: 실제 프론트 도메인만 허용하도록 좁힐 것.
+ * 현재: 모든 origin 허용 (로컬 개발 환경).
+ * 배포 시: allowedOrigins 을 실제 프론트 도메인으로 제한할 것.
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {

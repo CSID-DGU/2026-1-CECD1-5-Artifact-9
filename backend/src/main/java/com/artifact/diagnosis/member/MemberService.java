@@ -6,6 +6,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 회원 가입/로그인 서비스.
+ * 비밀번호는 BCrypt 해시로 저장하며, 로그인 성공 시 JWT 토큰을 발급한다.
+ */
 @Service
 @RequiredArgsConstructor
 public class MemberService {

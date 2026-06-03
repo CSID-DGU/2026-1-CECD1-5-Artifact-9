@@ -44,7 +44,7 @@ const STATUS_COLORS: Record<VisitStatus, string> = {
   CANCELLED: "bg-red-500/20 text-red-300",
 };
 
-// 진료대기: 아직 의사 액션 필요 / 진료완료: 처방 이후만
+// 대기 탭: 처방 전 / 완료 탭: 처방완료(PRESCRIBED) 이후
 const WAITING_STATUSES: VisitStatus[] = ["RECEIVED", "IN_PROGRESS", "ANALYZING", "ANALYZED", "DIAGNOSED"];
 const COMPLETED_STATUSES: VisitStatus[] = ["PRESCRIBED", "COMPLETED"];
 

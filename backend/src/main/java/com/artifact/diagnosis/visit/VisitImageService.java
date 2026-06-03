@@ -56,7 +56,7 @@ public class VisitImageService {
         );
     }
 
-    /** 특정 접수의 이미지 전체 목록 조회. 조회 시점에 presigned URL을 새로 발급한다. */
+    /** 특정 접수의 이미지 전체 목록 조회. imageUrl은 /api/v1/visits/{id}/images/{id}/content 경로로 반환한다. */
     @Transactional(readOnly = true)
     public List<VisitImageResponse> findByVisitId(Long visitId) {
         if (!visitRepository.existsById(visitId)) {

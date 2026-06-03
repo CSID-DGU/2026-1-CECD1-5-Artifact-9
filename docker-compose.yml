@@ -1,6 +1,6 @@
 # =============================================
-# Team Artifact - 학기 1 로컬 개발 환경
-# MySQL + Spring Boot 묶음 정의
+# Team Artifact - 로컬 개발 환경
+# MySQL + Spring Boot + FastAPI 묶음 정의
 # =============================================
 
 services:
@@ -57,7 +57,7 @@ services:
     restart: unless-stopped
     depends_on:
       mysql:
-        condition: service_healthy   # MySQL이 완전히 켜진 후에 Spring 시작
+        condition: service_healthy # MySQL이 완전히 켜진 후에 Spring 시작
     environment:
       # Spring → MySQL 연결 (컨테이너끼리 통신은 서비스명 'mysql'로)
       DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
@@ -70,15 +70,17 @@ services:
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-local-dev-bucket}
       AWS_REGION: ${AWS_REGION:-us-east-1}
 
-      # 로컬 Docker 개발에서는 실제 AWS 키 없이 이미지 업로드 흐름을 검증
+      # 로컬 이미지 저장 (.env에서 읽음, 기본값 local)
       IMAGE_STORAGE_TYPE: ${IMAGE_STORAGE_TYPE:-local}
-      IMAGE_LOCAL_UPLOAD_DIR: /tmp/artifact-images
+      IMAGE_LOCAL_UPLOAD_DIR: /app/artifact-images
 
       FASTAPI_URL: http://fastapi:8000
 
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
 
       TZ: Asia/Seoul
+    volumes:
+      - artifact-images:/app/artifact-images
     ports:
       - "8080:8080"
     networks:
@@ -89,6 +91,7 @@ services:
 # -------------------------------------------
 volumes:
   mysql-data:
+  artifact-images:
 
 # -------------------------------------------
 # 컨테이너 간 통신용 가상 네트워크

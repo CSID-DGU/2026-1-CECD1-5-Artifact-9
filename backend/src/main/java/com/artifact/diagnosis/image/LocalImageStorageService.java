@@ -12,6 +12,11 @@ import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 로컬 파일시스템 기반 이미지 저장 구현체 (image.storage.type=local).
+ * 업로드: 지정 디렉터리에 날짜/UUID 파일명으로 저장 → 상대 경로(key) 반환 (DB 저장용)
+ * 다운로드: 저장된 파일을 byte[] 로 읽어 반환
+ */
 @Service
 @ConditionalOnProperty(name = "image.storage.type", havingValue = "local")
 public class LocalImageStorageService implements ImageStorageService {

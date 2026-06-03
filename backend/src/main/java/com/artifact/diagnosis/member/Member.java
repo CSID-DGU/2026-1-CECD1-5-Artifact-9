@@ -6,6 +6,10 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
+/**
+ * 의료진 계정. DB 테이블: member
+ * role 에 따라 의사(DOCTOR) / 간호사(NURSE) / 일반직원(STAFF) 으로 구분.
+ */
 @Entity
 @Table(name = "member")
 @Getter @Setter

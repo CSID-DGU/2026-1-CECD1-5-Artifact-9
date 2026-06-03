@@ -8,6 +8,10 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
+/**
+ * AWS SDK v2 S3Client Bean 설정.
+ * application.properties 의 cloud.aws.* 환경 변수를 주입받아 빌드한다.
+ */
 @Configuration
 public class AwsConfig {
 

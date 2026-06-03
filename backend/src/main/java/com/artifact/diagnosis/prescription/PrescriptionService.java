@@ -16,6 +16,10 @@ import java.util.NoSuchElementException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 처방 저장/조회 서비스.
+ * 같은 Visit 에 처방이 이미 있으면 기존 처방을 삭제하고 재처방한다.
+ */
 @Service
 @RequiredArgsConstructor
 public class PrescriptionService {
@@ -25,6 +29,7 @@ public class PrescriptionService {
     private final VisitRepository visitRepository;
     private final MemberRepository memberRepository;
 
+    /** 처방 저장. 저장 후 Visit 상태를 PRESCRIBED 로 전이한다. */
     @Transactional
     public PrescriptionResponse save(Long visitId, PrescriptionRequest req) {
         Visit visit = visitRepository.findById(visitId)
@@ -68,6 +73,7 @@ public class PrescriptionService {
         return toResponse(saved);
     }
 
+    /** 처방 단건 조회. 없으면 NoSuchElementException → GlobalExceptionHandler 가 404 반환. */
     @Transactional(readOnly = true)
     public PrescriptionResponse get(Long visitId) {
         Prescription prescription = prescriptionRepository.findByVisitId(visitId)
@@ -105,6 +111,7 @@ public class PrescriptionService {
         );
     }
 
+    /** 의사 ID와 날짜 범위로 처방 환자 목록 조회 (진료 조회 화면용). */
     @Transactional(readOnly = true)
     public List<PrescriptionPatientSummaryResponse> findPatientsByDoctorAndDate(
             Long doctorId, java.time.LocalDate from, java.time.LocalDate to) {

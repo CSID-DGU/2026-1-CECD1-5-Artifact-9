@@ -107,6 +107,7 @@ def _generate_gradcam_b64(model, tensor: torch.Tensor, orig_image: Image.Image) 
 
 
 def run_inference(image_bytes: bytes) -> dict:
+    """EfficientNet-B0 추론. is_valid / top1 / top5 / heatmap_base64 포함 결과 반환."""
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 

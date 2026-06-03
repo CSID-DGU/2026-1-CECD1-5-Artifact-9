@@ -13,6 +13,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Spring Security 설정.
+ * JWT 기반 무상태(stateless) 인증. 세션 미사용.
+ * 로그인·회원가입, Swagger, 이미지/히트맵 직접 조회 엔드포인트는 인증 없이 허용.
+ */
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
