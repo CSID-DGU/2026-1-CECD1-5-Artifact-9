@@ -15,4 +15,7 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
 
     /** 특정 날짜의 내원 목록. */
     List<Visit> findByVisitDateBetweenOrderByVisitDateAsc(LocalDateTime start, LocalDateTime end);
+
+    /** 환자의 가장 최근 Visit (최종진료일 산출용). */
+    java.util.Optional<Visit> findTopByPatientIdOrderByVisitDateDesc(Long patientId);
 }

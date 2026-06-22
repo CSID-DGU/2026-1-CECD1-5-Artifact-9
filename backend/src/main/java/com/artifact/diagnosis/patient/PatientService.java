@@ -1,12 +1,15 @@
 package com.artifact.diagnosis.patient;
 
 import com.artifact.diagnosis.visit.VisitRepository;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -27,26 +30,59 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final VisitRepository visitRepository;
 
-    /** 환자 등록 → 저장된 엔티티를 응답 DTO 로 변환해서 반환. */
+    /**
+     * 신규 환자 등록. 검색 후 일치하는 환자가 없을 때만 호출한다.
+     * 기존 dedup 로직 제거 — 검색 → 선택 흐름이 중복 방지를 담당한다.
+     */
     public PatientResponse register(PatientCreateRequest req) {
-        if (req.phone() != null && !req.phone().isBlank()) {
-            Optional<Patient> existing = patientRepository
-                    .findFirstByNameAndPhone(req.name().trim(), req.phone().trim());
-            if (existing.isPresent()) {
-                return PatientResponse.from(existing.get());
-            }
-        }
-        
         Patient saved = patientRepository.save(
                 Patient.builder()
-                        .name(req.name())
+                        .name(req.name().trim())
                         .birthDate(req.birthDate())
                         .gender(req.gender())
-                        .phone(req.phone())
+                        .phone(req.phone() != null ? req.phone().trim() : null)
                         .memo(req.memo())
                         .build()
         );
         return PatientResponse.from(saved);
+    }
+
+    /**
+     * 접수 화면용 환자 검색.
+     * 이름 부분일치(필수) + 생년월일·성별·전화번호 정확매칭(선택 AND 조건).
+     * 각 환자의 최종진료일을 포함해 동명이인 구분 정보를 반환한다.
+     */
+    @Transactional(readOnly = true)
+    public List<PatientSearchResponse> searchForReception(
+            String name, LocalDate birthDate, Gender gender, String phone) {
+
+        Specification<Patient> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.like(root.get("name"), "%" + name + "%"));
+            if (birthDate != null) {
+                predicates.add(cb.equal(root.get("birthDate"), birthDate));
+            }
+            if (gender != null) {
+                predicates.add(cb.equal(root.get("gender"), gender));
+            }
+            if (phone != null && !phone.isBlank()) {
+                predicates.add(cb.equal(root.get("phone"), phone.trim()));
+            }
+            if (query != null) {
+                query.orderBy(cb.asc(root.get("name")));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return patientRepository.findAll(spec).stream()
+                .map(p -> {
+                    LocalDate lastVisitDate = visitRepository
+                            .findTopByPatientIdOrderByVisitDateDesc(p.getId())
+                            .map(v -> v.getVisitDate().toLocalDate())
+                            .orElse(null);
+                    return PatientSearchResponse.from(p, lastVisitDate);
+                })
+                .toList();
     }
 
     /** 단건 조회. 없으면 NoSuchElementException → 글로벌 핸들러가 404 응답. */

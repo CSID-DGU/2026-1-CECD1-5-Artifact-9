@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.artifact.diagnosis.patient.PatientSearchResponse;
+
 /**
  * 환자 REST API.
  *
@@ -64,5 +66,27 @@ public class PatientController {
             @Parameter(description = "내원일", example = "2026-06-01")
             @RequestParam(required = false) LocalDate visitDate) {
         return patientService.search(patientId, name, visitDate);
+    }
+
+    @Operation(
+            summary = "접수용 환자 검색",
+            description = "이름(필수) 부분 검색 + 생년월일·성별·전화번호 정확매칭(선택 AND). " +
+                          "동명이인 목록을 최종진료일·마스킹 전화번호와 함께 반환한다."
+    )
+    @ApiResponse(responseCode = "200", description = "검색 성공 (결과 없으면 빈 배열)")
+    @GetMapping("/search")
+    public List<PatientSearchResponse> searchForReception(
+            @Parameter(description = "이름 (필수, 부분일치)", example = "홍길동")
+            @RequestParam String name,
+            @Parameter(description = "생년월일 (선택, 정확매칭)", example = "1990-01-01")
+            @RequestParam(required = false) LocalDate birthDate,
+            @Parameter(description = "성별 M/F/OTHER (선택, 정확매칭)")
+            @RequestParam(required = false) Gender gender,
+            @Parameter(description = "전화번호 (선택, 정확매칭)", example = "010-1234-5678")
+            @RequestParam(required = false) String phone) {
+        if (name == null || name.isBlank()) {
+            return List.of();
+        }
+        return patientService.searchForReception(name.trim(), birthDate, gender, phone);
     }
 }

@@ -35,6 +35,30 @@ export function searchPatients(name: string) {
   return apiRequest<Patient[]>(`/api/v1/patients?name=${encodeURIComponent(name)}`);
 }
 
+// 접수 화면 전용 검색 결과 타입 (최종진료일 + 마스킹 전화번호 포함)
+export type PatientSearchResult = {
+  patientId: number;
+  name: string;
+  birthDate?: string | null;
+  gender?: Gender | null;
+  phone?: string | null;
+  maskedPhone?: string | null;
+  lastVisitDate?: string | null;
+};
+
+export function searchPatientsForReception(params: {
+  name: string;
+  birthDate?: string;
+  gender?: string;
+  phone?: string;
+}) {
+  const query = new URLSearchParams({ name: params.name });
+  if (params.birthDate) query.set("birthDate", params.birthDate);
+  if (params.gender) query.set("gender", params.gender);
+  if (params.phone) query.set("phone", params.phone);
+  return apiRequest<PatientSearchResult[]>(`/api/v1/patients/search?${query}`);
+}
+
 export type PatientSearchParams = {
   patientId?: number | null;
   name?: string;
