@@ -113,8 +113,14 @@ export default function Clinic() {
   const [isKcdModalOpen, setKcdModalOpen] = useState(false);
   const [isDrugModalOpen, setDrugModalOpen] = useState(false);
 
-  // AI 처방 코멘트
-  const [aiComment, setAiComment] = useState<{ line1: string; line2: string } | null>(null);
+  // AI 처방 코멘트 (line1·line2 + 메타)
+  const [aiComment, setAiComment] = useState<{
+    line1: string;
+    line2: string;
+    model: string;
+    generatedAt: string; // ISO 8601 — 프론트 수신 시점
+    edited: boolean;     // 의사가 저장 전 수정했으면 true
+  } | null>(null);
   const [isCommentLoading, setIsCommentLoading] = useState(false);
 
   // 로딩 / 메시지
@@ -298,6 +304,10 @@ export default function Clinic() {
         diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
         analysisId: analysis?.analysisId ?? null,
         doctorNotes: doctorNotes.trim() || null,
+        aiComment: aiComment ? `${aiComment.line1}\n${aiComment.line2}`.trim() : null,
+        aiCommentModel: aiComment?.model ?? null,
+        aiCommentGeneratedAt: aiComment?.generatedAt ?? null,
+        aiCommentEdited: aiComment?.edited ?? null,
         details: [{
           medicineName: selectedDrug.nameKr,
           dosage: drugDosage.trim() || null,
@@ -809,7 +819,13 @@ export default function Clinic() {
                               selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary })),
                               selectedVisit.receptionMemo
                             );
-                            setAiComment(result);
+                            setAiComment({
+                              ...result,
+                              model: "gemini-3.1-flash-lite",
+                              // LocalDateTime은 Z(timezone) 없는 ISO 형식만 허용
+                              generatedAt: new Date().toISOString().slice(0, 19),
+                              edited: false,
+                            });
                           } catch { setAiComment(null); }
                           finally { setIsCommentLoading(false); }
                         }}
@@ -819,9 +835,22 @@ export default function Clinic() {
                         {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}
                       </button>
                       {aiComment && (
-                        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1.5 flex flex-col gap-1">
-                          {aiComment.line1 && <p className="text-[11px] text-indigo-200">• {aiComment.line1}</p>}
-                          {aiComment.line2 && <p className="text-[11px] text-indigo-200">• {aiComment.line2}</p>}
+                        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1.5 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-indigo-400 font-medium">
+                              AI 처방 코멘트{aiComment.edited && <span className="ml-1 text-yellow-400">(수정됨)</span>}
+                            </span>
+                            <span className="text-[10px] text-gray-500">{aiComment.model}</span>
+                          </div>
+                          <textarea
+                            value={`${aiComment.line1}\n${aiComment.line2}`.trim()}
+                            onChange={(e) => {
+                              const [l1 = "", l2 = ""] = e.target.value.split("\n");
+                              setAiComment((prev) => prev ? { ...prev, line1: l1, line2: l2, edited: true } : prev);
+                            }}
+                            rows={3}
+                            className="w-full bg-indigo-950/40 border border-indigo-500/20 rounded px-2 py-1.5 text-[11px] text-indigo-100 resize-none focus:outline-none focus:border-indigo-400"
+                          />
                           {!aiComment.line1 && !aiComment.line2 && (
                             <p className="text-[11px] text-red-300">응답을 받지 못했습니다. 백엔드 로그를 확인하세요.</p>
                           )}
@@ -907,33 +936,7 @@ export default function Clinic() {
                 {status === "PRESCRIBED" && prescription && (
                   <div className="flex flex-col gap-3">
                     <p className="text-[10px] text-blue-400 font-medium">처방 저장됨</p>
-                    <div className="rounded border border-gray-600 bg-side-bg p-3 flex flex-col gap-1.5">
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-gray-400 w-16 shrink-0">상병코드</span>
-                        <div className="flex flex-col gap-0.5">
-                          {prescription.diseases.map(d => (
-                            <span key={d.kcdDiseaseId} className="text-white">
-                              {d.kcdCode} {d.kcdNameKr}
-                              {d.isPrimary && <span className="ml-1 text-[10px] text-yellow-400">주상병</span>}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      {prescription.details.map((d, i) => (
-                        <div key={i} className="flex gap-2 text-xs">
-                          <span className="text-gray-400 w-16 shrink-0">약품{i + 1}</span>
-                          <span className="text-white">
-                            {d.medicineName}{d.dosage ? ` / ${d.dosage}` : ""}{d.durationDays ? ` / ${d.durationDays}일` : ""}
-                          </span>
-                        </div>
-                      ))}
-                      {prescription.doctorNotes && (
-                        <div className="flex gap-2 text-xs">
-                          <span className="text-gray-400 w-16 shrink-0">소견</span>
-                          <span className="text-white">{prescription.doctorNotes}</span>
-                        </div>
-                      )}
-                    </div>
+                    <PrescriptionSummary prescription={prescription} />
                     <Button onClick={handleComplete} disabled={isActionLoading} className="py-2 text-xs w-full">
                       진료 완료
                     </Button>
@@ -944,27 +947,7 @@ export default function Clinic() {
                 {status === "COMPLETED" && prescription && (
                   <div className="flex flex-col gap-3">
                     <p className="text-[10px] text-gray-400 font-medium">진료 완료</p>
-                    <div className="rounded border border-gray-600 bg-side-bg p-3 flex flex-col gap-1.5">
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-gray-400 w-16 shrink-0">상병코드</span>
-                        <div className="flex flex-col gap-0.5">
-                          {prescription.diseases.map(d => (
-                            <span key={d.kcdDiseaseId} className="text-white">
-                              {d.kcdCode} {d.kcdNameKr}
-                              {d.isPrimary && <span className="ml-1 text-[10px] text-yellow-400">주상병</span>}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      {prescription.details.map((d, i) => (
-                        <div key={i} className="flex gap-2 text-xs">
-                          <span className="text-gray-400 w-16 shrink-0">약품{i + 1}</span>
-                          <span className="text-white">
-                            {d.medicineName}{d.dosage ? ` / ${d.dosage}` : ""}{d.durationDays ? ` / ${d.durationDays}일` : ""}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <PrescriptionSummary prescription={prescription} />
                   </div>
                 )}
               </div>
@@ -996,6 +979,65 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       <span className="min-h-[24px] flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-gray-100">
         {value}
       </span>
+    </div>
+  );
+}
+
+function PrescriptionSummary({ prescription }: { prescription: import("../api/prescription").PrescriptionResponse }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {/* 상병코드 + 약품 */}
+      <div className="rounded border border-gray-600 bg-side-bg p-3 flex flex-col gap-1.5">
+        <div className="flex gap-2 text-xs">
+          <span className="text-gray-400 w-16 shrink-0">상병코드</span>
+          <div className="flex flex-col gap-0.5">
+            {prescription.diseases.map(d => (
+              <span key={d.kcdDiseaseId} className="text-white">
+                {d.kcdCode} {d.kcdNameKr}
+                {d.isPrimary && <span className="ml-1 text-[10px] text-yellow-400">주상병</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+        {prescription.details.map((d, i) => (
+          <div key={i} className="flex gap-2 text-xs">
+            <span className="text-gray-400 w-16 shrink-0">약품{i + 1}</span>
+            <span className="text-white">
+              {d.medicineName}{d.dosage ? ` / ${d.dosage}` : ""}{d.durationDays ? ` / ${d.durationDays}일` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* 의사 소견 */}
+      {prescription.doctorNotes && (
+        <div className="rounded border border-gray-600 bg-side-bg px-3 py-2 flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-400 font-medium">의사 소견</span>
+          <p className="text-xs text-white leading-relaxed">{prescription.doctorNotes}</p>
+        </div>
+      )}
+
+      {/* AI 처방 코멘트 */}
+      {prescription.aiComment && (
+        <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] text-indigo-400 font-medium">
+              AI 처방 코멘트{prescription.aiCommentEdited && <span className="ml-1 text-yellow-400">(수정됨)</span>}
+            </span>
+            {prescription.aiCommentGeneratedAt && (
+              <span className="text-[10px] text-gray-500">
+                생성 {formatDateTime(prescription.aiCommentGeneratedAt)}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-indigo-100 leading-relaxed whitespace-pre-line">
+            {prescription.aiComment}
+          </p>
+          {prescription.aiCommentModel && (
+            <p className="text-[10px] text-gray-500">{prescription.aiCommentModel}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

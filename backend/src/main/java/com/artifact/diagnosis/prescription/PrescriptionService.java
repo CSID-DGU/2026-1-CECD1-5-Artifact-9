@@ -48,6 +48,10 @@ public class PrescriptionService {
                 .analysisId(req.analysisId())
                 .revisitRecommendedDate(req.revisitRecommendedDate())
                 .doctorNotes(req.doctorNotes())
+                .aiComment(req.aiComment())
+                .aiCommentModel(req.aiCommentModel())
+                .aiCommentGeneratedAt(req.aiCommentGeneratedAt())
+                .aiCommentEdited(req.aiCommentEdited())
                 .build();
 
         req.diseases().forEach(d -> prescription.addDisease(
@@ -107,7 +111,10 @@ public class PrescriptionService {
         return new PrescriptionResponse(
                 p.getId(), p.getVisitId(), p.getMemberId(), p.getMemberName(), diseases,
                 p.getAnalysisId(), p.getPrescribedAt(),
-                p.getRevisitRecommendedDate(), p.getDoctorNotes(), details
+                p.getRevisitRecommendedDate(), p.getDoctorNotes(),
+                p.getAiComment(), p.getAiCommentModel(),
+                p.getAiCommentGeneratedAt(), p.getAiCommentEdited(),
+                details
         );
     }
 
