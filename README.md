@@ -383,28 +383,70 @@ artifact-medical-ai/
 
 > 실제 포트는 로컬 환경에 따라 달라질 수 있다.
 
-### 1) Docker 기반 백엔드 / AI / DB 실행
+### 1) Docker로 전체 4개 서비스 한 번에 실행 (권장)
 
 ```bash
 docker compose up --build
 ```
 
-### 2) Frontend 실행
+빌드 후 아래 순서로 자동 기동됩니다.
+
+```
+mysql (healthcheck 통과) → backend + fastapi → frontend(nginx)
+```
+
+#### 기동 확인 점검 순서
+
+| 순서 | 확인 내용 | 명령어 / URL |
+| --- | --- | --- |
+| 1 | 4개 컨테이너 모두 `Up` 상태 | `docker compose ps` |
+| 2 | MySQL healthcheck `(healthy)` 표시 | `docker compose ps mysql` |
+| 3 | Backend API 응답 | `curl -s http://localhost:8080/api/v1/auth/login -o /dev/null -w "%{http_code}"` → `400` 또는 `200` |
+| 4 | FastAPI 헬스체크 | `curl -s http://localhost:8000/health` |
+| 5 | nginx → backend 프록시 동작 | `curl -s http://localhost:3000/api/v1/auth/login -o /dev/null -w "%{http_code}"` → `400` 또는 `200` |
+| 6 | 프론트엔드 SPA 로드 | 브라우저에서 `http://localhost:3000` 접속 → 로그인 화면 |
+| 7 | SPA 라우팅 fallback | 브라우저에서 `http://localhost:3000/main` 직접 접속 → 빈 화면 아닌 정상 라우팅 |
+
+> Backend 첫 기동 시 KCD / 약품 Excel 비동기 적재(`data-initializer` 스레드)가 수분 걸릴 수 있습니다.  
+> 적재 완료 전에는 검색 결과가 비어 보입니다.
+
+#### 로그 확인 (서비스별)
 
 ```bash
+docker compose logs -f frontend   # nginx 접근 로그
+docker compose logs -f backend    # Spring Boot 로그
+docker compose logs -f fastapi    # FastAPI 추론 로그
+docker compose logs -f mysql      # MySQL 로그
+```
+
+#### 컨테이너 재빌드 (코드 변경 후)
+
+```bash
+docker compose up --build
+```
+
+### 2) 로컬 Frontend 단독 개발 (선택)
+
+백엔드 3개 서비스는 Docker로 띄우고, 프론트만 Vite dev 서버로 실행하는 방식입니다.
+
+```bash
+# 터미널 1: 백엔드 서비스 실행
+docker compose up mysql fastapi backend
+
+# 터미널 2: Vite dev 서버 (HMR 지원)
 cd frontend
 npm install
 npm run dev
 ```
 
-### 기본 접속 주소(예시)
+### 기본 접속 주소
 
-| 서비스 | URL |
-| --- | --- |
-| Frontend | `http://localhost:5173` |
-| Backend | `http://localhost:8080` |
-| FastAPI | `http://localhost:8000` |
-| Swagger | `http://localhost:8080/swagger-ui/index.html` |
+| 서비스 | Docker 전체 실행 | 로컬 개발 |
+| --- | --- | --- |
+| **Frontend** | `http://localhost:3000` | `http://localhost:5173` |
+| Backend | `http://localhost:8080` | `http://localhost:8080` |
+| FastAPI | `http://localhost:8000` | `http://localhost:8000` |
+| Swagger | `http://localhost:8080/swagger-ui/index.html` | `http://localhost:8080/swagger-ui/index.html` |
 
 ### 기본 테스트 계정
 
@@ -421,6 +463,7 @@ npm run dev
 | `mysql` | `mysql:8.0`, port `3306`, database `artifact_db`, healthcheck 적용 |
 | `fastapi` | build `./fastapi`, port `8000`, `MIN_TOP1_CONFIDENCE` 주입 |
 | `backend` | build `./backend`, port `8080`, `depends_on: mysql(healthy)`, FastAPI URL `http://fastapi:8000`, Gemini API 키 주입 |
+| `frontend` | build `./frontend` (node:20 빌드 → nginx:alpine 서빙), port `3000:80`, `/api/` 요청을 `backend:8080`으로 프록시 |
 
 ---
 

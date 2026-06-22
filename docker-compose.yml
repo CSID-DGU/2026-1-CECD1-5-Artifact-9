@@ -86,6 +86,22 @@ services:
     networks:
       - artifact-network
 
+  # -------------------------------------------
+  # React + nginx 프론트엔드
+  # -------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: artifact-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - artifact-network
+
 # -------------------------------------------
 # 영구 저장 볼륨 (컨테이너 지워져도 DB 데이터 유지)
 # -------------------------------------------
