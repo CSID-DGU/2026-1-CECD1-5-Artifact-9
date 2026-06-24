@@ -1,3 +1,4 @@
+
 <div align="center">
 
 # 🩺 Artifact Medical AI
@@ -5,6 +6,9 @@
 **의료 영상 기반 AI 보조 진단 · 처방 지원 시스템**
 *AI-assisted Clinical Workflow Prototype for Skin Lesion Diagnosis Support*
 
+<img width="426" height="303" alt="IMG_6872" src="https://github.com/user-attachments/assets/5d5d0cb1-61a3-46d1-a716-70577d41195d" />
+
+> 2026년도 1학기 S.M.A.R.T. 토너먼트 최우수상 수상
 <br/>
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
