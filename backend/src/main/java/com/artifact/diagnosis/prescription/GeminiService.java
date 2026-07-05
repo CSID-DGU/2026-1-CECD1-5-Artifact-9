@@ -143,4 +143,63 @@ public class GeminiService {
             return new PrescriptionCommentResponse("AI 코멘트 생성에 실패했습니다.", "잠시 후 다시 시도해주세요.");
         }
     }
+
+    /**
+     * 대기실 키오스크 예비분석용 참고 소견 생성.
+     * 처방 코멘트(generateComment)와 달리 진단 확정이 아닌 "참고용" 톤을 강제하고,
+     * 약품 추천 없이 AI 후보 목록만으로 짧은 안내 문구를 만든다.
+     */
+    public String generatePreliminaryComment(java.util.List<com.artifact.diagnosis.analysis.TopKItem> topK) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "AI 참고 소견을 생성할 수 없습니다 (API 키 미설정).";
+        }
+
+        String candidateList = topK.stream()
+                .map(item -> item.code() + " (" + String.format("%.1f", item.confidence() * 100) + "%)")
+                .reduce("", (a, b) -> a.isEmpty() ? b : a + ", " + b);
+
+        String prompt = String.format("""
+                당신은 피부과 대기실 키오스크의 AI 보조 안내 시스템입니다.
+                아래는 환자가 대기 중 촬영한 사진에 대한 AI 모델의 후보 결과입니다.
+
+                AI 후보 목록 (신뢰도 순): %s
+
+                출력 규칙:
+                - 정확히 2줄로, 진단을 단정하지 말고 참고 소견 톤으로 작성하세요.
+                - 1줄: 후보 소견에 대한 부드러운 안내 (예: 촬영하신 부위는 ○○ 가능성이 있는 것으로 보입니다.)
+                - 2줄: 반드시 의사의 확인 진료가 필요하다는 안내
+                - 번호, 레이블, 기호 없이 순수 텍스트로만 출력하세요.
+                """, candidateList);
+
+        try {
+            String body = objectMapper.writeValueAsString(Map.of(
+                    "contents", List.of(Map.of(
+                            "parts", List.of(Map.of("text", prompt))
+                    ))
+            ));
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(GEMINI_URL + apiKey))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpClient client = HttpClient.newHttpClient();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            JsonNode root = objectMapper.readTree(response.body());
+            if (root.has("error")) {
+                log.error("Gemini API 에러(예비분석): {}", root.at("/error/message").asText("알 수 없는 오류"));
+                return "AI 참고 소견 생성에 실패했습니다. 의사의 확인 진료가 필요합니다.";
+            }
+
+            String text = root.at("/candidates/0/content/parts/0/text").asText("").trim();
+            return text.isEmpty()
+                    ? "AI 참고 소견을 받지 못했습니다. 의사의 확인 진료가 필요합니다."
+                    : text;
+        } catch (Exception e) {
+            log.error("Gemini API 호출 실패(예비분석): {}", e.getMessage());
+            return "AI 참고 소견 생성 중 오류가 발생했습니다. 의사의 확인 진료가 필요합니다.";
+        }
+    }
 }
