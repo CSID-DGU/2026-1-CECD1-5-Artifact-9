@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "AI 분석", description = "피부 병변 AI 분석 API")
@@ -28,5 +29,12 @@ public class AnalysisController {
     @GetMapping
     public AnalysisResponse getLatest(@PathVariable Long visitId) {
         return analysisService.getLatest(visitId);
+    }
+
+    @Operation(summary = "GradCAM 히트맵 이미지 조회",
+               description = "해당 접수의 최근 분석에서 생성된 GradCAM 히트맵 오버레이 이미지를 반환합니다.")
+    @GetMapping("/heatmap")
+    public ResponseEntity<byte[]> getHeatmap(@PathVariable Long visitId) {
+        return analysisService.getHeatmapContent(visitId);
     }
 }

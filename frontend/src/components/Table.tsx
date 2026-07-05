@@ -1,6 +1,6 @@
 import type { TableProps } from "../types/mainTypes";
 
-export const Table = ({ headers, data }: TableProps) => {
+export const Table = ({ headers, data, getRowProps }: TableProps) => {
   return (
     <div className="w-full overflow-x-auto rounded-lg">
       <table className="w-full text-left border-collapse text-xs">
@@ -21,15 +21,24 @@ export const Table = ({ headers, data }: TableProps) => {
               </td>
             </tr>
           ) : (
-            data.map((row, rowIdx) => (
-              <tr key={rowIdx} className="hover:bg-gray-800/50 transition-colors">
-                {row.map((cell, cellIdx) => (
-                  <td key={cellIdx} className="px-4 py-2 text-gray-200 align-middle">
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))
+            data.map((row, rowIdx) => {
+              const rowProps = getRowProps?.(row, rowIdx) ?? {};
+              const { className, ...restRowProps } = rowProps;
+
+              return (
+                <tr
+                  key={rowIdx}
+                  className={`hover:bg-gray-800/50 transition-colors ${className ?? ""}`}
+                  {...restRowProps}
+                >
+                  {row.map((cell, cellIdx) => (
+                    <td key={cellIdx} className="px-4 py-2 text-gray-200 align-middle">
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

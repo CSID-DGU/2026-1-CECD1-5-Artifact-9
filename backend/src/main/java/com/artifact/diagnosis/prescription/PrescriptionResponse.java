@@ -10,15 +10,25 @@ import java.util.List;
 public record PrescriptionResponse(
         Long prescriptionId,
         Long visitId,
-        Long kcdDiseaseId,
-        String kcdCode,
-        String kcdNameKr,
+        Long memberId,
+        String memberName,
+        List<DiseaseResponse> diseases,
         Long analysisId,
         LocalDateTime prescribedAt,
         LocalDate revisitRecommendedDate,
         String doctorNotes,
+        String aiComment,
+        String aiCommentModel,
+        LocalDateTime aiCommentGeneratedAt,
+        Boolean aiCommentEdited,
         List<DetailResponse> details
 ) {
+    public record DiseaseResponse(
+            Long kcdDiseaseId,
+            String kcdCode,
+            String kcdNameKr,
+            boolean isPrimary
+    ) {}
     public record DetailResponse(
             Long detailId,
             Long drugId,

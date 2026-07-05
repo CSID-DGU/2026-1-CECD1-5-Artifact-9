@@ -17,16 +17,20 @@ export class ApiError extends Error {
   }
 }
 
+import { STORAGE_KEYS } from "../constants";
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
   const response = await fetch(path, {
     ...options,
     headers: {
       ...(options.body instanceof FormData
         ? {}
         : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });

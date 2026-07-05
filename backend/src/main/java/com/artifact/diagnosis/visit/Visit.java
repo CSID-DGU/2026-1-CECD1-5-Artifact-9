@@ -34,6 +34,9 @@ public class Visit {
     @Column(name = "visit_date", nullable = false)
     private LocalDateTime visitDate;
 
+    @Column(name = "reception_memo", columnDefinition = "TEXT")
+    private String receptionMemo;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private VisitStatus status;

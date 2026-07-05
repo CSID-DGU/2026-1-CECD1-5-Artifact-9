@@ -4,6 +4,16 @@
       "name": "fastapi.url",
       "type": "java.lang.String",
       "description": "FastAPI AI 추론 서버 URL"
+    },
+    {
+      "name": "jwt.secret",
+      "type": "java.lang.String",
+      "description": "JWT 서명 비밀키 (256비트 이상)"
+    },
+    {
+      "name": "jwt.expiration-ms",
+      "type": "java.lang.Long",
+      "description": "JWT 만료 시간 (밀리초, 기본 24시간)"
     }
   ]
 }

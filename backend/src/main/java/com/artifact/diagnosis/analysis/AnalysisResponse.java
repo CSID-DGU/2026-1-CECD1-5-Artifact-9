@@ -14,7 +14,8 @@ public record AnalysisResponse(
         Top1Result top1,
         List<TopKResult> top5,
         Integer inferenceTimeMs,
-        LocalDateTime analyzedAt
+        LocalDateTime analyzedAt,
+        String heatmapImageUrl
 ) {
     public record Top1Result(
             String diseaseCode,
@@ -26,6 +27,7 @@ public record AnalysisResponse(
             int rank,
             String diseaseCode,
             String diseaseNameKo,
-            double confidence
+            double confidence,
+            String reason
     ) {}
 }

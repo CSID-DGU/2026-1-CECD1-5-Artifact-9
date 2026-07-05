@@ -6,14 +6,20 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Schema(description = "처방 저장 요청")
 public record PrescriptionRequest(
 
         @NotNull
-        @Schema(description = "의사가 확정한 KCD 상병코드 ID", example = "1")
-        Long kcdDiseaseId,
+        @Schema(description = "처방 작성 회원 ID", example = "1")
+        Long memberId,
+
+        @NotEmpty
+        @Valid
+        @Schema(description = "상병 목록 (주상병 1개 + 부상병 n개)")
+        List<DiseaseRequest> diseases,
 
         @Schema(description = "근거 AI 분석 ID (선택)", example = "1")
         Long analysisId,
@@ -24,11 +30,27 @@ public record PrescriptionRequest(
         @Schema(description = "의사 소견", example = "초기 단계로 판단, 경과 관찰 필요")
         String doctorNotes,
 
+        @Schema(description = "LLM 생성 처방 코멘트 본문 (선택)")
+        String aiComment,
+
+        @Schema(description = "LLM 모델 식별자 (선택)", example = "gemini-3.1-flash-lite")
+        String aiCommentModel,
+
+        @Schema(description = "LLM 코멘트 생성 시각 — 프론트가 응답을 수신한 시점 (선택)")
+        LocalDateTime aiCommentGeneratedAt,
+
+        @Schema(description = "의사가 저장 전 코멘트를 수정했으면 true (선택)")
+        Boolean aiCommentEdited,
+
         @NotEmpty
         @Valid
         @Schema(description = "처방 약품 목록 (1개 이상)")
         List<DetailRequest> details
 ) {
+    public record DiseaseRequest(
+            @NotNull Long kcdDiseaseId,
+            boolean isPrimary
+    ) {}
     @Schema(description = "처방 상세 1줄")
     public record DetailRequest(
             @Schema(description = "약품 마스터 ID (선택, 직접 입력 시 생략)", example = "1")

@@ -70,6 +70,10 @@ frontend/dist/
 .env
 .env.*
 !.env.example
+# frontend .env는 시크릿 없음 → 커밋 허용
+!frontend/.env.production
+!frontend/.env.development
 backend/.env
 .idea
 .idea/compiler.xml
+docker/mysql/init/결과보고서 (1).pdf

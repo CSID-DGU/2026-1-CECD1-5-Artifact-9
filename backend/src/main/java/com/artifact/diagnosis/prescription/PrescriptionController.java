@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
+    private final GeminiService geminiService;
 
     @Operation(summary = "처방 저장",
                description = "의사가 KCD 상병코드 확정 + 약품 처방을 저장합니다. visit 상태: DIAGNOSED → PRESCRIBED")
@@ -28,5 +29,12 @@ public class PrescriptionController {
     @GetMapping
     public PrescriptionResponse get(@PathVariable Long visitId) {
         return prescriptionService.get(visitId);
+    }
+
+    @PostMapping("/comment")
+    public PrescriptionCommentResponse comment(
+            @PathVariable Long visitId,
+            @RequestBody PrescriptionCommentRequest request) {
+        return geminiService.generateComment(request);
     }
 }

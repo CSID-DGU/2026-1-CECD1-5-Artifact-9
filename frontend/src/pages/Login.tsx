@@ -1,0 +1,126 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card } from "../components/Card";
+import { Input } from "../components/Input";
+import { useAuth } from "../components/AuthContext";
+import { ArtifactLogo } from "../components/ArtifactLogo";
+
+const ROLE_OPTIONS = [
+  { value: "DOCTOR", label: "의사" },
+  { value: "NURSE",  label: "간호사" },
+  { value: "STAFF",  label: "일반 (접수)" },
+];
+
+export default function Login() {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [id, setId] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("DOCTOR");
+  const [department, setDepartment] = useState("피부과");
+  const { login, signup } = useAuth();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await login(id, password);
+    if (success) {
+      navigate("/main");
+    } else {
+      alert("아이디와 비밀번호가 올바르지 않습니다.");
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = await signup({
+      loginId: id,
+      password,
+      name,
+      role,
+      department: department.trim() || null,
+    });
+    if (success) {
+      navigate("/main");
+    } else {
+      alert("회원가입에 실패했습니다. 아이디 중복 또는 입력값을 확인하세요.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-[360px]">
+        <div className="mb-7">
+          <ArtifactLogo />
+        </div>
+        <Card title={mode === "login" ? "로그인" : "회원가입"}>
+          <div className="mb-4 grid grid-cols-2 gap-1 rounded bg-gray-800 p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setMode("login")}
+              className={`h-8 rounded transition-colors ${mode === "login" ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
+            >
+              로그인
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("signup")}
+              className={`h-8 rounded transition-colors ${mode === "signup" ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
+            >
+              회원가입
+            </button>
+          </div>
+          <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="flex flex-col gap-4 mt-2">
+            {mode === "signup" && (
+              <>
+                <Input
+                  label="이름"
+                  placeholder="홍길동"
+                  value={name}
+                  onChange={(v) => setName(v)}
+                />
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-400">직책</label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="h-9 rounded bg-gray-800 border border-gray-700 text-white text-xs px-2 focus:outline-none focus:border-blue-500"
+                  >
+                    {ROLE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <Input
+                  label="진료과"
+                  placeholder="피부과"
+                  value={department}
+                  onChange={(v) => setDepartment(v)}
+                />
+              </>
+            )}
+            <Input
+              label="아이디"
+              placeholder="Testname: admin"
+              value={id}
+              onChange={(v) => setId(v)}
+            />
+            <Input
+              label="비밀번호"
+              placeholder="Testpwd: 1234"
+              type="password"
+              value={password}
+              onChange={(v) => setPassword(v)}
+            />
+            <button
+              type="submit"
+              className="w-full h-[40px] bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded mt-2 cursor-pointer transition-colors"
+            >
+              {mode === "login" ? "로그인" : "가입하고 시작"}
+            </button>
+          </form>
+        </Card>
+      </div>
+    </div>
+  );
+}

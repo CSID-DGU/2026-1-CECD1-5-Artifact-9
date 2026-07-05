@@ -9,6 +9,7 @@
 --   v0.4: visit 상태 IN_PROGRESS 추가, image_url 제거
 --         visit_image / analysis_image / kcd_disease / drug_master 추가
 --         prescription → kcd_disease_id, prescription_detail → drug_id
+--   v0.5: doctor 테이블 및 prescription 작성 의사 스냅샷 추가
 -- =====================================================================
 
 CREATE DATABASE IF NOT EXISTS artifact_db
@@ -16,6 +17,31 @@ CREATE DATABASE IF NOT EXISTS artifact_db
   DEFAULT COLLATE utf8mb4_unicode_ci;
 
 USE artifact_db;
+
+-- 클라이언트 연결 charset을 utf8mb4로 명시 (한글 이중인코딩 방지)
+SET NAMES utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- 0. 회원 계정 (member) — 의사/간호사/일반(접수) 통합
+-- ---------------------------------------------------------------------
+CREATE TABLE member (
+    member_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '회원ID (PK)',
+    login_id       VARCHAR(50)  NOT NULL                COMMENT '로그인 ID',
+    password       VARCHAR(100) NOT NULL                COMMENT '비밀번호 (BCrypt)',
+    name           VARCHAR(50)  NOT NULL                COMMENT '이름',
+    license_number VARCHAR(50)  NULL                    COMMENT '면허번호 (의사/간호사)',
+    department     VARCHAR(100) NULL                    COMMENT '진료과',
+    role           VARCHAR(20)  NOT NULL DEFAULT 'DOCTOR' COMMENT '역할 (DOCTOR/NURSE/STAFF/ADMIN)',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (member_id),
+    UNIQUE KEY uk_member_login_id (login_id),
+    UNIQUE KEY uk_member_license_number (license_number)
+) ENGINE=InnoDB COMMENT='회원 계정 (의사/간호사/일반)';
+
+INSERT INTO member (login_id, password, name, license_number, department, role) VALUES
+  ('admin', '$2b$10$4/MYOFj/eAOxU64eE0sOpO0hujwKyfmEETSQwLgY8a3.pRc1czsrW', '관리자', 'TEST-0001', '피부과', 'ADMIN');
+-- 위 해시는 '1234'의 BCrypt 암호화값
 
 -- ---------------------------------------------------------------------
 -- 1. 환자정보 (patient)
@@ -93,6 +119,7 @@ CREATE TABLE visit (
     status     ENUM('RECEIVED','IN_PROGRESS','ANALYZING','ANALYZED',
                     'DIAGNOSED','PRESCRIBED','COMPLETED','CANCELLED')
                NOT NULL DEFAULT 'RECEIVED'      COMMENT '진행상태',
+    reception_memo TEXT NULL COMMENT '진료 메모',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (visit_id),
@@ -149,18 +176,34 @@ CREATE TABLE analysis_image (
 CREATE TABLE prescription (
     prescription_id        BIGINT   NOT NULL AUTO_INCREMENT COMMENT '처방ID (PK)',
     visit_id               BIGINT   NOT NULL                COMMENT '접수ID (FK)',
-    kcd_disease_id         BIGINT   NOT NULL                COMMENT '의사 확정 KCD 상병코드 (FK)',
+    member_id              BIGINT   NOT NULL                COMMENT '처방 작성 회원ID (FK)',
+    member_name            VARCHAR(50) NOT NULL             COMMENT '처방 당시 작성자명 스냅샷',
     analysis_id            BIGINT   NULL                    COMMENT '근거 AI 분석ID (FK, nullable)',
     prescribed_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '처방시각',
     revisit_recommended_date DATE   NULL                    COMMENT '재내원 권장일',
     doctor_notes           TEXT     NULL                    COMMENT '의사 소견',
+    ai_comment             TEXT     NULL                    COMMENT 'LLM 생성 처방 코멘트 본문',
+    ai_comment_model       VARCHAR(100) NULL               COMMENT 'LLM 모델 식별자 (예: gemini-3.1-flash-lite)',
+    ai_comment_generated_at DATETIME NULL                  COMMENT 'LLM 코멘트 생성 시각 (프론트 기준)',
+    ai_comment_edited      TINYINT(1) NULL DEFAULT 0       COMMENT '의사가 저장 전 코멘트를 수정했으면 1',
     created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (prescription_id),
     CONSTRAINT fk_presc_visit    FOREIGN KEY (visit_id)       REFERENCES visit(visit_id),
-    CONSTRAINT fk_presc_kcd      FOREIGN KEY (kcd_disease_id) REFERENCES kcd_disease(kcd_id),
+    CONSTRAINT fk_presc_member   FOREIGN KEY (member_id)      REFERENCES member(member_id),
     CONSTRAINT fk_presc_analysis FOREIGN KEY (analysis_id)    REFERENCES analysis_result(analysis_id),
-    INDEX idx_presc_visit (visit_id)
+    INDEX idx_presc_visit (visit_id),
+    INDEX idx_presc_member_date (member_id, prescribed_at)
 ) ENGINE=InnoDB COMMENT='최종 처방 헤더';
+
+CREATE TABLE prescription_disease (
+    id              BIGINT      NOT NULL AUTO_INCREMENT,
+    prescription_id BIGINT      NOT NULL,
+    kcd_disease_id  BIGINT      NOT NULL,
+    is_primary      TINYINT(1)  NOT NULL DEFAULT 0  COMMENT '1=주상병 0=부상병',
+    PRIMARY KEY (id),
+    CONSTRAINT fk_pd_presc FOREIGN KEY (prescription_id) REFERENCES prescription(prescription_id) ON DELETE CASCADE,
+    CONSTRAINT fk_pd_kcd   FOREIGN KEY (kcd_disease_id)  REFERENCES kcd_disease(kcd_id)
+) ENGINE=InnoDB COMMENT='처방별 상병 (주/부상병)';
 
 -- ---------------------------------------------------------------------
 -- 10. 처방 상세 (prescription_detail)
@@ -179,19 +222,3 @@ CREATE TABLE prescription_detail (
     CONSTRAINT fk_detail_drug  FOREIGN KEY (drug_id) REFERENCES drug_master(drug_id)
 ) ENGINE=InnoDB COMMENT='처방 상세 항목';
 
--- ---------------------------------------------------------------------
--- 11. 처방 템플릿 (prescription_template) — 질병별 권장 처방 (관리용)
--- ---------------------------------------------------------------------
-CREATE TABLE prescription_template (
-    template_id       BIGINT       NOT NULL AUTO_INCREMENT,
-    disease_id        BIGINT       NOT NULL COMMENT '질병ID (FK→disease)',
-    prescription_type ENUM('MEDICATION','TOPICAL','INJECTION','PROCEDURE','OBSERVATION','REFERRAL')
-                      NOT NULL,
-    medicine_name     VARCHAR(200) NOT NULL COMMENT '권장 약품/시술명',
-    dosage            VARCHAR(100) NULL,
-    duration_days     INT          NULL,
-    notes             TEXT         NULL,
-    PRIMARY KEY (template_id),
-    CONSTRAINT fk_tmpl_disease FOREIGN KEY (disease_id) REFERENCES disease(disease_id),
-    INDEX idx_tmpl_disease (disease_id)
-) ENGINE=InnoDB COMMENT='질병별 기본 처방 템플릿';

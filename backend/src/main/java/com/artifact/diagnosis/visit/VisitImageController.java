@@ -48,4 +48,12 @@ public class VisitImageController {
             @Parameter(description = "접수 ID") @PathVariable Long visitId) {
         return visitImageService.findByVisitId(visitId);
     }
+
+    @GetMapping("/{imageId}/content")
+    public ResponseEntity<byte[]> getImageContent(
+            @PathVariable Long visitId,
+            @PathVariable Long imageId) {
+        return visitImageService.getImageContent(visitId, imageId);
+    }
+
 }

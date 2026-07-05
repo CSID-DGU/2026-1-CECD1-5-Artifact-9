@@ -16,6 +16,7 @@ export type Visit = {
   visitDate: string;
   status: VisitStatus;
   createdAt: string;
+  receptionMemo?: string | null;
 };
 
 export function getVisit(visitId: number) {
@@ -30,10 +31,14 @@ export function listVisitsByPatient(patientId: number) {
   return apiRequest<Visit[]>(`/api/v1/visits?patientId=${patientId}`);
 }
 
-export function createVisit(patientId: number) {
+export function listVisitsByDate(date: string) {
+  return apiRequest<Visit[]>(`/api/v1/visits?date=${encodeURIComponent(date)}`);
+}
+
+export function createVisit(patientId: number, receptionMemo?: string | null) {
   return apiRequest<Visit>(`/api/v1/visits`, {
     method: "POST",
-    body: JSON.stringify({ patientId }),
+    body: JSON.stringify({ patientId, receptionMemo: receptionMemo ?? null }),
   });
 }
 

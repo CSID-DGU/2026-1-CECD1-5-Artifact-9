@@ -11,6 +11,7 @@ public record VisitResponse(
         Long patientId,
         LocalDateTime visitDate,
         VisitStatus status,
+        String receptionMemo,
         LocalDateTime createdAt
 ) {
     /** Visit 엔티티 → 응답 DTO 변환. */
@@ -20,6 +21,7 @@ public record VisitResponse(
                 visit.getPatientId(),
                 visit.getVisitDate(),
                 visit.getStatus(),
+                visit.getReceptionMemo(),
                 visit.getCreatedAt()
         );
     }

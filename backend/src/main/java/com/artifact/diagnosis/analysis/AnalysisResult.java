@@ -53,4 +53,8 @@ public class AnalysisResult {
     @CreationTimestamp
     @Column(name = "analyzed_at", nullable = false, updatable = false)
     private LocalDateTime analyzedAt;
+
+    @Column(name = "heatmap_image_url", length = 500)
+    private String heatmapImageUrl;
+
 }

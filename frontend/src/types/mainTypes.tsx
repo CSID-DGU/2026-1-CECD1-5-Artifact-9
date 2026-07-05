@@ -24,6 +24,7 @@ export type CardProps = {
   title?: string;
   children: React.ReactNode;
   className?: string;
+  contentClassName?: string;
 };
 
 export type TabsProps = {
@@ -35,4 +36,5 @@ export type TabsProps = {
 export type TableProps = {
   headers: string[];
   data: React.ReactNode[][];
+  getRowProps?: (row: React.ReactNode[], rowIdx: number) => React.HTMLAttributes<HTMLTableRowElement>;
 };
