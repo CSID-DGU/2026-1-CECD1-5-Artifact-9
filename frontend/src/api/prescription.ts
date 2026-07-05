@@ -26,6 +26,10 @@ export type PrescriptionResponse = {
   prescribedAt: string;
   revisitRecommendedDate: string | null;
   doctorNotes: string | null;
+  aiComment: string | null;
+  aiCommentModel: string | null;
+  aiCommentGeneratedAt: string | null;
+  aiCommentEdited: boolean | null;
   details: PrescriptionDetail[];
 };
 
@@ -34,6 +38,10 @@ export type PrescriptionRequest = {
   diseases: Array<{ kcdDiseaseId: number; isPrimary: boolean }>;
   analysisId?: number | null;
   doctorNotes?: string | null;
+  aiComment?: string | null;
+  aiCommentModel?: string | null;
+  aiCommentGeneratedAt?: string | null;
+  aiCommentEdited?: boolean | null;
   details: Array<{
     drugId?: number | null;
     medicineName: string;

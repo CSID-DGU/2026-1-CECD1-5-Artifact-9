@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Schema(description = "처방 저장 요청")
@@ -28,6 +29,18 @@ public record PrescriptionRequest(
 
         @Schema(description = "의사 소견", example = "초기 단계로 판단, 경과 관찰 필요")
         String doctorNotes,
+
+        @Schema(description = "LLM 생성 처방 코멘트 본문 (선택)")
+        String aiComment,
+
+        @Schema(description = "LLM 모델 식별자 (선택)", example = "gemini-3.1-flash-lite")
+        String aiCommentModel,
+
+        @Schema(description = "LLM 코멘트 생성 시각 — 프론트가 응답을 수신한 시점 (선택)")
+        LocalDateTime aiCommentGeneratedAt,
+
+        @Schema(description = "의사가 저장 전 코멘트를 수정했으면 true (선택)")
+        Boolean aiCommentEdited,
 
         @NotEmpty
         @Valid

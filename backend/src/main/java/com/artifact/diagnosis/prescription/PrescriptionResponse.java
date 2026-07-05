@@ -17,6 +17,10 @@ public record PrescriptionResponse(
         LocalDateTime prescribedAt,
         LocalDate revisitRecommendedDate,
         String doctorNotes,
+        String aiComment,
+        String aiCommentModel,
+        LocalDateTime aiCommentGeneratedAt,
+        Boolean aiCommentEdited,
         List<DetailResponse> details
 ) {
     public record DiseaseResponse(

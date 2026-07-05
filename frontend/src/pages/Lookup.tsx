@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
 import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
+import { getLatestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, type VisitImage } from "../api/images";
 import { Card } from "../components/Card";
 
@@ -65,7 +66,10 @@ function VisitStatusBadge({ status }: { status: VisitStatus }) {
   );
 }
 
-type VisitWithPrescription = Visit & { prescription?: PrescriptionResponse | null };
+type VisitWithPrescription = Visit & {
+  prescription?: PrescriptionResponse | null;
+  analysis?: AnalysisResponse | null;
+};
 
 export default function Lookup() {
   const [chartNoQuery, setChartNoQuery] = useState("");
@@ -237,17 +241,20 @@ export default function Lookup() {
       const displayVisits = dateMatchedVisitIds && dateMatchedVisitIds.size > 0
         ? visitList.filter((visit) => dateMatchedVisitIds.has(visit.id))
         : visitList;
+      const HAS_ANALYSIS: VisitStatus[] = ["ANALYZED", "DIAGNOSED", "PRESCRIBED", "COMPLETED"];
+      const HAS_PRESCRIPTION: VisitStatus[] = ["PRESCRIBED", "COMPLETED"];
+
       const withRx: VisitWithPrescription[] = await Promise.all(
         displayVisits.map(async (v) => {
-          if (v.status === "PRESCRIBED" || v.status === "COMPLETED") {
-            try {
-              const rx = await getPrescription(v.id);
-              return { ...v, prescription: rx };
-            } catch {
-              return { ...v, prescription: null };
-            }
-          }
-          return { ...v, prescription: null };
+          const [rx, analysis] = await Promise.all([
+            HAS_PRESCRIPTION.includes(v.status)
+              ? getPrescription(v.id).catch(() => null)
+              : Promise.resolve(null),
+            HAS_ANALYSIS.includes(v.status)
+              ? getLatestAnalysis(v.id).catch(() => null)
+              : Promise.resolve(null),
+          ]);
+          return { ...v, prescription: rx, analysis };
         })
       );
       setSelectedPatient(patientDetail);
@@ -587,6 +594,70 @@ export default function Lookup() {
               </div>
             </Card>
 
+            {/* AI 분석 결과 카드 */}
+            {selectedVisit.analysis && (
+              <Card title="AI 분석 결과">
+                <div className="flex flex-col gap-2">
+                  {/* Top 1 하이라이트 */}
+                  <div className="rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+                    <p className="text-[10px] text-gray-400 mb-0.5">Top 1</p>
+                    <p className="text-xs font-semibold text-white">
+                      {selectedVisit.analysis.top1.diseaseNameKo}
+                      <span className="ml-1 font-mono text-[10px] text-blue-300">({selectedVisit.analysis.top1.diseaseCode})</span>
+                    </p>
+                    <p className="text-[10px] text-blue-200 mt-0.5">
+                      신뢰도 {(Number(selectedVisit.analysis.top1.confidence) * 100).toFixed(1)}%
+                    </p>
+                  </div>
+
+                  {/* Top 5 테이블 */}
+                  <div className="rounded border border-gray-700 overflow-hidden">
+                    <div className="grid grid-cols-[20px_44px_1fr_44px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
+                      <span>#</span><span>코드</span><span>상병명</span><span className="text-right">신뢰도</span>
+                    </div>
+                    {selectedVisit.analysis.top5.map((item) => (
+                      <div key={item.rank} className="grid grid-cols-[20px_44px_1fr_44px] items-center border-t border-gray-800 px-2 py-1.5 text-xs">
+                        <span className="text-gray-500">{item.rank}</span>
+                        <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                        <span className="min-w-0 truncate text-white" title={item.diseaseNameKo}>{item.diseaseNameKo}</span>
+                        <span className="text-right text-gray-300">{(item.confidence * 100).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* AI 처방 코멘트 (처방에 저장된 경우) */}
+                  {selectedVisit.prescription?.aiComment && (
+                    <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[10px] text-indigo-400 font-medium">
+                          AI 처방 코멘트
+                          {selectedVisit.prescription.aiCommentEdited && (
+                            <span className="ml-1 text-yellow-400">(수정됨)</span>
+                          )}
+                        </span>
+                        {selectedVisit.prescription.aiCommentGeneratedAt && (
+                          <span className="text-[10px] text-gray-500">
+                            {formatDate(selectedVisit.prescription.aiCommentGeneratedAt)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-indigo-100 leading-relaxed whitespace-pre-line">
+                        {selectedVisit.prescription.aiComment}
+                      </p>
+                      {selectedVisit.prescription.aiCommentModel && (
+                        <p className="text-[10px] text-gray-500">{selectedVisit.prescription.aiCommentModel}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 분석 메타 */}
+                  <p className="text-[10px] text-gray-500">
+                    {selectedVisit.analysis.modelVersion} · {selectedVisit.analysis.inferenceTimeMs}ms · {formatDate(selectedVisit.analysis.analyzedAt)}
+                  </p>
+                </div>
+              </Card>
+            )}
+
             {selectedVisit.prescription ? (
               <Card title="처방 정보">
                 <div className="flex flex-col gap-1.5 mb-3">
@@ -613,6 +684,28 @@ export default function Lookup() {
                     <InfoRow label="의사소견" value={selectedVisit.prescription.doctorNotes} />
                   )}
                 </div>
+
+                {/* 분석 데이터가 없을 때만 처방 정보 카드 안에 AI 코멘트 표시 */}
+                {!selectedVisit.analysis && selectedVisit.prescription.aiComment && (
+                  <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 mb-3 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] text-indigo-400 font-medium">
+                        AI 처방 코멘트
+                        {selectedVisit.prescription.aiCommentEdited && (
+                          <span className="ml-1 text-yellow-400">(수정됨)</span>
+                        )}
+                      </span>
+                      {selectedVisit.prescription.aiCommentGeneratedAt && (
+                        <span className="text-[10px] text-gray-500">
+                          {formatDate(selectedVisit.prescription.aiCommentGeneratedAt)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-indigo-100 leading-relaxed whitespace-pre-line">
+                      {selectedVisit.prescription.aiComment}
+                    </p>
+                  </div>
+                )}
 
                 {selectedVisit.prescription.details.length > 0 && (
                   <>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 import type { ReactNode } from "react";
 import { apiRequest } from "../api/client";
 import { STORAGE_KEYS } from "../constants";
@@ -33,12 +33,10 @@ export type SignupPayload = {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Member | null>(null);
-
-  useEffect(() => {
+  const [user, setUser] = useState<Member | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USER);
-    if (saved) setUser(JSON.parse(saved));
-  }, []);
+    return saved ? JSON.parse(saved) : null;
+  });
 
   const login = async (loginId: string, password: string): Promise<boolean> => {
     try {
