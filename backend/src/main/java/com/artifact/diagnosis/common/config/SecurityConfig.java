@@ -40,6 +40,9 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/v1/visits/*/images/*/content").permitAll()
                 .requestMatchers("/api/v1/visits/*/analysis/heatmap").permitAll()
+                // 데모용 — 대기실 키오스크(태블릿)는 JWT가 없어 인증 없이 연다.
+                // 운영 배포 시에는 접수 시 발급하는 1회용 게스트 토큰으로 제한해야 한다.
+                .requestMatchers("/api/kiosk/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

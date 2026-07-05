@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../api/analysis";
+import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
@@ -91,6 +92,7 @@ export default function Clinic() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [preliminaryAnalysis, setPreliminaryAnalysis] = useState<PreliminaryAnalysis | null>(null);
   const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
 
   // 분석 결과 상세 토글
@@ -168,6 +170,7 @@ export default function Clinic() {
     setErrorMessage(null);
     setMessage(null);
     setPrescription(null);
+    setPreliminaryAnalysis(null);
     setSelectedKcds([]);
     setSelectedAnalysisCandidateCodes([]);
     setAiComment(null);
@@ -190,6 +193,7 @@ export default function Clinic() {
         ["PRESCRIBED", "COMPLETED"].includes(visit.status)
           ? await getPrescription(visit.id).catch(() => null)
           : null;
+      const preliminary = await getPreliminaryAnalysis(visit.id).catch(() => null);
 
       setSelectedVisit(visit);
       setSelectedPatient(patient);
@@ -197,6 +201,7 @@ export default function Clinic() {
       setSelectedImageIds(visitImages.map((img) => img.imageId));
       setAnalysis(latestAnalysis);
       setPrescription(latestPrescription);
+      setPreliminaryAnalysis(preliminary);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -486,6 +491,61 @@ export default function Clinic() {
               </p>
             )}
           </Card>
+
+          {preliminaryAnalysis && (
+            <Card title="대기 중 예비 분석결과" className="min-h-0" contentClassName="!p-2">
+              <div className="flex flex-col gap-2">
+                <p className="rounded border border-yellow-500/40 bg-yellow-500/10 px-2 py-1.5 text-[11px] text-yellow-200">
+                  ⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.
+                </p>
+
+                {preliminaryAnalysis.topK[0] && (
+                  <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
+                    <p className="text-xs text-gray-300">Top 1 (키오스크 예비분석)</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">
+                      {preliminaryAnalysis.topK[0].diseaseNameKo} ({preliminaryAnalysis.topK[0].diseaseCode})
+                    </p>
+                    <p className="mt-0.5 text-xs text-blue-100">
+                      신뢰도 {(preliminaryAnalysis.topK[0].confidence * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+
+                {preliminaryAnalysis.gradcamUrl && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] text-gray-400">AI 병변 분석 히트맵</span>
+                    <div className="rounded border border-gray-700 bg-gray-900 overflow-hidden">
+                      <img
+                        src={preliminaryAnalysis.gradcamUrl}
+                        alt="키오스크 예비분석 GradCAM"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="border border-gray-700 rounded overflow-hidden">
+                  <div className="grid grid-cols-[34px_72px_1fr_64px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
+                    <span>순위</span><span>상병코드</span><span>상병명</span><span className="text-right">신뢰도</span>
+                  </div>
+                  {preliminaryAnalysis.topK.map((item, idx) => (
+                    <div key={item.diseaseCode} className="grid grid-cols-[34px_72px_1fr_64px] items-center border-t border-gray-800 px-2 py-1.5 text-xs">
+                      <span className="text-gray-400">{idx + 1}</span>
+                      <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                      <span className="text-white">{item.diseaseNameKo}</span>
+                      <span className="text-right text-gray-200">{(item.confidence * 100).toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+
+                {preliminaryAnalysis.aiComment && (
+                  <p className="text-xs text-gray-300 leading-relaxed">{preliminaryAnalysis.aiComment}</p>
+                )}
+
+                <p className="text-[10px] text-gray-400">{formatDateTime(preliminaryAnalysis.analyzedAt)}</p>
+              </div>
+            </Card>
+          )}
         </section>
 
         {/* Center Column */}

@@ -6,6 +6,8 @@ import Clinic from "./pages/Clinic";
 import Lookup from "./pages/Lookup";
 import Certificate from "./pages/Certificate";
 import Login from "./pages/Login";
+import KioskWaiting from "./pages/KioskWaiting";
+import KioskAnalyze from "./pages/KioskAnalyze";
 import { AuthProvider } from "./components/AuthContext";
 
 export default function App() {
@@ -25,6 +27,10 @@ export default function App() {
               <Route path="certificate" element={<Certificate />} />
             </Route>
           </Route>
+
+          {/* 대기실 키오스크 — 로그인 없이 접근 (인증 가드 없음) */}
+          <Route path="/kiosk" element={<KioskWaiting />} />
+          <Route path="/kiosk/analyze/:visitId" element={<KioskAnalyze />} />
 
           {/* 잘못된 경로 → 로그인으로 */}
           <Route path="*" element={<Navigate to="/" replace />} />
