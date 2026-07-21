@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { analyzeKiosk, type PreliminaryAnalysis } from "../api/kiosk";
@@ -12,6 +12,8 @@ const MIN_ANALYSIS_LOADING_MS = 1200;
 export default function KioskAnalyze() {
   const { visitId } = useParams<{ visitId: string }>();
   const navigate = useNavigate();
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -33,6 +35,20 @@ export default function KioskAnalyze() {
     setGradcamError(false);
     setGradcamLoading(false);
     setPreviewUrl(selected ? URL.createObjectURL(selected) : null);
+  };
+
+  const openGalleryPicker = () => {
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = "";
+      galleryInputRef.current.click();
+    }
+  };
+
+  const openCameraPicker = () => {
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+      cameraInputRef.current.click();
+    }
   };
 
   const handleAnalyze = async () => {
@@ -99,14 +115,43 @@ export default function KioskAnalyze() {
               {!result && (
                 <div className="flex flex-col items-center gap-3">
                   <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <input
+                    ref={cameraInputRef}
                     type="file"
                     accept="image/*"
                     capture="environment"
                     onChange={handleFileChange}
-                    className="w-full text-xs text-gray-200 file:mr-3 file:rounded file:border-0 file:bg-blue-500 file:px-3 file:py-1.5 file:text-white file:text-xs hover:file:bg-blue-600"
+                    className="hidden"
                   />
+                  <div className="grid w-full grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={openGalleryPicker}
+                      disabled={loading}
+                      className="rounded bg-blue-500 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      파일 선택
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openCameraPicker}
+                      disabled={loading}
+                      className="rounded bg-blue-500 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      사진 촬영
+                    </button>
+                  </div>
+                  <p className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-center text-[11px] text-gray-300">
+                    {file ? file.name : "갤러리에서 선택하거나 iPad 카메라로 촬영해 주세요."}
+                  </p>
                   <p className="text-center text-[11px] text-gray-400">
-                    iPad에서는 버튼을 누르면 후면 카메라로 바로 촬영할 수 있습니다.
+                    사진 촬영은 iPad에서 후면 카메라를 열고, 파일 선택은 사진 보관함에서 이미지를 선택합니다.
                   </p>
                   {previewUrl && (
                     <div className="w-full rounded border border-gray-700 bg-gray-900 overflow-hidden">
