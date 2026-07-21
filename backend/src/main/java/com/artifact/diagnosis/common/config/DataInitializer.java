@@ -48,6 +48,7 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         ensureMemberTable();
+        ensurePreliminaryAnalysisTable();
         ensureVisitReceptionMemoColumn();
         ensureAnalysisResultHeatmapColumn();
 
@@ -134,6 +135,59 @@ public class DataInitializer implements CommandLineRunner {
             log.info("member.{} 컬럼을 추가했습니다.", columnName);
         } catch (Exception e) {
             log.warn("member.{} 컬럼 확인/추가 중 오류: {}", columnName, e.getMessage());
+        }
+    }
+
+    private void ensurePreliminaryAnalysisTable() {
+        try (Connection connection = dataSource.getConnection()) {
+            if (!tableExists(connection, "preliminary_analysis")) {
+                jdbcTemplate.execute("""
+                        CREATE TABLE preliminary_analysis (
+                            preliminary_analysis_id BIGINT       NOT NULL AUTO_INCREMENT COMMENT '예비분석 PK',
+                            visit_id                BIGINT       NOT NULL                COMMENT '접수ID (FK, 1:1)',
+                            top_k_json              JSON         NULL                    COMMENT 'Top-K 후보 [{code, confidence}, ...]',
+                            gradcam_url             VARCHAR(500) NULL                    COMMENT 'GradCAM 히트맵 오버레이 이미지 스토리지 키',
+                            ai_comment              TEXT         NULL                    COMMENT 'LLM 생성 참고 소견',
+                            source                  VARCHAR(20)  NOT NULL DEFAULT 'clinic' COMMENT '분석에 사용된 모델 소스',
+                            analyzed_at             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (preliminary_analysis_id),
+                            UNIQUE KEY uk_preliminary_visit (visit_id),
+                            CONSTRAINT fk_preliminary_visit FOREIGN KEY (visit_id) REFERENCES visit(visit_id)
+                        ) ENGINE=InnoDB COMMENT='대기실 키오스크 예비분석 결과 (Visit 1:1, FSM과 분리된 사이드 채널)'
+                        """);
+                log.info("preliminary_analysis 테이블을 생성했습니다.");
+            } else {
+                ensurePreliminaryAnalysisColumn(connection, "top_k_json",
+                        "ALTER TABLE preliminary_analysis ADD COLUMN top_k_json JSON NULL");
+                ensurePreliminaryAnalysisColumn(connection, "gradcam_url",
+                        "ALTER TABLE preliminary_analysis ADD COLUMN gradcam_url VARCHAR(500) NULL");
+                ensurePreliminaryAnalysisColumn(connection, "ai_comment",
+                        "ALTER TABLE preliminary_analysis ADD COLUMN ai_comment TEXT NULL");
+                ensurePreliminaryAnalysisColumn(connection, "source",
+                        "ALTER TABLE preliminary_analysis ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'clinic'");
+                ensurePreliminaryAnalysisColumn(connection, "analyzed_at",
+                        "ALTER TABLE preliminary_analysis ADD COLUMN analyzed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+
+                if (!indexExists(connection, "preliminary_analysis", "uk_preliminary_visit")) {
+                    jdbcTemplate.execute("ALTER TABLE preliminary_analysis ADD UNIQUE KEY uk_preliminary_visit (visit_id)");
+                    log.info("preliminary_analysis.visit_id unique index를 추가했습니다.");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("preliminary_analysis 테이블 확인/보정 중 오류: {}", e.getMessage());
+        }
+    }
+
+    private void ensurePreliminaryAnalysisColumn(Connection connection, String columnName, String alterSql) {
+        try {
+            if (columnExists(connection, "preliminary_analysis", columnName)) {
+                return;
+            }
+
+            jdbcTemplate.execute(alterSql);
+            log.info("preliminary_analysis.{} 컬럼을 추가했습니다.", columnName);
+        } catch (Exception e) {
+            log.warn("preliminary_analysis.{} 컬럼 확인/추가 중 오류: {}", columnName, e.getMessage());
         }
     }
 
