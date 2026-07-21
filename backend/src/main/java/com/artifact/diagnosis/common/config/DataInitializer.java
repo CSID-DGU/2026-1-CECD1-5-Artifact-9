@@ -47,6 +47,7 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        ensureMemberTable();
         ensureVisitReceptionMemoColumn();
         ensureAnalysisResultHeatmapColumn();
 
@@ -61,6 +62,79 @@ public class DataInitializer implements CommandLineRunner {
                 log.error("데이터 초기화 중 오류 발생", e);
             }
         }, "data-initializer").start();
+    }
+
+    private void ensureMemberTable() {
+        try (Connection connection = dataSource.getConnection()) {
+            if (!tableExists(connection, "member")) {
+                jdbcTemplate.execute("""
+                        CREATE TABLE member (
+                            member_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '회원ID (PK)',
+                            login_id       VARCHAR(50)  NOT NULL                COMMENT '로그인 ID',
+                            password       VARCHAR(100) NOT NULL                COMMENT '비밀번호 (BCrypt)',
+                            name           VARCHAR(50)  NOT NULL                COMMENT '이름',
+                            license_number VARCHAR(50)  NULL                    COMMENT '면허번호 (의사/간호사)',
+                            department     VARCHAR(100) NULL                    COMMENT '진료과',
+                            role           VARCHAR(20)  NOT NULL DEFAULT 'DOCTOR' COMMENT '역할 (DOCTOR/NURSE/STAFF/ADMIN)',
+                            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                            PRIMARY KEY (member_id),
+                            UNIQUE KEY uk_member_login_id (login_id),
+                            UNIQUE KEY uk_member_license_number (license_number)
+                        ) ENGINE=InnoDB COMMENT='회원 계정 (의사/간호사/일반)'
+                        """);
+                log.info("member 테이블을 생성했습니다.");
+            } else {
+                ensureMemberColumn(connection, "license_number",
+                        "ALTER TABLE member ADD COLUMN license_number VARCHAR(50) NULL");
+                ensureMemberColumn(connection, "department",
+                        "ALTER TABLE member ADD COLUMN department VARCHAR(100) NULL");
+                ensureMemberColumn(connection, "role",
+                        "ALTER TABLE member ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'DOCTOR'");
+                ensureMemberColumn(connection, "created_at",
+                        "ALTER TABLE member ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
+                ensureMemberColumn(connection, "updated_at",
+                        "ALTER TABLE member ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+
+                if (!indexExists(connection, "member", "uk_member_login_id")) {
+                    jdbcTemplate.execute("ALTER TABLE member ADD UNIQUE KEY uk_member_login_id (login_id)");
+                    log.info("member.login_id unique index를 추가했습니다.");
+                }
+
+                if (!indexExists(connection, "member", "uk_member_license_number")) {
+                    jdbcTemplate.execute("ALTER TABLE member ADD UNIQUE KEY uk_member_license_number (license_number)");
+                    log.info("member.license_number unique index를 추가했습니다.");
+                }
+            }
+
+            jdbcTemplate.update("""
+                    INSERT INTO member (login_id, password, name, license_number, department, role)
+                    SELECT ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (SELECT 1 FROM member WHERE login_id = ?)
+                    """,
+                    "admin",
+                    "$2b$10$4/MYOFj/eAOxU64eE0sOpO0hujwKyfmEETSQwLgY8a3.pRc1czsrW",
+                    "관리자",
+                    "TEST-0001",
+                    "피부과",
+                    "ADMIN",
+                    "admin");
+        } catch (Exception e) {
+            log.warn("member 테이블 확인/보정 중 오류: {}", e.getMessage());
+        }
+    }
+
+    private void ensureMemberColumn(Connection connection, String columnName, String alterSql) {
+        try {
+            if (columnExists(connection, "member", columnName)) {
+                return;
+            }
+
+            jdbcTemplate.execute(alterSql);
+            log.info("member.{} 컬럼을 추가했습니다.", columnName);
+        } catch (Exception e) {
+            log.warn("member.{} 컬럼 확인/추가 중 오류: {}", columnName, e.getMessage());
+        }
     }
 
     private void ensureVisitReceptionMemoColumn() {
@@ -91,6 +165,32 @@ public class DataInitializer implements CommandLineRunner {
         } catch (Exception e) {
             log.warn("analysis_result.heatmap_image_url 컬럼 확인/추가 중 오류: {}", e.getMessage());
         }
+    }
+
+    private boolean tableExists(Connection connection, String tableName) throws Exception {
+        try (ResultSet tables = connection.getMetaData().getTables(
+                connection.getCatalog(), null, tableName, new String[]{"TABLE"})) {
+            return tables.next();
+        }
+    }
+
+    private boolean columnExists(Connection connection, String tableName, String columnName) throws Exception {
+        try (ResultSet columns = connection.getMetaData().getColumns(
+                connection.getCatalog(), null, tableName, columnName)) {
+            return columns.next();
+        }
+    }
+
+    private boolean indexExists(Connection connection, String tableName, String indexName) throws Exception {
+        try (ResultSet indexes = connection.getMetaData().getIndexInfo(
+                connection.getCatalog(), null, tableName, false, false)) {
+            while (indexes.next()) {
+                if (indexName.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** KCD 상병코드 — 1.8MB, XSSFWorkbook으로 충분 */
