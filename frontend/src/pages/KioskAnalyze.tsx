@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { analyzeKiosk, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -32,8 +33,9 @@ export default function KioskAnalyze() {
     try {
       const response = await analyzeKiosk(Number(visitId), file);
       setResult(response);
-    } catch {
-      setError("분석에 실패했습니다. 다시 시도해 주세요.");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "분석에 실패했습니다. 다시 시도해 주세요.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -62,9 +64,13 @@ export default function KioskAnalyze() {
                   <input
                     type="file"
                     accept="image/*"
+                    capture="environment"
                     onChange={handleFileChange}
                     className="w-full text-xs text-gray-200 file:mr-3 file:rounded file:border-0 file:bg-blue-500 file:px-3 file:py-1.5 file:text-white file:text-xs hover:file:bg-blue-600"
                   />
+                  <p className="text-center text-[11px] text-gray-400">
+                    iPad에서는 버튼을 누르면 후면 카메라로 바로 촬영할 수 있습니다.
+                  </p>
                   {previewUrl && (
                     <div className="w-full rounded border border-gray-700 bg-gray-900 overflow-hidden">
                       <img src={previewUrl} alt="선택한 사진 미리보기" className="max-h-64 w-full object-contain" />
