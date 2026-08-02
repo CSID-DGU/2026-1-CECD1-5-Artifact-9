@@ -11,7 +11,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 대기실 키오스크 REST API. 태블릿은 JWT가 없으므로 이 경로는 인증 없이 연다(SecurityConfig 참고).
- * 데모용 — 운영 환경에서는 접수 시 발급하는 1회용 게스트 토큰으로 제한해야 한다.
+ * 인증 대신, 접수 시 발급되는 접수별 토큰(visit.kiosk_token)으로 접근 대상을 한정한다 —
+ * 태블릿은 QR로 받은 /kiosk/{token} 경로로 진입하고, 쓰기 API는 모두 토큰 스코프다.
  */
 @Tag(name = "키오스크", description = "대기실 키오스크 예비분석 API (인증 없음)")
 @RestController
@@ -21,18 +22,28 @@ public class KioskController {
 
     private final KioskService kioskService;
 
-    @Operation(summary = "대기 환자 폴링", description = "가장 최근 RECEIVED 상태이면서 예비분석이 없는 Visit 1건을 반환한다. 없으면 404.")
+    @Operation(summary = "대기 환자 폴링",
+               description = "QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용. 가장 최근 RECEIVED 상태이면서 예비분석이 없는 Visit 1건을 반환한다. 없으면 404.")
     @GetMapping("/pending")
     public KioskPendingResponse pending() {
         return kioskService.findPending();
     }
 
-    @Operation(summary = "키오스크 예비분석", description = "선택한 이미지를 AI 모델(source=clinic)로 분석해 preliminary_analysis에 저장한다. Visit 상태는 변경하지 않는다.")
-    @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "키오스크 세션 조회",
+               description = "QR 토큰으로 접수 1건을 조회한다. 태블릿이 촬영 전 본인 확인 화면을 띄우는 데 쓴다. 토큰이 유효하지 않으면 404.")
+    @GetMapping("/session/{token}")
+    public KioskSessionResponse session(
+            @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token) {
+        return kioskService.findSession(token);
+    }
+
+    @Operation(summary = "키오스크 예비분석",
+               description = "선택한 이미지를 AI 모델(source=clinic)로 분석해 preliminary_analysis에 저장한다. Visit 상태는 변경하지 않는다.")
+    @PostMapping(value = "/session/{token}/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PreliminaryAnalysisResponse analyze(
-            @Parameter(description = "접수 ID") @RequestParam Long visitId,
+            @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token,
             @Parameter(description = "분석할 이미지 파일") @RequestParam("file") MultipartFile file) {
-        return kioskService.analyze(visitId, file);
+        return kioskService.analyze(token, file);
     }
 
     @Operation(summary = "예비분석 GradCAM 히트맵 조회")

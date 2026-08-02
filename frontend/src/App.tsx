@@ -28,9 +28,10 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* 대기실 키오스크 — 로그인 없이 접근 (인증 가드 없음) */}
+          {/* 대기실 키오스크 — 로그인 없이 접근 (인증 가드 없음).
+              접수 시 발급된 토큰이 담긴 QR을 태블릿으로 찍으면 /kiosk/{token} 으로 진입한다. */}
           <Route path="/kiosk" element={<KioskWaiting />} />
-          <Route path="/kiosk/analyze/:visitId" element={<KioskAnalyze />} />
+          <Route path="/kiosk/:token" element={<KioskAnalyze />} />
 
           {/* 잘못된 경로 → 로그인으로 */}
           <Route path="*" element={<Navigate to="/" replace />} />

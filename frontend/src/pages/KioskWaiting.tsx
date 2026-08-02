@@ -1,16 +1,82 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getKioskPending } from "../api/kiosk";
 import { Card } from "../components/Card";
 
+/** 디코딩용 축소 한계. 태블릿 사진은 4000px급이라 원본 그대로 돌리면 느리다. */
+const MAX_DECODE_DIMENSION = 1600;
+
+/** 파일 → 디코딩 가능한 이미지. onload 이후엔 픽셀이 메모리에 있으므로 objectURL을 바로 회수해도 된다. */
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("이미지를 읽지 못했습니다."));
+    };
+    img.src = url;
+  });
+}
+
+type QrDecoder = typeof import("jsqr").default;
+
+/** 캔버스에 그려 픽셀을 뽑고 QR을 읽는다. 못 읽으면 null. */
+function readQr(jsQR: QrDecoder, img: HTMLImageElement, maxDimension: number): string | null {
+  const scale = Math.min(1, maxDimension / Math.max(img.naturalWidth, img.naturalHeight));
+  const width = Math.max(1, Math.round(img.naturalWidth * scale));
+  const height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.drawImage(img, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  return jsQR(data, width, height, { inversionAttempts: "attemptBoth" })?.data ?? null;
+}
+
+/**
+ * 스캔 결과에서 토큰만 뽑는다.
+ * QR에 적힌 origin(접수 화면에서 설정한 주소)과 태블릿이 실제 접속한 origin이 다를 수 있어서,
+ * 전체 URL로 이동하지 않고 토큰만 취해 현재 origin에서 라우팅한다.
+ */
+function extractToken(scanned: string): string | null {
+  const fromPath = scanned.match(/\/kiosk\/([A-Za-z0-9]+)/);
+  if (fromPath) return fromPath[1];
+
+  const bare = scanned.trim();
+  return /^[A-Za-z0-9]{8,32}$/.test(bare) ? bare : null;
+}
+
 /**
  * 대기실 태블릿이 상시 띄워두는 화면. 로그인 없이 접근 가능(라우팅에서 인증 가드 제외).
- * 3초 간격으로 새로 접수된 환자를 폴링하다가, 감지되면 해당 환자의 분석 페이지로 이동한다.
+ *
+ * 진입 경로 세 가지:
+ *   1. 이 화면의 [QR 촬영] — 접수 화면의 QR을 찍으면 앱 안에서 디코딩해 이동. 기본 카메라 앱이
+ *      QR을 못 읽는 안드로이드 기종 대비책이자 기본 동선.
+ *   2. 태블릿 기본 카메라/렌즈로 QR을 찍어 /kiosk/{token} 으로 직접 진입.
+ *   3. ?auto=1 — 3초 폴링으로 대기 환자를 잡아 자동 이동(QR 없이 시연할 때의 폴백).
+ * 어느 쪽이든 목적지가 /kiosk/{token} 이라 이후 흐름은 완전히 동일하다.
  */
 export default function KioskWaiting() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const autoMode = searchParams.get("auto") === "1";
+
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!autoMode) return;
+
     let cancelled = false;
     let inFlight = false;
 
@@ -19,7 +85,7 @@ export default function KioskWaiting() {
       inFlight = true;
       try {
         const pending = await getKioskPending();
-        if (!cancelled) navigate(`/kiosk/analyze/${pending.visitId}`);
+        if (!cancelled) navigate(`/kiosk/${pending.kioskToken}`);
       } catch {
         // 대기 중인 환자 없음 — 계속 폴링
       } finally {
@@ -31,7 +97,44 @@ export default function KioskWaiting() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [navigate]);
+  }, [autoMode, navigate]);
+
+  const openCamera = () => {
+    if (!cameraInputRef.current) return;
+    cameraInputRef.current.value = ""; // 같은 사진을 다시 찍어도 change가 발생하도록
+    cameraInputRef.current.click();
+  };
+
+  const handleQrPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScanError(null);
+    setScanning(true);
+    try {
+      // 디코더는 촬영 버튼을 눌렀을 때만 받는다 (약 50KB, 나머지 화면엔 불필요)
+      const [{ default: jsQR }, img] = await Promise.all([import("jsqr"), loadImage(file)]);
+      // 축소본으로 먼저 시도하고, 실패하면 원본 해상도로 한 번 더 (QR이 작게 찍힌 경우)
+      const scanned =
+        readQr(jsQR, img, MAX_DECODE_DIMENSION) ??
+        readQr(jsQR, img, Math.max(img.naturalWidth, img.naturalHeight));
+      const token = scanned ? extractToken(scanned) : null;
+
+      if (!token) {
+        setScanError(
+          scanned
+            ? "키오스크 QR이 아닙니다. 접수 화면에 표시된 QR을 찍어 주세요."
+            : "QR을 인식하지 못했습니다. 화면 반사를 피하고 QR이 크게 나오도록 다시 찍어 주세요.",
+        );
+        return;
+      }
+      navigate(`/kiosk/${token}`);
+    } catch {
+      setScanError("사진을 읽지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-main-bg text-white text-sm font-medium font-sans flex flex-col">
@@ -41,10 +144,46 @@ export default function KioskWaiting() {
 
       <main className="flex flex-1 items-center justify-center p-6">
         <Card title="대기 화면" className="w-full max-w-md" contentClassName="!p-6">
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <div className="flex flex-col items-center gap-3 py-2 text-center">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-600 border-t-blue-500" />
-            <p className="text-base font-semibold text-white">환자를 기다리는 중입니다</p>
-            <p className="text-xs text-gray-400">접수가 완료되면 자동으로 분석 화면으로 이동합니다.</p>
+
+            {autoMode ? (
+              <div>
+                <p className="text-base font-semibold text-white">환자를 기다리는 중입니다</p>
+                <p className="mt-1 text-xs text-gray-400">접수가 완료되면 자동으로 분석 화면으로 이동합니다.</p>
+                <p className="mt-1 text-[11px] text-gray-500">자동 진입 모드 (QR 스캔 없이 동작)</p>
+              </div>
+            ) : (
+              <p className="text-xs leading-relaxed text-gray-400">
+                접수처 화면의 QR 코드를 촬영하면
+                <br />
+                본인 확인 후 피부 사진 예비 분석을 진행합니다.
+              </p>
+            )}
+
+            {/* 앱 안에서 직접 QR을 디코딩한다 — 기본 카메라 앱이 QR을 못 읽는 기종 대비 */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleQrPhoto}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={openCamera}
+              disabled={scanning}
+              className="mt-1 w-full rounded bg-blue-500 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {scanning ? "QR 인식 중..." : "QR 촬영"}
+            </button>
+
+            {scanError && (
+              <p className="w-full rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200">
+                {scanError}
+              </p>
+            )}
           </div>
         </Card>
       </main>

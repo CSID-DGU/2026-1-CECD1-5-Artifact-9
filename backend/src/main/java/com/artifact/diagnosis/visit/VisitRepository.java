@@ -18,4 +18,7 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
 
     /** 환자의 가장 최근 Visit (최종진료일 산출용). */
     java.util.Optional<Visit> findTopByPatientIdOrderByVisitDateDesc(Long patientId);
+
+    /** 키오스크 QR 토큰으로 접수 조회. */
+    java.util.Optional<Visit> findByKioskToken(String kioskToken);
 }

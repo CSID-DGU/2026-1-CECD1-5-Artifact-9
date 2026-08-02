@@ -17,6 +17,8 @@ export type Visit = {
   status: VisitStatus;
   createdAt: string;
   receptionMemo?: string | null;
+  /** 키오스크 QR 진입용 토큰. 컬럼 추가 이전 데이터는 null — issueKioskToken()으로 지연 발급한다. */
+  kioskToken?: string | null;
 };
 
 export function getVisit(visitId: number) {
@@ -39,6 +41,13 @@ export function createVisit(patientId: number, receptionMemo?: string | null) {
   return apiRequest<Visit>(`/api/v1/visits`, {
     method: "POST",
     body: JSON.stringify({ patientId, receptionMemo: receptionMemo ?? null }),
+  });
+}
+
+/** 키오스크 QR 토큰을 발급받는다(이미 있으면 그대로 반환). 접수 화면의 'QR 다시 보기'용. */
+export function issueKioskToken(visitId: number) {
+  return apiRequest<Visit>(`/api/v1/visits/${visitId}/kiosk-token`, {
+    method: "POST",
   });
 }
 

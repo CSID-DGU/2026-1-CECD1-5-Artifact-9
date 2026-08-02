@@ -6,6 +6,7 @@ import com.artifact.diagnosis.image.ImageStorageService;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.patient.PatientRepository;
 import com.artifact.diagnosis.prescription.GeminiService;
+import com.artifact.diagnosis.visit.KioskTokenGenerator;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import com.artifact.diagnosis.visit.VisitStatus;
@@ -46,6 +47,7 @@ public class KioskService {
     private final ImageStorageService imageStorageService;
     private final GeminiService geminiService;
     private final ObjectMapper objectMapper;
+    private final KioskTokenGenerator kioskTokenGenerator;
 
     @Value("${fastapi.url:http://localhost:8000}")
     private String fastapiUrl;
@@ -67,8 +69,12 @@ public class KioskService {
             "vasc",  "혈관성 병변"
     );
 
-    /** 접수 목록에서 가장 최근에 RECEIVED 상태이면서 예비분석이 아직 없는 Visit 1건. 데모는 동시 1명 기준. */
-    @Transactional(readOnly = true)
+    /**
+     * QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용 — 가장 최근 RECEIVED 상태이면서 예비분석이 없는 Visit 1건.
+     * 전역으로 "다음 환자 1명"을 정하는 방식이라 동시 1명만 가능하다. 여러 환자를 동시에 진행하려면
+     * 접수 화면의 QR(=토큰별 경로)을 써야 한다.
+     */
+    @Transactional
     public KioskPendingResponse findPending() {
         List<Visit> received = visitRepository.findByStatusOrderByVisitDateAsc(VisitStatus.RECEIVED);
 
@@ -87,10 +93,31 @@ public class KioskService {
         Patient patient = patientRepository.findById(pendingVisit.getPatientId())
                 .orElseThrow(() -> new NoSuchElementException("환자를 찾을 수 없습니다. id=" + pendingVisit.getPatientId()));
 
+        // 컬럼 추가 이전에 만들어진 접수 행은 토큰이 없다 — 폴백도 토큰 경로로 이동하므로 여기서 지연 발급한다.
+        if (pendingVisit.getKioskToken() == null) {
+            pendingVisit.setKioskToken(kioskTokenGenerator.generate());
+        }
+
         return new KioskPendingResponse(
                 pendingVisit.getId(),
                 patient.getName(),
-                "V" + String.format("%05d", pendingVisit.getId())
+                "V" + String.format("%05d", pendingVisit.getId()),
+                pendingVisit.getKioskToken()
+        );
+    }
+
+    /** QR 토큰으로 접수 1건을 조회한다. 태블릿의 본인 확인 화면에서 사용. */
+    @Transactional(readOnly = true)
+    public KioskSessionResponse findSession(String token) {
+        Visit visit = resolveToken(token);
+        Patient patient = patientRepository.findById(visit.getPatientId())
+                .orElseThrow(() -> new NoSuchElementException("환자를 찾을 수 없습니다. id=" + visit.getPatientId()));
+
+        return new KioskSessionResponse(
+                visit.getId(),
+                patient.getName(),
+                "V" + String.format("%05d", visit.getId()),
+                preliminaryAnalysisRepository.existsByVisitId(visit.getId())
         );
     }
 
@@ -98,11 +125,13 @@ public class KioskService {
      * 태블릿에서 선택한 이미지로 예비분석을 수행한다.
      * Top-K + GradCAM은 FastAPI에서, 참고 소견은 Gemini에서 받아 preliminary_analysis에 저장(upsert)한다.
      * Visit 상태는 변경하지 않는다(RECEIVED 유지) — 정식 진료 흐름과 완전히 분리된 채널이다.
+     *
+     * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
+     * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
      */
     @Transactional
-    public PreliminaryAnalysisResponse analyze(Long visitId, MultipartFile file) {
-        visitRepository.findById(visitId)
-                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + visitId));
+    public PreliminaryAnalysisResponse analyze(String token, MultipartFile file) {
+        Long visitId = resolveToken(token).getId();
 
         byte[] imageBytes;
         try {
@@ -173,6 +202,15 @@ public class KioskService {
                 .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
                 .header(HttpHeaders.CACHE_CONTROL, "max-age=31536000, immutable")
                 .body(bytes);
+    }
+
+    /** QR 토큰 → Visit. 유효하지 않으면 404 — 태블릿에는 "유효하지 않은 QR"로 표시된다. */
+    private Visit resolveToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new NoSuchElementException("유효하지 않은 키오스크 토큰입니다.");
+        }
+        return visitRepository.findByKioskToken(token)
+                .orElseThrow(() -> new NoSuchElementException("유효하지 않은 키오스크 토큰입니다."));
     }
 
     private PreliminaryAnalysisResponse toResponse(PreliminaryAnalysis entity, FastApiPredictResponse prediction) {

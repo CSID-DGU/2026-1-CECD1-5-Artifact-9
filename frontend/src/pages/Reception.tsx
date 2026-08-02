@@ -1,15 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import {
   createPatient,
   getPatient,
   searchPatientsForReception,
   type PatientSearchResult,
 } from "../api/patients";
-import { createVisit, listVisits, type Visit, type VisitStatus } from "../api/visits";
+import {
+  createVisit,
+  issueKioskToken,
+  listVisits,
+  type Visit,
+  type VisitStatus,
+} from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { Table } from "../components/Table";
+import { buildKioskUrl, getKioskBaseUrl, setKioskBaseUrl } from "../utils/kioskUrl";
 
 // ─── 상수 ────────────────────────────────────────────────
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -111,6 +119,15 @@ function SearchInput({
 // ─── 메인 컴포넌트 ─────────────────────────────────────────
 type ReceptionMode = "new" | "existing";
 
+/** QR 카드에 표시할 접수 1건. 접수 직후 또는 진료현황의 [QR] 버튼으로 채워진다. */
+type KioskReceipt = {
+  visitId: number;
+  kioskToken: string;
+  patientName: string;
+  patientNo: string;
+  visitNo: string;
+};
+
 export default function Reception() {
 
   // 검색 입력
@@ -144,6 +161,47 @@ export default function Reception() {
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [message, setMessage]             = useState<string | null>(null);
   const [errorMessage, setErrorMessage]   = useState<string | null>(null);
+
+  // 키오스크 QR
+  const [receipt, setReceipt]                 = useState<KioskReceipt | null>(null);
+  const [kioskBase, setKioskBase]             = useState(() => getKioskBaseUrl()); // 저장된 값
+  const [kioskBaseInput, setKioskBaseInput]   = useState(() => getKioskBaseUrl()); // 입력창
+  const qrCardRef = useRef<HTMLDivElement | null>(null);
+
+  const kioskUrl = receipt ? buildKioskUrl(receipt.kioskToken, kioskBase) : "";
+
+  // QR이 새로 뜨면 스크롤로 끌어온다 (폼이 길어 화면 밖으로 밀리는 경우)
+  useEffect(() => {
+    if (receipt) qrCardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [receipt]);
+
+  function handleSaveKioskBase() {
+    setKioskBaseUrl(kioskBaseInput);
+    const resolved = getKioskBaseUrl();
+    setKioskBase(resolved);
+    setKioskBaseInput(resolved);
+  }
+
+  /** 진료현황 행의 [QR] — 접수 화면을 새로고침해 QR을 잃었을 때 복구용. 토큰이 없으면 지연 발급한다. */
+  async function handleShowQr(visit: Visit) {
+    setErrorMessage(null);
+    try {
+      const token = visit.kioskToken ?? (await issueKioskToken(visit.id)).kioskToken;
+      if (!token) {
+        setErrorMessage("키오스크 토큰을 발급하지 못했습니다.");
+        return;
+      }
+      setReceipt({
+        visitId:     visit.id,
+        kioskToken:  token,
+        patientName: patientNameMap.get(visit.patientId) ?? "-",
+        patientNo:   `P${String(visit.patientId).padStart(5, "0")}`,
+        visitNo:     `V${String(visit.id).padStart(5, "0")}`,
+      });
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  }
 
   // ── 진료현황 로드 ───────────────────────────────────────
   async function loadVisits() {
@@ -236,6 +294,7 @@ export default function Reception() {
     setHasSearched(false);
     setMessage(null);
     setErrorMessage(null);
+    setReceipt(null);
   }
 
   // ── 접수 등록 ───────────────────────────────────────────
@@ -282,6 +341,20 @@ export default function Reception() {
       setSearchResults([]);
       setHasSearched(false);
 
+      // QR 카드용 — 폼은 비웠지만 방금 접수한 환자 정보는 남겨둔다.
+      // 응답에 토큰이 없으면(구버전 백엔드 등) 발급 API로 한 번 더 시도한다.
+      setReceipt(null);
+      try {
+        const kioskToken = visit.kioskToken ?? (await issueKioskToken(visit.id)).kioskToken;
+        if (kioskToken) {
+          setReceipt({ visitId: visit.id, kioskToken, patientName, patientNo, visitNo });
+        } else {
+          setErrorMessage("접수는 완료됐지만 키오스크 토큰을 받지 못했습니다. 백엔드가 최신 버전인지 확인해 주세요.");
+        }
+      } catch (error) {
+        setErrorMessage(`접수는 완료됐지만 QR 생성에 실패했습니다 — ${getErrorMessage(error)}`);
+      }
+
       setMessage(`접수 완료 — 환자번호 ${patientNo} (${patientName}) / 접수번호 ${visitNo}`);
       setActiveTab("대기");
       await loadVisits();
@@ -315,7 +388,12 @@ export default function Reception() {
     </button>,
   ]);
 
-  // 진료현황 테이블 데이터
+  // 진료현황 테이블 데이터 — 대기 탭에만 QR 재발급 버튼을 붙인다
+  const isWaitingTab = activeTab === "대기";
+  const visitTableHeaders = isWaitingTab
+    ? ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태", "QR"]
+    : ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태"];
+
   const visitTableData = activeVisits.map((visit, idx) => [
     idx + 1,
     `V${String(visit.id).padStart(5, "0")}`,
@@ -325,6 +403,17 @@ export default function Reception() {
     <span key={`s-${visit.id}`} className={`px-2 py-0.5 rounded text-[10px] ${STATUS_COLORS[visit.status]}`}>
       {STATUS_LABELS[visit.status]}
     </span>,
+    ...(isWaitingTab
+      ? [
+          <button
+            key={`qr-${visit.id}`}
+            onClick={() => handleShowQr(visit)}
+            className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-medium transition-colors cursor-pointer"
+          >
+            QR
+          </button>,
+        ]
+      : []),
   ]);
 
   // ── 렌더 ───────────────────────────────────────────────
@@ -538,6 +627,70 @@ export default function Reception() {
                 : "신규 환자 접수"}
           </Button>
         </div>
+
+        {/* ── 키오스크 QR (접수 직후 / 대기목록 [QR] 버튼) ── */}
+        {receipt && (
+          <div ref={qrCardRef} className="shrink-0 pb-1">
+            <Card title="키오스크 QR">
+              <div className="flex gap-4">
+                {/* 다크 테마라 QR 주변 여백(quiet zone)을 흰색으로 깔아야 인식된다 */}
+                <div className="shrink-0 rounded bg-white p-3">
+                  <QRCode value={kioskUrl} size={160} />
+                </div>
+
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {receipt.patientName}
+                      <span className="ml-2 text-xs font-normal text-gray-400">
+                        {receipt.visitNo} · {receipt.patientNo}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      태블릿 카메라로 QR을 촬영하면 이 환자의 예비분석 화면으로 이동합니다.
+                    </p>
+                  </div>
+
+                  <p className="break-all rounded bg-side-bg px-2 py-1 font-mono text-[11px] text-blue-300">
+                    {kioskUrl}
+                  </p>
+
+                  <div>
+                    <label className="text-[11px] text-gray-400">키오스크 접속 주소</label>
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        type="text"
+                        value={kioskBaseInput}
+                        onChange={(e) => setKioskBaseInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSaveKioskBase()}
+                        placeholder="http://192.168.0.12:3000"
+                        className="min-w-0 flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-400 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleSaveKioskBase}
+                        className="shrink-0 rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
+                      >
+                        저장
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Wi-Fi LAN이면 맥북 IP(예: http://192.168.0.12:3000), adb reverse면 http://localhost:3000
+                    </p>
+                  </div>
+
+                  <div className="mt-auto flex justify-end">
+                    <button
+                      onClick={() => setReceipt(null)}
+                      className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
       </section>
 
       {/* ── 우측 컬럼 (진료현황) ── */}
@@ -571,7 +724,7 @@ export default function Reception() {
           )}
 
           <Table
-            headers={["순번", "접수번호", "환자번호", "이름", "접수시간", "상태"]}
+            headers={visitTableHeaders}
             data={visitTableData}
           />
         </Card>

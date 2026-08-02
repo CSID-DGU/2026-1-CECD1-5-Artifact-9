@@ -76,6 +76,16 @@ public class VisitController {
         return visitService.startConsultation(id);
     }
 
+    @Operation(summary = "키오스크 QR 토큰 발급",
+               description = "대기실 키오스크 진입용 토큰을 반환합니다. 아직 없으면 새로 발급합니다(멱등). 접수 화면의 'QR 다시 보기'용.")
+    @ApiResponse(responseCode = "200", description = "발급 성공")
+    @ApiResponse(responseCode = "404", description = "접수 없음")
+    @PostMapping("/{id}/kiosk-token")
+    public VisitResponse issueKioskToken(
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
+        return visitService.issueKioskToken(id);
+    }
+
     @Operation(summary = "진단 확정", description = "AI 분석 검토 후 진단을 확정합니다. 상태: ANALYZED → DIAGNOSED. 이후 처방 저장 가능.")
     @ApiResponse(responseCode = "200", description = "진단 확정 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")

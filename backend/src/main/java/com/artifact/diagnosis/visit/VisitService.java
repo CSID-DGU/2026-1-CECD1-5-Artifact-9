@@ -24,6 +24,7 @@ public class VisitService {
 
     private final VisitRepository visitRepository;
     private final PatientRepository patientRepository;
+    private final KioskTokenGenerator kioskTokenGenerator;
 
     /** 접수 생성. 환자 존재 여부를 먼저 확인해 명확한 404를 반환한다. */
     public VisitResponse create(VisitCreateRequest req) {
@@ -35,9 +36,24 @@ public class VisitService {
                 .visitDate(LocalDateTime.now())
                 .status(VisitStatus.RECEIVED)
                 .receptionMemo(req.receptionMemo())
+                .kioskToken(kioskTokenGenerator.generate())
                 .build();
 
         return VisitResponse.from(visitRepository.save(visit));
+    }
+
+    /**
+     * 키오스크 QR 토큰 지연 발급. 이미 있으면 그대로 반환한다.
+     * 컬럼 추가 이전에 만들어진 접수 행이나, 접수 화면을 새로고침해 QR을 잃은 경우에 사용한다.
+     */
+    public VisitResponse issueKioskToken(Long id) {
+        Visit visit = visitRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
+
+        if (visit.getKioskToken() == null) {
+            visit.setKioskToken(kioskTokenGenerator.generate());
+        }
+        return VisitResponse.from(visit);
     }
 
     /** 단건 조회. 없으면 NoSuchElementException → GlobalExceptionHandler가 404 반환. */

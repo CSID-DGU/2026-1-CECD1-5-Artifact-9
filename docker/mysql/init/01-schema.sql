@@ -120,10 +120,12 @@ CREATE TABLE visit (
                     'DIAGNOSED','PRESCRIBED','COMPLETED','CANCELLED')
                NOT NULL DEFAULT 'RECEIVED'      COMMENT '진행상태',
     reception_memo TEXT NULL COMMENT '진료 메모',
+    kiosk_token CHAR(12) NULL COMMENT '대기실 키오스크 QR 진입용 1회성 토큰 (base62)',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (visit_id),
     CONSTRAINT fk_visit_patient FOREIGN KEY (patient_id) REFERENCES patient(patient_id),
+    UNIQUE KEY uk_visit_kiosk_token (kiosk_token),
     INDEX idx_visit_status (status),
     INDEX idx_visit_date   (visit_date)
 ) ENGINE=InnoDB COMMENT='내원/접수';

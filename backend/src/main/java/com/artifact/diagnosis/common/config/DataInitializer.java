@@ -50,6 +50,7 @@ public class DataInitializer implements CommandLineRunner {
         ensureMemberTable();
         ensurePreliminaryAnalysisTable();
         ensureVisitReceptionMemoColumn();
+        ensureVisitKioskTokenColumn();
         ensureAnalysisResultHeatmapColumn();
 
         new Thread(() -> {
@@ -203,6 +204,23 @@ public class DataInitializer implements CommandLineRunner {
             log.info("visit.reception_memo 컬럼을 추가했습니다.");
         } catch (Exception e) {
             log.warn("visit.reception_memo 컬럼 확인/추가 중 오류: {}", e.getMessage());
+        }
+    }
+
+    /** 키오스크 QR 진입용 토큰 컬럼. 기존 볼륨에서도 재기동만으로 추가되도록 런타임에 보정한다. */
+    private void ensureVisitKioskTokenColumn() {
+        try (Connection connection = dataSource.getConnection()) {
+            if (!columnExists(connection, "visit", "kiosk_token")) {
+                jdbcTemplate.execute("ALTER TABLE visit ADD COLUMN kiosk_token CHAR(12) NULL");
+                log.info("visit.kiosk_token 컬럼을 추가했습니다.");
+            }
+
+            if (!indexExists(connection, "visit", "uk_visit_kiosk_token")) {
+                jdbcTemplate.execute("ALTER TABLE visit ADD UNIQUE KEY uk_visit_kiosk_token (kiosk_token)");
+                log.info("visit.kiosk_token unique index를 추가했습니다.");
+            }
+        } catch (Exception e) {
+            log.warn("visit.kiosk_token 컬럼 확인/추가 중 오류: {}", e.getMessage());
         }
     }
 

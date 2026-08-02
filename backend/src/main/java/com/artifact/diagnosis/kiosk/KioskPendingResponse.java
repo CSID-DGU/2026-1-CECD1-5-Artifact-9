@@ -6,5 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record KioskPendingResponse(
         Long visitId,
         String patientName,
-        String receptionNumber
+        String receptionNumber,
+        @Schema(description = "QR 없이 자동 진입할 때 이동할 /kiosk/{token} 경로의 토큰")
+        String kioskToken
 ) {}

@@ -37,6 +37,13 @@ public class Visit {
     @Column(name = "reception_memo", columnDefinition = "TEXT")
     private String receptionMemo;
 
+    /**
+     * 대기실 키오스크 QR 진입용 토큰. 접수 시 발급되며 URL(/kiosk/{token})에 그대로 실린다.
+     * visit_id는 순차 정수라 LAN에서 추측 가능하므로, 태블릿에 노출되는 경로는 이 불투명 값으로 받는다.
+     */
+    @Column(name = "kiosk_token", length = 12, unique = true)
+    private String kioskToken;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private VisitStatus status;
