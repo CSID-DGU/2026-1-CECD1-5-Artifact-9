@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import {
   createPatient,
@@ -166,14 +166,8 @@ export default function Reception() {
   const [receipt, setReceipt]                 = useState<KioskReceipt | null>(null);
   const [kioskBase, setKioskBase]             = useState(() => getKioskBaseUrl()); // 저장된 값
   const [kioskBaseInput, setKioskBaseInput]   = useState(() => getKioskBaseUrl()); // 입력창
-  const qrCardRef = useRef<HTMLDivElement | null>(null);
 
   const kioskUrl = receipt ? buildKioskUrl(receipt.kioskToken, kioskBase) : "";
-
-  // QR이 새로 뜨면 스크롤로 끌어온다 (폼이 길어 화면 밖으로 밀리는 경우)
-  useEffect(() => {
-    if (receipt) qrCardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [receipt]);
 
   function handleSaveKioskBase() {
     setKioskBaseUrl(kioskBaseInput);
@@ -418,7 +412,8 @@ export default function Reception() {
 
   // ── 렌더 ───────────────────────────────────────────────
   return (
-    <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
+    // h-full: 좌우 컬럼 높이를 뷰포트에 고정해 각 패널이 안쪽에서만 스크롤되게 한다
+    <div className="h-full flex-1 p-[8px] flex gap-[8px] overflow-hidden">
 
       {/* ── 중앙 컬럼 (폼 영역) ── */}
       <section className="flex-1 flex flex-col gap-[8px] overflow-y-auto min-w-0">
@@ -628,74 +623,11 @@ export default function Reception() {
           </Button>
         </div>
 
-        {/* ── 키오스크 QR (접수 직후 / 대기목록 [QR] 버튼) ── */}
-        {receipt && (
-          <div ref={qrCardRef} className="shrink-0 pb-1">
-            <Card title="키오스크 QR">
-              <div className="flex gap-4">
-                {/* 다크 테마라 QR 주변 여백(quiet zone)을 흰색으로 깔아야 인식된다 */}
-                <div className="shrink-0 rounded bg-white p-3">
-                  <QRCode value={kioskUrl} size={160} />
-                </div>
-
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {receipt.patientName}
-                      <span className="ml-2 text-xs font-normal text-gray-400">
-                        {receipt.visitNo} · {receipt.patientNo}
-                      </span>
-                    </p>
-                    <p className="mt-1 text-[11px] text-gray-400">
-                      태블릿 카메라로 QR을 촬영하면 이 환자의 예비분석 화면으로 이동합니다.
-                    </p>
-                  </div>
-
-                  <p className="break-all rounded bg-side-bg px-2 py-1 font-mono text-[11px] text-blue-300">
-                    {kioskUrl}
-                  </p>
-
-                  <div>
-                    <label className="text-[11px] text-gray-400">키오스크 접속 주소</label>
-                    <div className="mt-1 flex gap-2">
-                      <input
-                        type="text"
-                        value={kioskBaseInput}
-                        onChange={(e) => setKioskBaseInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSaveKioskBase()}
-                        placeholder="http://192.168.0.12:3000"
-                        className="min-w-0 flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-400 focus:outline-none"
-                      />
-                      <button
-                        onClick={handleSaveKioskBase}
-                        className="shrink-0 rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
-                      >
-                        저장
-                      </button>
-                    </div>
-                    <p className="mt-1 text-[11px] text-gray-500">
-                      Wi-Fi LAN이면 맥북 IP(예: http://192.168.0.12:3000), adb reverse면 http://localhost:3000
-                    </p>
-                  </div>
-
-                  <div className="mt-auto flex justify-end">
-                    <button
-                      onClick={() => setReceipt(null)}
-                      className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
-                    >
-                      닫기
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
       </section>
 
-      {/* ── 우측 컬럼 (진료현황) ── */}
-      <section className="flex-1 flex flex-col overflow-y-auto min-w-0">
-        <Card title="진료 현황" className="flex-1">
+      {/* ── 우측 컬럼 (진료현황 + 키오스크 QR) ── */}
+      <section className="flex-1 flex flex-col gap-[8px] overflow-hidden min-w-0">
+        <Card title="진료 현황" className="flex-1 min-h-0">
           <div className="flex border-b border-gray-700 mb-3 pb-1 gap-2">
             {(["대기", "완료"] as const).map((tab) => (
               <button
@@ -728,6 +660,68 @@ export default function Reception() {
             data={visitTableData}
           />
         </Card>
+
+        {/* ── 키오스크 QR (접수 직후 / 대기목록 [QR] 버튼) ── */}
+        {receipt && (
+          <Card title="키오스크 QR" className="shrink-0">
+            <div className="flex gap-4">
+              {/* 다크 테마라 QR 주변 여백(quiet zone)을 흰색으로 깔아야 인식된다 */}
+              <div className="shrink-0 rounded bg-white p-3">
+                <QRCode value={kioskUrl} size={180} />
+              </div>
+
+              <div className="flex min-w-0 max-w-lg flex-1 flex-col gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {receipt.patientName}
+                    <span className="ml-2 text-xs font-normal text-gray-400">
+                      {receipt.visitNo} · {receipt.patientNo}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    태블릿 카메라로 QR을 촬영하면 이 환자의 예비분석 화면으로 이동합니다.
+                  </p>
+                </div>
+
+                <p className="break-all rounded bg-side-bg px-2 py-1 font-mono text-[11px] text-blue-300">
+                  {kioskUrl}
+                </p>
+
+                <div>
+                  <label className="text-[11px] text-gray-400">키오스크 접속 주소</label>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      type="text"
+                      value={kioskBaseInput}
+                      onChange={(e) => setKioskBaseInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveKioskBase()}
+                      placeholder="http://192.168.0.12:3000"
+                      className="min-w-0 flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-400 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleSaveKioskBase}
+                      className="shrink-0 rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
+                    >
+                      저장
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Wi-Fi LAN이면 맥북 IP(예: http://192.168.0.12:3000), adb reverse면 http://localhost:3000
+                  </p>
+                </div>
+
+                <div className="mt-auto flex justify-end">
+                  <button
+                    onClick={() => setReceipt(null)}
+                    className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
       </section>
 
     </div>
