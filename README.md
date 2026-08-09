@@ -9,6 +9,10 @@
 <img width="426" height="303" alt="IMG_6872" src="https://github.com/user-attachments/assets/5d5d0cb1-61a3-46d1-a716-70577d41195d" />
 
 > 2026년도 1학기 S.M.A.R.T. 토너먼트 최우수상 수상
+
+<img width="420" height="430" alt="IMG_7539" src="https://github.com/user-attachments/assets/60cd8cd3-622d-4156-b94d-ca42492628a0" />
+
+> 2026 In-Jeju Challenge 사물인터넷 혁신융합대학사업단 최우수상 총장상 수상 
 <br/>
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
