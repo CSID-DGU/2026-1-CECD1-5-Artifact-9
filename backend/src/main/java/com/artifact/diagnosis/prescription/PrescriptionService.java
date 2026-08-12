@@ -72,7 +72,7 @@ public class PrescriptionService {
         ));
 
         Prescription saved = prescriptionRepository.save(prescription);
-        visit.markPrescribed();
+        visit.confirmDiagnosisAndPrescribe();
 
         return toResponse(saved);
     }

@@ -6,7 +6,7 @@ import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { useAuth } from "../components/AuthContext";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
-import { completeVisit, diagnoseVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
+import { completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
@@ -298,11 +298,9 @@ export default function Clinic() {
     if (!selectedVisit || selectedKcds.length === 0 || !selectedDrug || !user) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
-      let visit = selectedVisit;
-      if (visit.status === "ANALYZED") {
-        visit = await diagnoseVisit(visit.id);
-        setSelectedVisit(visit);
-      }
+      // 진단 확정 → 처방 저장 전이는 백엔드가 한 트랜잭션에서 처리한다(Visit.confirmDiagnosisAndPrescribe).
+      // 진료중(AI 분석 없이 바로 처방)·분석완료 어느 상태에서 들어와도 여기서는 저장만 호출하면 된다.
+      const visit = selectedVisit;
 
       const saved = await savePrescription(visit.id, {
         memberId: user.memberId,

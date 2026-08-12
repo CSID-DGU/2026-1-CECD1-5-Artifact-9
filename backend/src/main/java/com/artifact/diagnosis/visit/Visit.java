@@ -112,6 +112,31 @@ public class Visit {
         this.status = VisitStatus.PRESCRIBED;
     }
 
+    /**
+     * 처방 저장 시점의 상태 전이.
+     *
+     * 진료 화면에는 별도의 "진단 확정" 단계가 없고 처방 저장 버튼 하나뿐이다 —
+     * 즉 처방을 저장하는 행위 자체가 진단 확정이다. 그래서 아직 확정 전이면 여기서 함께 전이시킨다.
+     *   - IN_PROGRESS: AI 분석 없이 의사가 육안으로 진단하고 바로 처방하는 경로 (이미지 업로드 불필요)
+     *   - ANALYZED:    AI 분석 결과를 검토한 뒤 처방하는 경로
+     *   - PRESCRIBED:  재처방 — 상태는 그대로 두고 처방 내용만 갱신한다
+     *
+     * 전이를 클라이언트가 두 번의 API 호출로 조립하면 "진단 확정만 성공하고 처방은 실패"한
+     * 중간 상태가 남을 수 있어, 한 트랜잭션 안에서 처리한다.
+     */
+    public void confirmDiagnosisAndPrescribe() {
+        switch (this.status) {
+            case IN_PROGRESS, ANALYZED -> {
+                markDiagnosed();
+                markPrescribed();
+            }
+            case DIAGNOSED -> markPrescribed();
+            case PRESCRIBED -> { /* 재처방 — 상태 유지 */ }
+            default -> throw new IllegalStateException(
+                "처방을 저장할 수 없는 상태입니다. 현재 상태: " + this.status);
+        }
+    }
+
     /** 처방전 발급(=화면 표시) 후 진료 종료 */
     public void markCompleted() {
         if (this.status != VisitStatus.PRESCRIBED) {
