@@ -41,8 +41,11 @@ services:
     restart: unless-stopped
     environment:
       MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.45}
-    ports:
-      - "8000:8000"
+    # ports 를 두지 않는다 — FastAPI에는 인증이 없어서 호스트에 열면 누구나 추론 엔드포인트를
+    # 직접 호출하게 된다. backend 는 같은 네트워크에서 http://fastapi:8000 으로 접근하므로 문제없다.
+    # 로컬에서 직접 찔러봐야 할 때만 아래를 임시로 켠다(외부에 열리지 않도록 127.0.0.1 바인딩).
+    #   ports:
+    #     - "127.0.0.1:8000:8000"
     networks:
       - artifact-network
 
@@ -75,6 +78,9 @@ services:
       IMAGE_LOCAL_UPLOAD_DIR: /app/artifact-images
 
       FASTAPI_URL: http://fastapi:8000
+
+      # QR 없이 "다음 대기 환자"로 자동 진입하는 폴백. 토큰 없이 접근 대상을 알려주므로 기본은 꺼둔다.
+      KIOSK_AUTO_PENDING: ${KIOSK_AUTO_PENDING:-false}
 
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
 

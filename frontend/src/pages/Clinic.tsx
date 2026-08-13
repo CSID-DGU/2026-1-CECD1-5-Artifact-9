@@ -4,6 +4,7 @@ import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
+import { AuthedImage } from "../components/AuthedImage";
 import { useAuth } from "../components/AuthContext";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
@@ -513,7 +514,7 @@ export default function Clinic() {
                   <div className="flex flex-col gap-1">
                     <span className="text-[11px] text-gray-400">AI 병변 분석 히트맵</span>
                     <div className="rounded border border-gray-700 bg-gray-900 overflow-hidden">
-                      <img
+                      <AuthedImage
                         src={preliminaryAnalysis.gradcamUrl}
                         alt="키오스크 예비분석 GradCAM"
                         className="w-full"
@@ -649,7 +650,12 @@ export default function Clinic() {
                         className={`overflow-hidden rounded border text-left transition-colors ${selected ? "border-blue-500 bg-blue-500/10" : "border-gray-700 bg-gray-900"
                           }`}
                       >
-                        <img src={image.imageUrl} alt={`이미지 ${image.imageId}`} className="h-20 w-full object-cover" />
+                        <AuthedImage
+                          src={image.imageUrl}
+                          alt={`이미지 ${image.imageId}`}
+                          className="h-20 w-full object-cover"
+                          fallback={<div className="h-20 w-full bg-gray-800" />}
+                        />
                         <div className="px-2 py-1 text-[10px] text-gray-300">
                           #{image.imageId} · {formatDateTime(image.uploadedAt)}
                         </div>
@@ -731,7 +737,7 @@ export default function Clinic() {
                         >
                           {displayUrl && (
                             <>
-                              <img
+                              <AuthedImage
                                 src={displayUrl}
                                 alt={imageViewMode === "heatmap" ? "GradCAM 히트맵" : "분석 이미지"}
                                 className="w-full"

@@ -1,9 +1,10 @@
 import { apiRequest } from "./client";
 
+/**
+ * 이 응답만 인증 없이 나가므로 토큰 외에는 아무것도 담기지 않는다.
+ * 환자 이름·접수번호는 /kiosk/{token} 으로 이동한 뒤 getKioskSession 에서 받는다.
+ */
 export type KioskPending = {
-  visitId: number;
-  patientName: string;
-  receptionNumber: string;
   kioskToken: string;
 };
 
@@ -23,12 +24,19 @@ export type PreliminaryTopK = {
 
 export type PreliminaryAnalysis = {
   topK: PreliminaryTopK[];
+  /**
+   * 서버가 호출자에 맞는 경로를 내려준다 — 태블릿은 /api/kiosk/session/{token}/heatmap(무인증),
+   * 의사 화면은 /api/v1/visits/{visitId}/preliminary/heatmap(JWT 필요). 직접 조립하지 말 것.
+   */
   gradcamUrl: string | null;
   aiComment: string | null;
   analyzedAt: string;
 };
 
-/** QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용. 대기 환자가 없으면 404 — 호출부에서 무시한다. */
+/**
+ * QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용.
+ * 서버에서 기본 비활성이라(KIOSK_AUTO_PENDING) 대기 환자가 없을 때와 똑같이 404가 온다 — 호출부에서 무시한다.
+ */
 export function getKioskPending() {
   return apiRequest<KioskPending>(`/api/kiosk/pending`);
 }
