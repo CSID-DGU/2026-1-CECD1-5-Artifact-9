@@ -4,27 +4,28 @@
 > 감사 문서를 그대로 구현하면 안 되는 항목이 있어(오탐 1건, 원인 오진 1건, 도메인상 부적절 2건),
 > 아래 §2 검증 로그를 먼저 읽고 착수할 것.
 >
-> 작성 기준일: 2026-08-13 · **기준 브랜치: `dev`(`a988113`)**
+> 작성 기준일: 2026-08-13 · **최초 감사 기준 커밋: `a988113`**
 >
-> **line 번호 표기 규칙**: 이 문서의 `파일:줄번호`는 모두 **`dev` 기준**이다.
-> G0(이슈 #1)·G1(이슈 #2)은 이미 수정되어 별도 브랜치에 있으므로, 해당 항목의 줄번호는
-> 그 브랜치에서는 맞지 않는다. 각 항목에 수정 후 위치를 따로 적어 두었다.
+> **브랜치 운영**: `dev`는 사용하지 않는다. 이슈별 `fix/#NN` 브랜치에서 작업하고 PR은 `main`으로 올린다.
+>
+> **line 번호 표기 규칙**: 이 문서의 `파일:줄번호`는 **감사 시점(`a988113`) 기준**이다.
+> 이미 머지된 항목(#1~#3)은 현재 `main`에서 줄번호가 맞지 않는다 —
+> 각 항목에 수정 후 위치를 따로 적어 두었다.
 
 ---
 
 ## 0. 진행 현황
 
-| 게이트 | 이슈 | 상태 | 브랜치 | 비고 |
+| 게이트 | 이슈 | 상태 | 브랜치 / PR | 비고 |
 |---|---|---|---|---|
-| **G0** | #1 인증 기반 정비 | ✅ **구현 완료 · PR 대기** | `fix/#62-fix-authentification` | 이슈 본문과 2건 다르게 처리 — §4 이슈 #1 하단 참조 |
-| **G1** | #2 히트맵 뒤섞임 | ✅ **구현 완료 · 미커밋** | `fix/#63-multiple-heatmap-error-fix` | 재현 → 수정 → 재검증 완료. §2 (A)항 참조 |
-| **G2** | #3 무인증 API 차단 | ⬜ 착수 전 | — | #1 머지 후 시작 |
-| **G2** | #4 처방자 위조 차단 | ⬜ 착수 전 | — | |
-| **G2** | #5 타임아웃 + 트랜잭션 | ⬜ 착수 전 | — | |
+| **G0** | #1 인증 기반 정비 | ✅ **머지 완료** | PR #67 ← `fix/#62` | 이슈 본문과 2건 다르게 처리 — §4 이슈 #1 하단 참조 |
+| **G1** | #2 히트맵 뒤섞임 | ✅ **머지 완료** | PR #68 ← `fix/#63` | 재현 → 수정 → 재검증 완료. §2 (A)항 참조 |
+| **G2** | #3 무인증 API 차단 | ✅ **머지 완료** | PR #69 ← `fix/#64` | 무인증 이미지 15장·히트맵 12장 → 0장. 키오스크는 `session/*` 토큰 경로로 대체, compose에서 fastapi `ports` 제거, `JwtFilter` 예외별 로깅 분리 |
+| **G2** | #4 처방자 위조 차단 | ✅ **구현 완료 · PR 대기** | `fix/#65` | 계획에 없던 `doctor-patients` 건도 함께 처리 — §4 이슈 #4 하단 참조 |
+| **G2** | #5 타임아웃 + 트랜잭션 | ✅ **구현 완료 · PR 대기** | `fix/#65` | 외부 호출을 트랜잭션 밖으로 분리. 무응답 시 503으로 끊김 — §4 이슈 #5 하단 참조 |
 | **G3/G4** | — | ⬜ 착수 전 | — | |
 
-> ⚠️ **`dev` 브랜치는 아직 아무것도 고쳐지지 않은 상태다.** #1·#2가 머지되기 전까지
-> 아래 §2의 모든 지적은 `dev`에서 그대로 유효하다. EC2 배포 전에 최소 #1은 반드시 머지되어야 한다.
+> #1~#3은 `main`에 머지 완료. 아래 §2의 지적 중 ✅ 표시가 없는 항목은 현재 `main`에서 여전히 유효하다.
 
 ---
 
@@ -174,8 +175,7 @@ Spring Boot의 `developmentOnly` 구성은 `bootJar` 재패키징에서 **자동
 
 #### 🆕 (F) 【최상위】 PUBLIC 저장소 + JWT 서명키 하드코딩 기본값이 실사용 중 · ✅ **수정 완료(미머지)**
 
-> **상태**: `fix/#62-fix-authentification`에서 수정 완료, PR 대기 중.
-> **`dev`에는 아직 반영되지 않았으므로 아래 내용은 `dev` 기준으로 전부 그대로 유효하다.**
+> **상태**: PR #67로 `main`에 머지 완료. 아래 내용은 **감사 시점 기준**의 기록이다.
 
 세 가지가 동시에 성립한다:
 
@@ -205,8 +205,8 @@ jwt.secret=${JWT_SECRET:artifact-medical-ai-jwt-secret-key-must-be-at-least-256-
 > 값이 없으면 Spring이 `PlaceholderResolutionException`으로 **기동 자체를 실패**시킨다 —
 > 기본값을 "안전한 값"으로 바꾸는 것으로는 부족하다. 조용히 뜨는 순간 아무도 눈치채지 못하기 때문이다.
 >
-> ⚠️ **`dev`의 `README.md:502`에 이 서명키 값이 아직 그대로 적혀 있다** (`fix/#62`에서 함께 제거됨).
-> 같은 이유로 `README.md:60, 126, 459-464`의 `admin / 1234`도 `dev`에 남아 있다.
+> `README.md:502`의 서명키 값과 `README.md:60, 126, 459-464`의 `admin / 1234`도 같은 PR에서 함께 지웠다 —
+> 소스에서 키를 빼도 README에 남으면 공개된 것은 마찬가지다.
 
 #### 🆕 (G) 가입 role 자유 지정 — 감사 문서가 심각도를 축소 기술
 
@@ -224,7 +224,7 @@ public MemberRole resolvedRole() {
 가입은 `SecurityConfig:39`에서 `permitAll`이다.
 → **누구나 ADMIN으로 자가 등록 가능.** 기본값 설정 실수가 아니라 권한 상승 취약점이다.
 
-> **상태**: `fix/#62-fix-authentification`에서 수정 완료(미머지). `dev`에서는 그대로 유효하다.
+> **상태**: PR #67로 `main`에 머지 완료.
 >
 > **수정 방식이 계획과 다르다.** 당초 계획은 "`role` 필드를 DTO에서 삭제하고 서버가 항상 DOCTOR로 강제"였으나,
 > 실제로는 **화이트리스트 방식**으로 구현했다 — 필드는 남기되 `DOCTOR`/`NURSE`만 허용하고
@@ -233,7 +233,7 @@ public MemberRole resolvedRole() {
 
 #### 🆕 (I) `/predict`가 FastAPI 이벤트 루프를 블로킹 · ✅ **수정 완료**
 
-`main.py:155`(dev 기준)는 `async def`인데 동기 함수 `run_inference`를 직접 호출한다.
+`main.py:155`(감사 시점 기준)는 `async def`인데 동기 함수 `run_inference`를 직접 호출한다.
 → 추론이 도는 동안 **FastAPI 이벤트 루프 전체가 멈춘다.** `/health`조차 응답하지 않는다.
 `/predict-base64`의 스레드풀 경합(A항)과는 **별개의 버그**다.
 
@@ -260,7 +260,7 @@ public MemberRole resolvedRole() {
 
 > ### ⛔ 그런데 그 테스트는 **애초에 컴파일되지 않는다**
 >
-> `dev`에서 `./gradlew compileTestJava`를 실행하면 실패한다:
+> 감사 시점(`a988113`)에 `./gradlew compileTestJava`를 실행하면 실패했다 — PR #67에서 고쳤다:
 >
 > ```
 > error: constructor PrescriptionRequest in record PrescriptionRequest
@@ -297,8 +297,8 @@ public MemberRole resolvedRole() {
 
 ### 2-3. 확인된 항목 (감사 문서 그대로 유효)
 
-> **판정의 기준 브랜치는 `dev`다.** ✅는 "`dev`에서 여전히 참"이라는 뜻이고,
-> 별도 브랜치에서 이미 고친 항목은 `→ 수정됨(브랜치)`를 덧붙였다.
+> **판정 기준은 감사 시점(`a988113`)이다.** ✅는 "그 시점에 참이었다"는 뜻이고,
+> 이후 머지된 항목은 `→ 수정됨(PR)`을 덧붙였다.
 
 <details>
 <summary>✅ 1단계 보안 (펼치기)</summary>
@@ -394,7 +394,7 @@ public MemberRole resolvedRole() {
 
 > 이 게이트를 닫지 않은 채 EC2에 올리면 배포 즉시 공개 장악 상태가 된다.
 
-브랜치: `fix/#62-fix-authentification` · **아직 `dev`에 머지되지 않았다.**
+브랜치: `fix/#62-fix-authentification` → **PR #67로 `main`에 머지 완료.**
 
 | 항목 | 조치 | 파일 | 상태 |
 |---|---|---|---|
@@ -419,7 +419,7 @@ public MemberRole resolvedRole() {
 
 브랜치: `fix/#63-multiple-heatmap-error-fix`
 
-| 항목 | 조치 | 파일(dev 기준) | 상태 |
+| 항목 | 조치 | 파일(감사 시점 기준) | 상태 |
 |---|---|---|---|
 | **(A) Grad-CAM 히트맵 뒤섞임** | 추론+Grad-CAM 구간을 `threading.Lock`으로 직렬화. **`contextvars`로는 안 고쳐진다 — §2 A항 참조** | `main.py:58-142` | ✅ |
 | **(I) 이벤트 루프 블로킹** | `/predict`를 `async def` → `def`로 변경(FastAPI가 스레드풀로 위임) | `main.py:155` | ✅ |
@@ -446,19 +446,20 @@ Lock 적용 전에 재현 테스트를 먼저 작성해 **실패하는 것을 �
 
 ### G2 — EMR 미팅 전 권장 · 예상 3~5일
 
-| 항목 | 조치 |
-|---|---|
-| 감사 1·7번 무인증 엔드포인트 | 이미지/히트맵/키오스크의 `permitAll` 해제. 키오스크는 접수 시 발급하는 **스코프 제한 게스트 토큰**으로 (`kioskToken` 설계가 이미 있음 — 조회 엔드포인트만 마무리) |
-| 감사 2번 처방자 위조 | `@AuthenticationPrincipal`에서 처방자 획득, `PrescriptionRequest`에서 `memberId` 제거 |
-| 감사 4번 인가 미강제 | **(D)항 채택**: `@PreAuthorize` 전면 적용 + 애노테이션 누락 시 빌드 실패시키는 ArchUnit 테스트 1개. **소유권 검사는 넣지 않는다 — (C)항 참조** |
-| 감사 8번 FastAPI 노출 | compose에서 `ports` 제거(내부 통신만) + 백엔드↔FastAPI 공유 시크릿 헤더 |
-| 감사 9번 JWT 예외 삼킴 | 예외 종류별 로깅 분리, 인증 실패 이벤트 기록 |
-| 타임아웃 4곳 | `HttpClient`에 `connectTimeout`/`timeout` 지정 + **싱글톤 빈으로 등록**해 커넥션 풀 재사용 |
-| 트랜잭션 경계 | 외부 호출(FastAPI/S3/Gemini)을 트랜잭션 **밖**으로, 결과 저장만 짧은 `@Transactional`로 |
-| `PatientService.java:61` | `%`·`_` 이스케이프 처리 |
+| 항목 | 조치 | 상태 |
+|---|---|---|
+| 감사 1·7번 무인증 엔드포인트 | 이미지/히트맵/키오스크의 `permitAll` 해제. 키오스크는 접수 시 발급하는 **스코프 제한 게스트 토큰**으로 (`kioskToken` 설계가 이미 있음 — 조회 엔드포인트만 마무리) | ✅ 이슈 #3 |
+| 감사 2번 처방자 위조 | `@AuthenticationPrincipal`에서 처방자 획득, `PrescriptionRequest`에서 `memberId` 제거 | ✅ 이슈 #4 |
+| 감사 4번 인가 미강제 | **(D)항 채택**: `@PreAuthorize` 전면 적용 + 애노테이션 누락 시 빌드 실패시키는 ArchUnit 테스트 1개. **소유권 검사는 넣지 않는다 — (C)항 참조** | ⬜ 남음 |
+| 감사 8번 FastAPI 노출 | compose에서 `ports` 제거(내부 통신만) + 백엔드↔FastAPI 공유 시크릿 헤더 | ◐ 포트 제거만 완료(이슈 #3). **공유 시크릿 헤더 남음** |
+| 감사 9번 JWT 예외 삼킴 | 예외 종류별 로깅 분리, 인증 실패 이벤트 기록 | ✅ 이슈 #3 |
+| 타임아웃 4곳 | `HttpClient`에 `connectTimeout`/`timeout` 지정 + **싱글톤 빈으로 등록**해 커넥션 풀 재사용 | ✅ 이슈 #5 |
+| 트랜잭션 경계 | 외부 호출(FastAPI/S3/Gemini)을 트랜잭션 **밖**으로, 결과 저장만 짧은 `@Transactional`로 | ✅ 이슈 #5 |
+| `PatientService.java:61` | `%`·`_` 이스케이프 처리 | ⬜ 남음 |
 
 > 타임아웃 + 트랜잭션 경계 + `HttpClient` 싱글톤은 **하나의 리팩토링으로 함께** 처리하는 것이 효율적이다.
 > 코드량 대비 임팩트가 가장 크므로 G2에서 먼저 손댈 것.
+> → 이슈 #5에서 예정대로 한 묶음으로 처리했다(§4 이슈 #5 하단).
 
 ### G3 — 미팅에서 "계획"으로 제시 · 착수만
 
@@ -515,9 +516,9 @@ Spring Profile 분리, CI(GitHub Actions), 구조화 로깅, 페이징, 프론�
 
 - **#1과 #2는 동시에** 진행해도 충돌 없음 (건드리는 파일이 다름)
 - **#3은 #1이 머지된 뒤에** 시작 (같은 `SecurityConfig`를 건드림)
-- PR 대상 브랜치는 `dev`
+- **`dev`는 사용하지 않는다.** 이슈별 `fix/#NN` 브랜치에서 작업하고 **PR은 `main`으로** 올린다
 
-> 아래 이슈 본문의 `파일:줄번호`는 전부 **`dev` 기준**이다.
+> 아래 이슈 본문의 `파일:줄번호`는 전부 **감사 시점(`a988113`) 기준**이다.
 > #1·#2는 이미 수정되었으므로 각 브랜치에서는 줄번호가 맞지 않는다.
 
 ---
@@ -768,7 +769,7 @@ Grad-CAM은 "모델이 어디를 보고 판단했는지" 알아내려고 **모�
 
 ---
 
-### 이슈 #4 — 처방 의사 위조 차단
+### 이슈 #4 — 처방 의사 위조 차단 · ✅ 구현 완료
 
 **제목**
 ```
@@ -810,9 +811,36 @@ JWT에 이미 `memberId` 클레임이 들어 있어서(`JwtUtil.java:34`) 어렵
 `docs/security-remediation-plan.md` §3 G2 (감사 문서 2번)
 ````
 
+#### 실제 구현 (`fix/#65`)
+
+To-Do 6건은 본문대로 처리했고, 그 과정에서 **본문에 없던 같은 유형 1건**을 추가로 고쳤다.
+
+| 항목 | 처리 |
+|---|---|
+| 신원 배선 | `AuthPrincipal(memberId, loginId, role)` 레코드를 새로 두고 `JwtFilter`가 이걸 principal로 심는다. `java.security.Principal`을 구현해 `Authentication.getName()`은 기존대로 loginId를 돌려준다 |
+| `memberId` 클레임 없는 토큰 | 인증을 심지 않고 통과 → 403. 구버전 토큰으로 신원 미상 요청이 들어오는 걸 막는다 |
+| 처방 저장 | `PrescriptionController.save(visitId, @AuthenticationPrincipal, body)` → `PrescriptionService.save(visitId, doctorId, req)`. body의 `memberId` 필드는 삭제 |
+| **(추가)** `GET /api/v1/prescriptions/doctor-patients` | `@RequestParam Long doctorId`를 **제거**하고 인증 신원으로 대체. 값만 바꿔가며 다른 의사의 담당 환자 명단(환자 실명 포함)을 순회할 수 있었다. 프론트에서 호출하지 않는 엔드포인트라 영향 없음 |
+
+> 📌 **`doctor-patients`를 "소유권 검사"로 오해하지 말 것.** §2 (C)에서 정리했듯 EMR에서
+> 다른 의사의 차트 열람은 정상 동작이라 소유권 모델을 넣으면 안 된다. 여기서 막은 건 열람 범위가 아니라
+> **"내 목록"을 요청자가 아닌 값으로 지정할 수 있었던 것**이다. 조회 대상이 화면 요구사항상 항상 본인이므로
+> 파라미터 자체를 없앤 것이지, 협진·인수인계용 타 의사 차트 열람을 막은 게 아니다.
+
+**검증 결과** (로컬 도커 실서버 + `./gradlew test`)
+
+| 확인 항목 | 결과 |
+|---|---|
+| A 토큰 + body에 B의 `memberId` → 저장 | `prescription.member_id = 6`(A). B(7)는 무시됨 |
+| 토큰 없이 처방 저장 | 403 |
+| A 토큰 + `doctorId=B` → 조회 | A 본인 처방 1건만 반환 |
+| B 토큰 + `doctorId=A` → 조회 | 0건 |
+| Swagger `PrescriptionRequest` 스키마 | `memberId` 사라짐 |
+| `./gradlew test` | 6/6 통과 (위조 시도 테스트 2건 신규) |
+
 ---
 
-### 이슈 #5 — 타임아웃 + 트랜잭션 경계
+### 이슈 #5 — 타임아웃 + 트랜잭션 경계 · ✅ 구현 완료
 
 **제목**
 ```
@@ -868,6 +896,51 @@ DB 커넥션은 개수가 정해져 있는 자원인데(기본 10개), 이걸 **
 
 `docs/security-remediation-plan.md` §3 G2
 ````
+
+#### 실제 구현 (`fix/#65`)
+
+To-Do 6건 모두 본문대로 처리했다. 다만 **트랜잭션 분리 방식은 본문보다 한 겹 더 들어가야 했다.**
+
+| 항목 | 처리 |
+|---|---|
+| 공용 `HttpClient` | `HttpClientConfig`에 `@Bean` 1개. `connectTimeout` 5초, HTTP/1.1 고정(uvicorn이 평문 HTTP/2를 받지 않는다). `AnalysisService`·`KioskService`·`GeminiService` 3곳이 주입받는다 |
+| 응답 타임아웃 | 요청마다 `.timeout(...)`. 추론 30초(`fastapi.timeout-seconds`), Gemini 15초(`gemini.timeout-seconds`) — Gemini는 없어도 되는 부가 코멘트라 더 짧게 끊는다 |
+| 실패 응답 | `AiServiceUnavailableException` 신설 → **503**. `HttpConnectTimeoutException`/`ConnectException`(연결 실패)과 `HttpTimeoutException`(응답 지연)을 분리해 메시지를 다르게 준다 |
+| 트랜잭션 분리 | `AnalysisTransactionService` / `KioskTransactionService` **별도 빈**을 새로 만들었다. `analyze()`에서 `@Transactional`을 뗐다 |
+| 상태 복구 | `Visit.rollbackAnalysis(previous)` — 인자 없는 기존 버전을 교체 |
+| HikariCP | `maximum-pool-size=10`, `connection-timeout=5000`(기본 30초 → 5초) |
+| 빈 `imageIds` | 서비스 진입부에서 `IllegalArgumentException` → 400 |
+
+> 📌 **왜 같은 클래스의 private 메서드로 나누지 않았나.** Spring의 `@Transactional`은 프록시로 동작하는데,
+> `this.saveResult(...)`처럼 자기 자신을 부르면 프록시를 타지 않아 **애노테이션이 조용히 무시된다.**
+> 트랜잭션 경계를 진짜로 나누려면 호출이 빈 경계를 넘어야 하므로 별도 클래스가 필요하다.
+> 컴파일도 테스트도 통과하는데 트랜잭션만 안 걸리는, 눈에 안 보이는 종류의 실수다.
+
+> 📌 **`rollbackAnalysis`에 직전 상태를 넘기는 이유.** 기존 코드에도 복구 호출이 있었지만
+> **같은 트랜잭션 안이라 실제로는 죽은 코드**였다(예외가 나면 `markAnalyzing()`까지 통째로 롤백됐다).
+> 트랜잭션을 쪼갠 지금은 `ANALYZING`이 DB에 실제로 커밋되므로 복구가 반드시 동작해야 한다.
+> 이때 무조건 `IN_PROGRESS`로 내리면 **재분석 실패 시 직전 분석 결과가 화면에서 사라진다.**
+> 그래서 분석 시작 시점의 상태를 기억해 그 값으로 되돌린다.
+
+> 📌 **빈 `imageIds`는 HTTP 경로에서는 이미 막혀 있었다.** `AnalysisRequest.imageIds`의 `@NotEmpty` +
+> 컨트롤러 `@Valid`가 400을 낸다. 서비스 가드는 그 뒤를 받치는 이중 방어다 —
+> 컨트롤러를 거치지 않는 호출(테스트, 내부 호출)에서 `get(0)`이 500으로 터지는 걸 막는다.
+
+**검증 결과** (로컬 도커 실서버 + `./gradlew test`)
+
+| 확인 항목 | 결과 |
+|---|---|
+| 정상 분석 흐름 (회귀) | 200 / 1.4초, `top1=nv`, 상태 `ANALYZED` |
+| FastAPI 컨테이너 정지 후 분석 | **503 / 5.3초** — `"AI 분석 서버에 연결할 수 없습니다."` (수정 전에는 무한 대기) |
+| 실패 후 접수 상태 | `ANALYZING`에 갇히지 않고 직전 상태(`ANALYZED`)로 복구 |
+| **AI 장애 중 다른 API** | `GET /api/v1/visits?date=` → **200 / 0.01초**. 커넥션 풀이 마르지 않는다 |
+| 빈 `imageIds` | 400 `{"imageIds": "must not be empty"}` |
+| `./gradlew test` | 9/9 통과 (`AnalysisResilienceTest` 2건 신규) |
+
+> `AnalysisResilienceTest`는 "죽은 서버"가 아니라 **"살아 있는데 응답하지 않는 서버"**를 재현한다.
+> 요청을 받고 60초간 침묵하는 가짜 HTTP 서버를 띄우고 타임아웃을 2초로 낮춰 같은 코드 경로를 태운다.
+> 죽으면 연결이 즉시 거절돼 저절로 끝나지만, 멈추기만 하면 타임아웃이 없는 한 영원히 묶인다 —
+> 진료실에서 훨씬 흔하고 훨씬 나쁜 쪽은 후자다.
 
 ---
 

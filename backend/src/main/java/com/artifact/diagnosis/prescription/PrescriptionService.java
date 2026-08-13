@@ -29,13 +29,19 @@ public class PrescriptionService {
     private final VisitRepository visitRepository;
     private final MemberRepository memberRepository;
 
-    /** 처방 저장. 저장 후 Visit 상태를 PRESCRIBED 로 전이한다. */
+    /**
+     * 처방 저장. 저장 후 Visit 상태를 PRESCRIBED 로 전이한다.
+     *
+     * @param doctorId 처방 작성자. <b>반드시 인증 토큰에서 꺼낸 값이어야 한다</b>(컨트롤러의 {@code @AuthenticationPrincipal}).
+     *                 요청 body에서 받으면 아무나 남의 이름으로 처방을 남길 수 있고, 그 기록은 진료기록부의
+     *                 법적 책임 주체가 된다 — 위조된 뒤에는 사후 감사로도 되돌릴 수 없다.
+     */
     @Transactional
-    public PrescriptionResponse save(Long visitId, PrescriptionRequest req) {
+    public PrescriptionResponse save(Long visitId, Long doctorId, PrescriptionRequest req) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
-        Member member = memberRepository.findById(req.memberId())
-                .orElseThrow(() -> new NoSuchElementException("회원을 찾을 수 없습니다: " + req.memberId()));
+        Member member = memberRepository.findById(doctorId)
+                .orElseThrow(() -> new NoSuchElementException("회원을 찾을 수 없습니다: " + doctorId));
 
         // 이미 처방이 있으면 덮어쓰기 (재처방)
         prescriptionRepository.findByVisitId(visitId)

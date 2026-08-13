@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
 import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.image.ImageStorageService;
@@ -21,11 +22,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.LocalDateTime;
+import java.net.http.HttpTimeoutException;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -44,13 +48,21 @@ public class KioskService {
     private final VisitRepository visitRepository;
     private final PatientRepository patientRepository;
     private final PreliminaryAnalysisRepository preliminaryAnalysisRepository;
+    private final KioskTransactionService kioskTransactionService;
     private final ImageStorageService imageStorageService;
     private final GeminiService geminiService;
     private final ObjectMapper objectMapper;
     private final KioskTokenGenerator kioskTokenGenerator;
 
+    /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
+    private final HttpClient httpClient;
+
     @Value("${fastapi.url:http://localhost:8000}")
     private String fastapiUrl;
+
+    /** 추론 응답 대기 한도. AnalysisService와 같은 값을 쓴다 — 같은 서버, 같은 모델이다. */
+    @Value("${fastapi.timeout-seconds:30}")
+    private long fastapiTimeoutSeconds;
 
     /**
      * QR 없이 자동 진입하는 폴백(/api/kiosk/pending)의 활성화 여부. 기본은 꺼짐.
@@ -59,9 +71,6 @@ public class KioskService {
      */
     @Value("${kiosk.auto-pending.enabled:false}")
     private boolean autoPendingEnabled;
-
-    /** 예비분석 모델 소스 — 현재는 임상 사진용 단일 모델만 존재. FastAPI에 라우터가 생기면 여기서 전달한다. */
-    private static final String SOURCE = "clinic";
 
     /**
      * disease.name_ko 컬럼은 과거 초기 적재 시 인코딩이 깨져 있어(mojibake) 재조회 시 사용하지 않는다.
@@ -136,8 +145,12 @@ public class KioskService {
      *
      * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
      * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
+     *
+     * <p><b>{@code @Transactional} 이 없는 것은 의도된 것이다.</b> 한 번 호출에 외부 왕복이
+     * 세 번(FastAPI 추론 → 히트맵 업로드 → Gemini) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
+     * DB 커넥션을 붙잡는다. 태블릿 몇 대가 동시에 촬영하면 커넥션 풀이 말라 진료실 화면까지 멈춘다.
+     * DB 쓰기는 마지막에 {@link KioskTransactionService#saveResult} 한 번으로 끝낸다.
      */
-    @Transactional
     public PreliminaryAnalysisResponse analyze(String token, MultipartFile file) {
         Long visitId = resolveToken(token).getId();
 
@@ -166,13 +179,8 @@ public class KioskService {
 
         String aiComment = geminiService.generatePreliminaryComment(topK);
 
-        PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
-                .orElseGet(() -> PreliminaryAnalysis.builder().visitId(visitId).source(SOURCE).build());
-        entity.setTopKJson(topK);
-        entity.setGradcamUrl(gradcamKey);
-        entity.setAiComment(aiComment);
-        entity.setAnalyzedAt(LocalDateTime.now());
-        preliminaryAnalysisRepository.save(entity);
+        // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
+        PreliminaryAnalysis entity = kioskTransactionService.saveResult(visitId, topK, gradcamKey, aiComment);
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
@@ -201,17 +209,20 @@ public class KioskService {
     }
 
     /** 태블릿용 — 토큰이 가리키는 접수의 히트맵만 반환한다. 인증 없이 열리는 경로다. */
-    @Transactional(readOnly = true)
     public ResponseEntity<byte[]> getHeatmapContentByToken(String token) {
         return heatmapResponse(resolveToken(token).getId());
     }
 
     /** 의사 진료 페이지용 — JWT 인증 경로(/api/v1/visits/{visitId}/preliminary/heatmap)에서 호출한다. */
-    @Transactional(readOnly = true)
     public ResponseEntity<byte[]> getHeatmapContentByVisitId(Long visitId) {
         return heatmapResponse(visitId);
     }
 
+    /**
+     * 트랜잭션을 열지 않는다 — 아래 {@code download()} 는 S3 왕복이라 트랜잭션 안에 두면
+     * 이미지 한 장 내려주는 동안 DB 커넥션을 붙잡게 된다. 조회는 쿼리 한 번이라 트랜잭션이 필요 없다.
+     * ({@code AnalysisService.getHeatmapContent()} 도 같은 이유로 트랜잭션이 없다.)
+     */
     private ResponseEntity<byte[]> heatmapResponse(Long visitId) {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .filter(p -> p.getGradcamUrl() != null)
@@ -266,12 +277,11 @@ public class KioskService {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
             String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
 
-            HttpClient httpClient = HttpClient.newBuilder()
-                    .version(HttpClient.Version.HTTP_1_1)
-                    .build();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
                     .header("Content-Type", "application/json")
+                    // 태블릿은 결과를 기다리는 화면이다. 무한 대기면 환자가 로딩만 보다 끝난다.
+                    .timeout(Duration.ofSeconds(fastapiTimeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                     .build();
 
@@ -282,6 +292,16 @@ public class KioskService {
             }
 
             return objectMapper.readValue(response.body(), FastApiPredictResponse.class);
+        } catch (HttpConnectTimeoutException | ConnectException e) {
+            log.error("FastAPI 연결 실패(예비분석) url={}", fastapiUrl, e);
+            throw new AiServiceUnavailableException("AI 분석 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");
+        } catch (HttpTimeoutException e) {
+            log.error("FastAPI 응답 시간 초과(예비분석) url={} timeout={}s", fastapiUrl, fastapiTimeoutSeconds);
+            throw new AiServiceUnavailableException(
+                    "AI 분석 서버가 " + fastapiTimeoutSeconds + "초 안에 응답하지 않았습니다. 잠시 후 다시 시도해주세요.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiServiceUnavailableException("AI 분석 요청이 중단되었습니다.");
         } catch (Exception e) {
             throw new RuntimeException("FastAPI 예비분석 요청 실패: " + e.getMessage(), e);
         }

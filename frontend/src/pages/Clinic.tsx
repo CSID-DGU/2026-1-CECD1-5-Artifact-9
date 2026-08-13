@@ -303,8 +303,8 @@ export default function Clinic() {
       // 진료중(AI 분석 없이 바로 처방)·분석완료 어느 상태에서 들어와도 여기서는 저장만 호출하면 된다.
       const visit = selectedVisit;
 
+      // 작성자는 보내지 않는다 — 서버가 JWT에서 결정한다.
       const saved = await savePrescription(visit.id, {
-        memberId: user.memberId,
         diseases: selectedKcds.map(k => ({ kcdDiseaseId: k.id, isPrimary: k.isPrimary })),
         analysisId: analysis?.analysisId ?? null,
         doctorNotes: doctorNotes.trim() || null,

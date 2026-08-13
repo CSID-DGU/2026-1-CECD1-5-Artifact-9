@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.common.exception;
 
+import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -49,6 +50,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidAnalysisImageException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidAnalysisImage(InvalidAnalysisImageException e) {
         return ResponseEntity.unprocessableEntity().body(error(422, e.getMessage(), null));
+    }
+
+    /**
+     * 외부 AI 서버(FastAPI)가 응답하지 않음 → 503.
+     *
+     * <p>우리 코드의 버그가 아니라 상대 서버의 일시적 장애다. 500으로 뭉뚱그리면
+     * 로그만 봐서는 원인이 어느 쪽인지 알 수 없어, 상태 코드로 분리해 둔다.
+     */
+    @ExceptionHandler(AiServiceUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleAiUnavailable(AiServiceUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error(503, e.getMessage(), null));
     }
 
     /** 그 외 잘못된 인자 → 400. */

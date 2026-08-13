@@ -85,13 +85,27 @@ public class Visit {
         this.status = VisitStatus.ANALYZED;
     }
 
-    /** AI 분석이 유효하지 않은 이미지로 중단된 경우 다시 진료중 상태로 복구 */
-    public void rollbackAnalysis() {
+    /**
+     * AI 분석이 중단된 경우(부적합 이미지, 추론 서버 무응답 등) 분석 시작 직전 상태로 되돌린다.
+     *
+     * <p>{@code previous} 는 {@link #markAnalyzing()} 을 부르기 직전의 상태다. 무조건 IN_PROGRESS 로
+     * 떨어뜨리지 않는 이유: 재분석(ANALYZED → ANALYZING)이 실패했을 때 IN_PROGRESS 로 내리면
+     * 이미 저장돼 있는 직전 분석 결과가 화면에서 사라진다. 실패는 원래 자리로 돌려놓는 것이지
+     * 진행 상황을 되감는 것이 아니다.
+     *
+     * <p>분석 시작과 종료가 서로 다른 트랜잭션으로 나뉘어 있어(외부 호출을 트랜잭션 밖으로 뺐다)
+     * 이 복구가 반드시 필요하다 — 예전처럼 트랜잭션 롤백이 대신 되돌려 주지 않는다.
+     */
+    public void rollbackAnalysis(VisitStatus previous) {
         if (this.status != VisitStatus.ANALYZING) {
             throw new IllegalStateException(
                 "분석 중 상태에서만 분석을 취소할 수 있습니다. 현재 상태: " + this.status);
         }
-        this.status = VisitStatus.IN_PROGRESS;
+        if (previous != VisitStatus.IN_PROGRESS && previous != VisitStatus.ANALYZED) {
+            throw new IllegalStateException(
+                "분석을 시작할 수 있는 상태가 아니었습니다: " + previous);
+        }
+        this.status = previous;
     }
 
     /** 의사가 병명을 확정한 시점 — AI 분석 없이 IN_PROGRESS에서 바로 확정도 가능 */
