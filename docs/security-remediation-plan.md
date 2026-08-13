@@ -4,7 +4,27 @@
 > 감사 문서를 그대로 구현하면 안 되는 항목이 있어(오탐 1건, 원인 오진 1건, 도메인상 부적절 2건),
 > 아래 §2 검증 로그를 먼저 읽고 착수할 것.
 >
-> 작성 기준일: 2026-08-13 · 검증 대상 커밋: `1d7308a`
+> 작성 기준일: 2026-08-13 · **기준 브랜치: `dev`(`a988113`)**
+>
+> **line 번호 표기 규칙**: 이 문서의 `파일:줄번호`는 모두 **`dev` 기준**이다.
+> G0(이슈 #1)·G1(이슈 #2)은 이미 수정되어 별도 브랜치에 있으므로, 해당 항목의 줄번호는
+> 그 브랜치에서는 맞지 않는다. 각 항목에 수정 후 위치를 따로 적어 두었다.
+
+---
+
+## 0. 진행 현황
+
+| 게이트 | 이슈 | 상태 | 브랜치 | 비고 |
+|---|---|---|---|---|
+| **G0** | #1 인증 기반 정비 | ✅ **구현 완료 · PR 대기** | `fix/#62-fix-authentification` | 이슈 본문과 2건 다르게 처리 — §4 이슈 #1 하단 참조 |
+| **G1** | #2 히트맵 뒤섞임 | ✅ **구현 완료 · 미커밋** | `fix/#63-multiple-heatmap-error-fix` | 재현 → 수정 → 재검증 완료. §2 (A)항 참조 |
+| **G2** | #3 무인증 API 차단 | ⬜ 착수 전 | — | #1 머지 후 시작 |
+| **G2** | #4 처방자 위조 차단 | ⬜ 착수 전 | — | |
+| **G2** | #5 타임아웃 + 트랜잭션 | ⬜ 착수 전 | — | |
+| **G3/G4** | — | ⬜ 착수 전 | — | |
+
+> ⚠️ **`dev` 브랜치는 아직 아무것도 고쳐지지 않은 상태다.** #1·#2가 머지되기 전까지
+> 아래 §2의 모든 지적은 `dev`에서 그대로 유효하다. EC2 배포 전에 최소 #1은 반드시 머지되어야 한다.
 
 ---
 
@@ -38,7 +58,7 @@ git log --all -S'AKIA' --oneline                                → 결과 없�
 
 ### 2-1. 정정이 필요한 항목 (구현 전 반드시 읽을 것)
 
-#### 🔧 (A) FastAPI 동시성 — 결론은 맞고 원인은 틀렸다
+#### 🔧 (A) FastAPI 동시성 — 결론은 맞고 원인은 틀렸다 · ✅ **수정 완료**
 
 감사 문서: *"전역 `model` 객체에 forward hook을 등록하고 `activation_store`를 공유한다"*
 
@@ -62,7 +82,38 @@ hook이 **전역 `model` 객체**에 걸리므로, 스레드 A가 hook을 건 �
 > 문서가 "즉효 조치"로 격하한 `threading.Lock`이 사실상 유일한 정답이다.
 
 **채택 조치**: 추론 + Grad-CAM 구간 전체를 하나의 `threading.Lock`으로 직렬화한다.
-처리량은 떨어지나 정확성이 우선이며, 데모 규모(태블릿 2~3대)에서는 체감 지연이 없다.
+
+##### 실측 — 위 진단이 맞았음이 확인됐다
+
+수정 전 코드에 서로 다른 이미지 2장을 동시에 20라운드(총 40요청) 보낸 결과:
+
+```
+HTTP 실패 13 · 히트맵 내용 불일치 7  →  오염된 응답 20 / 40 (50%)
+```
+
+서버 로그의 실제 예외가 위 메커니즘을 그대로 보여준다:
+
+```
+RuntimeError: cannot register a hook on a tensor that doesn't require gradient
+```
+
+A가 건 hook이 B의 `torch.no_grad()` forward에서 발화했는데, `no_grad` 텐서에는
+`register_hook`을 걸 수 없어 **B의 요청이 500으로 죽은 것**이다.
+`activation_store`를 요청별로 격리했다면 이 예외는 그대로 남는다 →
+**`contextvars` 처방이 무효라는 것이 실증됐다.**
+
+**수정 후 재실행: 오염 0 / 40.** 처리량은 직렬 2.31 → 동시4 2.38 req/s로 **변화 없음**
+(CPU 추론은 PyTorch가 이미 코어를 다 쓰므로 요청을 병렬화해도 총량이 늘지 않는다.
+즉 이 서버에서 Lock의 처리량 비용은 사실상 0이다. "처리량이 떨어진다"는 당초 예상은 틀렸다).
+
+##### 수정 시 함께 발견한 것 — hook 누수
+
+원본 `main.py:71-77`은 `handle.remove()`가 `try` 블록 **안**에 있었다.
+`model(tensor)`가 예외를 던지면 `remove()`가 실행되지 않아 **전역 모델에 hook이 영구히 남는다.**
+한 번 실패하면 그 뒤 모든 요청이 계속 오염되는 구조였다. → `finally`로 이동해 수정했다.
+
+**수정 후 위치** (`fix/#63-multiple-heatmap-error-fix`): `_model_lock`은 `main.py:57`,
+모델 구간은 `_compute_gradcam()`, 락 밖 후처리는 `_render_gradcam_overlay()`로 분리.
 
 #### ❌ (B) 감사 35번 "devtools가 운영 빌드 포함" — 오탐
 
@@ -121,7 +172,10 @@ Spring Boot의 `developmentOnly` 구성은 `bootJar` 재패키징에서 **자동
 
 ### 2-2. 감사 문서에 없던 발견
 
-#### 🆕 (F) 【최상위】 PUBLIC 저장소 + JWT 서명키 하드코딩 기본값이 실사용 중
+#### 🆕 (F) 【최상위】 PUBLIC 저장소 + JWT 서명키 하드코딩 기본값이 실사용 중 · ✅ **수정 완료(미머지)**
+
+> **상태**: `fix/#62-fix-authentification`에서 수정 완료, PR 대기 중.
+> **`dev`에는 아직 반영되지 않았으므로 아래 내용은 `dev` 기준으로 전부 그대로 유효하다.**
 
 세 가지가 동시에 성립한다:
 
@@ -147,6 +201,13 @@ jwt.secret=${JWT_SECRET:artifact-medical-ai-jwt-secret-key-must-be-at-least-256-
 
 **→ 모든 항목보다 먼저다.**
 
+> **수정 후** (`fix/#62-fix-authentification`): 기본값을 제거해 `jwt.secret=${JWT_SECRET}`으로 바꿨다.
+> 값이 없으면 Spring이 `PlaceholderResolutionException`으로 **기동 자체를 실패**시킨다 —
+> 기본값을 "안전한 값"으로 바꾸는 것으로는 부족하다. 조용히 뜨는 순간 아무도 눈치채지 못하기 때문이다.
+>
+> ⚠️ **`dev`의 `README.md:502`에 이 서명키 값이 아직 그대로 적혀 있다** (`fix/#62`에서 함께 제거됨).
+> 같은 이유로 `README.md:60, 126, 459-464`의 `admin / 1234`도 `dev`에 남아 있다.
+
 #### 🆕 (G) 가입 role 자유 지정 — 감사 문서가 심각도를 축소 기술
 
 감사 문서: *"회원가입이 전면 공개 + role 기본값 DOCTOR"*
@@ -163,13 +224,30 @@ public MemberRole resolvedRole() {
 가입은 `SecurityConfig:39`에서 `permitAll`이다.
 → **누구나 ADMIN으로 자가 등록 가능.** 기본값 설정 실수가 아니라 권한 상승 취약점이다.
 
-#### 🆕 (I) `/predict`가 FastAPI 이벤트 루프를 블로킹
+> **상태**: `fix/#62-fix-authentification`에서 수정 완료(미머지). `dev`에서는 그대로 유효하다.
+>
+> **수정 방식이 계획과 다르다.** 당초 계획은 "`role` 필드를 DTO에서 삭제하고 서버가 항상 DOCTOR로 강제"였으나,
+> 실제로는 **화이트리스트 방식**으로 구현했다 — 필드는 남기되 `DOCTOR`/`NURSE`만 허용하고
+> `ADMIN`은 거부한다. 필드를 지우면 간호사 계정을 만들 방법이 사라져 운영이 막히기 때문이다.
+> 관리자 계정은 가입 API가 아니라 별도 경로로만 생성한다는 원칙은 동일하게 유지된다.
 
-`main.py:155`는 `async def`인데 동기 함수 `run_inference`를 직접 호출한다.
+#### 🆕 (I) `/predict`가 FastAPI 이벤트 루프를 블로킹 · ✅ **수정 완료**
+
+`main.py:155`(dev 기준)는 `async def`인데 동기 함수 `run_inference`를 직접 호출한다.
 → 추론이 도는 동안 **FastAPI 이벤트 루프 전체가 멈춘다.** `/health`조차 응답하지 않는다.
 `/predict-base64`의 스레드풀 경합(A항)과는 **별개의 버그**다.
 
-#### 🆕 (J) 테스트가 실제 스키마를 전혀 검증하지 않는다
+**실측** — 2400×2400 이미지 추론(710ms) 중 `/health`를 50ms 간격으로 폴링:
+
+| | 최악 `/health` 응답 |
+|---|---|
+| 수정 전 (`async def`) | **674ms** — 추론이 끝날 때까지 통째로 대기 |
+| 수정 후 (`def`) | **4–5ms** |
+
+`async def` → `def`로 바꾸면 FastAPI가 알아서 스레드풀로 넘긴다. 한 글자 수정이다.
+(`fix/#63-multiple-heatmap-error-fix`에서 A항과 함께 처리)
+
+#### 🆕 (J) 테스트가 실제 스키마를 전혀 검증하지 않는다 — **실제로는 더 나쁘다**
 
 | | 테스트 | 운영 |
 |---|---|---|
@@ -180,16 +258,47 @@ public MemberRole resolvedRole() {
 → 테스트를 아무리 늘려도 운영 스키마 회귀는 못 잡는다.
 감사 문서 4단계의 "테스트 확충"은 **Testcontainers 전환이 선행되지 않으면 효과가 절반 이하**다.
 
+> ### ⛔ 그런데 그 테스트는 **애초에 컴파일되지 않는다**
+>
+> `dev`에서 `./gradlew compileTestJava`를 실행하면 실패한다:
+>
+> ```
+> error: constructor PrescriptionRequest in record PrescriptionRequest
+>        cannot be applied to given types;
+>   required: Long,List<...>,Long,LocalDate,String,String,String,LocalDateTime,Boolean,List<...>
+>   found:    Long,List<...>,Long,LocalDate,String,String
+> ```
+>
+> `PrescriptionRequest`에 AI 코멘트 관련 필드 4개(`aiComment`, `aiCommentModel`,
+> `aiCommentGeneratedAt`, `aiCommentEdited`)가 추가됐는데 **테스트는 갱신되지 않았다.**
+>
+> → **실제로 돌아가는 백엔드 테스트는 2개가 아니라 0개다.** 문서 곳곳의 "테스트 2개"는 전부 오기다.
+> CI가 없어서(감사 32번) 이 컴파일 실패를 아무도 몰랐다는 점이 더 중요하다 —
+> **테스트 부족이 아니라 테스트가 죽어 있는 것을 감지할 장치가 없는 것**이 진짜 문제다.
+> EMR 미팅에서 "테스트가 있습니다"라고 말하면 안 되는 이유다.
+
 #### 🆕 (K) 기타
 
 - **`KioskService.java:82-86` 로직 오류**: 루프에 `break`가 없어 마지막 후보를 잡는다.
-  → "가장 오래 기다린 환자"가 아니라 **가장 최근 접수 환자**가 선택된다. 감사 문서의 N+1 지적과는 별개다.
-- **추론 1건당 forward 2회**: `main.py:115`(no_grad)와 `main.py:132`(Grad-CAM)에서 모델이 두 번 돈다. 지연시간 2배.
+  리포지토리 메서드가 `findByStatusOrderByVisitDateAsc` — **오래된 순 정렬**이므로
+  마지막 원소는 **가장 최근에 접수한 환자**다. 그런데 같은 메서드의 Javadoc/Swagger 설명은
+  *"가장 최근"*이라 적혀 있어 정렬 방향과 모순된다.
+  → 코드·주석 중 하나는 반드시 틀렸다. 의도가 "가장 오래 기다린 환자"라면 `break` 한 줄이면 되고,
+  "가장 최근"이 의도라면 정렬을 `Desc`로 바꿔야 한다. **먼저 어느 쪽이 맞는지 확정할 것.**
+  감사 문서의 N+1 지적과는 별개 사안이다.
+- **추론 1건당 forward 2회**: `main.py:115`(no_grad)와 `main.py:73`(Grad-CAM 내부)에서
+  모델이 두 번 돈다. 지연시간 2배.
+  → **A항 수정에서 의도적으로 건드리지 않았다.** 두 forward를 합치려면 `no_grad` 제거와
+  출력 재사용이 필요해 리뷰 난이도가 올라간다. 동시성 버그 수정과 성능 최적화를 한 PR에 섞지 않았다.
+  별도 이슈로 남긴다.
 - **Security CORS 미연동은 잠재 결함**: `SecurityConfig`에 `.cors()`가 없어 `WebConfig`의 CORS 설정이
   Security 필터체인에 반영되지 않는다. 다만 nginx 경유 시 same-origin이라 **현재 배포 경로에서는 안 터진다.**
   감사 34번이 매긴 우선순위보다 낮게 잡아도 된다.
 
 ### 2-3. 확인된 항목 (감사 문서 그대로 유효)
+
+> **판정의 기준 브랜치는 `dev`다.** ✅는 "`dev`에서 여전히 참"이라는 뜻이고,
+> 별도 브랜치에서 이미 고친 항목은 `→ 수정됨(브랜치)`를 덧붙였다.
 
 <details>
 <summary>✅ 1단계 보안 (펼치기)</summary>
@@ -198,10 +307,10 @@ public MemberRole resolvedRole() {
 |---|---|---|---|
 | 1 | 이미지 무인증 조회 | `SecurityConfig.java:41-42` | ✅ (근거는 E항대로 정정) |
 | 2 | 처방 의사를 클라이언트가 지정 | `PrescriptionService.java:37-38` | ✅ |
-| 3 | 회원가입 전면 공개 | `SecurityConfig.java:39` | ✅ (심각도는 G항대로 상향) |
+| 3 | 회원가입 전면 공개 | `SecurityConfig.java:39` | ✅ (심각도는 G항대로 상향) → **수정됨 `fix/#62`** |
 | 4 | `@PreAuthorize` 0개 | 전체 검색 결과 0건 | ✅ |
-| 5 | JWT 비밀키 하드코딩 | `application.properties:65` | ✅ (F항으로 최상위 승격) |
-| 6 | 하드코딩 admin 계정 자동 생성 | `DataInitializer.java:112-123` | ✅ BCrypt 해시가 공개 소스에 노출 |
+| 5 | JWT 비밀키 하드코딩 | `application.properties:65` | ✅ (F항으로 최상위 승격) → **수정됨 `fix/#62`** |
+| 6 | 하드코딩 admin 계정 자동 생성 | `DataInitializer.java:112-123` | ✅ BCrypt 해시가 공개 소스에 노출 → **수정됨 `fix/#62`** |
 | 7 | 대기 환자 실명 무인증 노출 | `SecurityConfig.java:45` + `KioskController:27` | ✅ |
 | 8 | FastAPI 무인증 + CORS `*` | `docker-compose.yml:44-45`, `main.py:18` | ✅ |
 | 9 | JWT 검증 실패를 조용히 삼킴 | `JwtFilter.java:39` `catch (Exception ignored)` | ✅ |
@@ -236,8 +345,8 @@ public MemberRole resolvedRole() {
 | N+1 (환자마다 최종내원일) | `PatientService.java:79` | ✅ |
 | N+1 (대기 환자마다 exists) | `KioskService.java:82-86` | ✅ + K항 로직 오류 |
 | base64 왕복 메모리 3배 | `AnalysisService:169`, `KioskService:237` | ✅ |
-| `file.content_type` None → AttributeError | `main.py:157` | ✅ |
-| `torch.load`에 `weights_only=True` 없음 | `main.py:43` | ✅ |
+| `file.content_type` None → AttributeError | `main.py:157` | ✅ → **수정됨 `fix/#63`** (`(file.content_type or "")` 가드 → 500 대신 400) |
+| `torch.load`에 `weights_only=True` 없음 | `main.py:43` | ✅ → **수정됨 `fix/#63`** |
 | HikariCP·타임아웃 설정 전무 | `application.properties` | ✅ |
 | 목록 조회 페이징 없음 | `VisitService:69,78,87`, `PatientService` | ✅ |
 | 23 HTTPS 없음 | `nginx.conf:2` `listen 80` | ✅ 병원 반입 불가 항목 |
@@ -270,7 +379,7 @@ public MemberRole resolvedRole() {
 | 요청 타임아웃·재시도·취소 없음 | `client.ts:27` | ✅ |
 | ErrorBoundary 없음 | 전체 검색 0건 | ✅ |
 | `alert()` 2곳 | `Login.tsx:30,46` | ✅ (위치는 정정 — 키오스크 아님) |
-| 백엔드 테스트 2개 / 프론트 0개 | `DiagnosisApplicationTests.java` | ✅ + J항(스키마 미검증) |
+| ~~백엔드 테스트 2개~~ / 프론트 0개 | `DiagnosisApplicationTests.java` | 🔧 **정정: 백엔드도 0개** — `compileTestJava` 자체가 실패한다 (J항) |
 
 </details>
 
@@ -281,32 +390,59 @@ public MemberRole resolvedRole() {
 감사 문서의 4단계 10주 계획은 코드를 **이미 병원에 배포된 시스템처럼** 다뤄 산출된 것이다.
 실제 제약은 캡스톤 일정과 4인(백엔드+AI는 2인) 체제이므로, **"무엇이 배포를 막는가"** 기준으로 재정렬한다.
 
-### G0 — EC2 배포 전 필수 · 예상 반나절
+### G0 — EC2 배포 전 필수 · 예상 반나절 → ✅ **구현 완료 (PR 대기)**
 
 > 이 게이트를 닫지 않은 채 EC2에 올리면 배포 즉시 공개 장악 상태가 된다.
 
-| 항목 | 조치 | 파일 |
-|---|---|---|
-| **(F) JWT 서명키** | `${JWT_SECRET}` 기본값 제거 → 미설정 시 **기동 실패(fail-fast)**. EC2에는 SSM Parameter Store 또는 환경변수로 주입 | `application.properties:65` |
-| **(G) 가입 role 승격** | `MemberSignupRequest`에서 `role` 필드 제거, 서버가 `DOCTOR` 강제. ADMIN 생성은 별도 경로로만 | `MemberSignupRequest.java`, `MemberService.java` |
-| 감사 6번 admin 계정 | `DataInitializer`의 하드코딩 BCrypt 해시 제거 → 1회성 초기화 스크립트로 분리 | `DataInitializer.java:112-123` |
-| 회원가입 공개 차단 | `/api/v1/auth/signup`을 `permitAll`에서 제외하거나 ADMIN 초대제로 전환 | `SecurityConfig.java:39` |
+브랜치: `fix/#62-fix-authentification` · **아직 `dev`에 머지되지 않았다.**
+
+| 항목 | 조치 | 파일 | 상태 |
+|---|---|---|---|
+| **(F) JWT 서명키** | `${JWT_SECRET}` 기본값 제거 → 미설정 시 **기동 실패(fail-fast)**. EC2에는 SSM Parameter Store 또는 환경변수로 주입 | `application.properties:65` | ✅ |
+| **(G) 가입 role 승격** | ~~`role` 필드 제거~~ → **화이트리스트로 변경** (아래 참조) | `MemberSignupRequest.java`, `MemberService.java` | ✅ |
+| 감사 6번 admin 계정 | `DataInitializer`의 하드코딩 BCrypt 해시 제거 → 환경변수 주입 | `DataInitializer.java:112-123` | ✅ |
+| 회원가입 공개 차단 | `/api/v1/auth/signup`을 `permitAll`에서 제외하거나 ADMIN 초대제로 전환 | `SecurityConfig.java:39` | ✅ |
 
 **검증 방법**: `JWT_SECRET` 없이 기동 → 실패해야 정상. 기존 발급 토큰이 전부 무효화되는지 확인(키 교체 효과).
 
-### G1 — 데모 전 필수 · 예상 1일
+> **계획과 다르게 처리한 것 2건** — 리뷰 시 이 부분을 먼저 볼 것:
+>
+> 1. **`role` 필드를 지우지 않고 화이트리스트로 막았다.** 필드를 제거하면 `NURSE` 계정을
+>    만들 방법이 사라진다. `DOCTOR`/`NURSE`만 허용하고 `ADMIN`은 거부하는 쪽이
+>    같은 보안 효과를 내면서 운영을 막지 않는다.
+> 2. **`README.md`의 서명키·`admin/1234` 노출도 함께 제거했다.** 계획서에는 없던 항목인데,
+>    소스에서 키를 빼도 README에 남아 있으면 아무 의미가 없다.
+
+### G1 — 데모 전 필수 · 예상 1일 → ✅ **구현 완료 (미커밋)**
 
 > 정상적인 동시 사용만으로 재현된다. 심사위원 2명이 동시에 체험하면 그 자리에서 터진다.
 
-| 항목 | 조치 | 파일 |
-|---|---|---|
-| **(A) Grad-CAM 히트맵 뒤섞임** | 추론+Grad-CAM 구간 전체를 `threading.Lock`으로 직렬화. **`contextvars`로는 안 고쳐진다 — §2 A항 참조** | `main.py:58-142` |
-| **(I) 이벤트 루프 블로킹** | `/predict`를 `def`로 변경(스레드풀로 위임)하거나 `run_in_threadpool` 사용 | `main.py:155` |
-| `file.content_type` None | `(file.content_type or "").startswith("image/")` | `main.py:157` |
-| `torch.load` | `weights_only=True` 추가 | `main.py:43` |
+브랜치: `fix/#63-multiple-heatmap-error-fix`
+
+| 항목 | 조치 | 파일(dev 기준) | 상태 |
+|---|---|---|---|
+| **(A) Grad-CAM 히트맵 뒤섞임** | 추론+Grad-CAM 구간을 `threading.Lock`으로 직렬화. **`contextvars`로는 안 고쳐진다 — §2 A항 참조** | `main.py:58-142` | ✅ |
+| **(I) 이벤트 루프 블로킹** | `/predict`를 `async def` → `def`로 변경(FastAPI가 스레드풀로 위임) | `main.py:155` | ✅ |
+| `file.content_type` None | `(file.content_type or "").startswith("image/")` | `main.py:157` | ✅ |
+| `torch.load` | `weights_only=True` 추가 | `main.py:43` | ✅ |
+| *(계획 외)* hook 누수 | `handle.remove()`를 `try` 안 → `finally`로 이동 | `main.py:71-77` | ✅ |
 
 **검증 방법**: 서로 다른 두 이미지를 동시에 20회 POST → 각 응답의 히트맵이 자기 입력과 일치하는지 확인.
 Lock 적용 전에 재현 테스트를 먼저 작성해 **실패하는 것을 확인한 뒤** 고칠 것.
+
+**실제 검증 결과** (`fastapi/tests/test_concurrent_heatmap.py`):
+
+| | 수정 전 | 수정 후 |
+|---|---|---|
+| 동시 40요청 중 오염 | **20건 (50%)** | **0건** |
+| 추론 중 `/health` 최악 응답 | 674ms | 4–5ms |
+| Content-Type 없는 업로드 | 500 | 400 |
+| 처리량(2400px 동시4) | 측정 불가(33% 실패) | 2.01 req/s |
+
+> **계획과 다르게 처리한 것 1건**: Lock 범위를 `run_inference` 전체가 아니라
+> **모델을 만지는 구간에만** 걸고, 히트맵 렌더링(이미지 리사이즈·JPEG 인코딩)은 락 밖으로 뺐다.
+> 2400px 이미지 동시 4요청 기준 처리량 1.90 → 2.01 req/s(약 6%). 차이가 크지 않으므로
+> 리뷰에서 복잡하다고 판단되면 전체를 감싸는 쪽으로 되돌려도 무방하다.
 
 ### G2 — EMR 미팅 전 권장 · 예상 3~5일
 
@@ -369,21 +505,26 @@ Spring Profile 분리, CI(GitHub Actions), 구조화 로깅, 페이징, 프론�
 
 **진행 순서**
 
-| 순서 | 이슈 | 담당 영역 | 브랜치 예시 | 예상 |
-|---|---|---|---|---|
-| 1 | #1 인증 기반 정비 | BE | `kwon/security-auth` | 반나절 |
-| 1 | #2 히트맵 뒤섞임 | AI 서버 | `kwon/fastapi-concurrency` | 1일 |
-| 2 | #3 무인증 API 차단 | BE | `kwon/api-authz` | 1~2일 |
-| 2 | #4 처방자 위조 차단 | BE | `kwon/prescription-actor` | 반나절 |
-| 3 | #5 타임아웃 + 트랜잭션 | BE | `kwon/http-timeout` | 1일 |
+| 순서 | 이슈 | 담당 영역 | 실제 브랜치 | 예상 | 상태 |
+|---|---|---|---|---|---|
+| 1 | #1 인증 기반 정비 | BE | `fix/#62-fix-authentification` | 반나절 | ✅ **완료 · PR 대기** |
+| 1 | #2 히트맵 뒤섞임 | AI 서버 | `fix/#63-multiple-heatmap-error-fix` | 1일 | ✅ **완료 · 미커밋** |
+| 2 | #3 무인증 API 차단 | BE | — | 1~2일 | ⬜ |
+| 2 | #4 처방자 위조 차단 | BE | — | 반나절 | ⬜ |
+| 3 | #5 타임아웃 + 트랜잭션 | BE | — | 1일 | ⬜ |
 
 - **#1과 #2는 동시에** 진행해도 충돌 없음 (건드리는 파일이 다름)
 - **#3은 #1이 머지된 뒤에** 시작 (같은 `SecurityConfig`를 건드림)
 - PR 대상 브랜치는 `dev`
 
+> 아래 이슈 본문의 `파일:줄번호`는 전부 **`dev` 기준**이다.
+> #1·#2는 이미 수정되었으므로 각 브랜치에서는 줄번호가 맞지 않는다.
+
 ---
 
-### 이슈 #1 — 인증 기반 정비 (최우선)
+### 이슈 #1 — 인증 기반 정비 (최우선) · ✅ 구현 완료
+
+> **구현 결과는 이 이슈 본문 아래 "실제 구현과의 차이" 참조.** 이슈 본문은 등록 당시 원문 그대로 둔다.
 
 **제목**
 ```
@@ -463,9 +604,19 @@ public MemberRole resolvedRole() {
 `docs/security-remediation-plan.md` §2 (F)(G)항, §3 G0
 ````
 
+#### 실제 구현과의 차이 (`fix/#62-fix-authentification`)
+
+| 이슈 본문 | 실제 구현 | 이유 |
+|---|---|---|
+| `MemberSignupRequest`에서 `role` 필드 **삭제** | 필드 유지 + **`DOCTOR`/`NURSE` 화이트리스트**, `ADMIN` 거부 | 필드를 지우면 간호사 계정을 만들 수단이 사라진다. 권한 상승은 동일하게 막힌다 |
+| (본문에 없음) | **`README.md`의 JWT 서명키·`admin/1234` 제거** | 소스에서 키를 빼도 README에 남으면 무의미 |
+
+나머지 To-Do는 본문대로 처리했다 (`jwt.secret=${JWT_SECRET}` 기본값 제거,
+`.env.example` 추가, `DataInitializer` admin 해시 환경변수화, 프론트 `role` 전송 제거).
+
 ---
 
-### 이슈 #2 — 히트맵 뒤섞임 (데모 전 필수)
+### 이슈 #2 — 히트맵 뒤섞임 (데모 전 필수) · ✅ 구현 완료
 
 **제목**
 ```
@@ -549,6 +700,19 @@ Grad-CAM은 "모델이 어디를 보고 판단했는지" 알아내려고 **모�
 `docs/security-remediation-plan.md` §2 (A)(I)항, §3 G1
 ````
 
+#### 실제 구현과의 차이 (`fix/#63-multiple-heatmap-error-fix`)
+
+| 이슈 본문 | 실제 구현 | 이유 |
+|---|---|---|
+| `run_inference()` **전체**를 락으로 감싸기 | **모델을 만지는 구간만** 락 (`_compute_gradcam`), 히트맵 렌더링(`_render_gradcam_overlay`)은 락 밖 | 렌더링은 모델과 무관한 순수 후처리다. 원본 해상도가 큰 키오스크 사진일수록 이 구간이 길어져, 락 안에 두면 그만큼 다른 요청이 통째로 대기한다. 2400px 동시4 기준 1.90 → 2.01 req/s |
+| (본문에 없음) | **hook 누수 수정** — `handle.remove()`를 `finally`로 이동 | 원래는 `try` 안에 있어서, forward가 한 번 실패하면 전역 모델에 hook이 영구히 남아 **이후 모든 요청이 계속 오염**된다 |
+| (본문에 없음) | forward 2회 문제는 **의도적으로 안 고침** | 동시성 버그 수정과 성능 최적화를 한 PR에 섞지 않기 위해. 별도 이슈로 남긴다 |
+
+재현 스크립트는 `fastapi/tests/test_concurrent_heatmap.py`로 커밋했다.
+수정 전 **40요청 중 20건 오염(50%)** → 수정 후 **0건**.
+서버 로그에 `RuntimeError: cannot register a hook on a tensor that doesn't require gradient`가
+13번 찍힌 것이 위 진단(전역 모델 hook)이 맞았다는 직접 증거다.
+
 ---
 
 ### 이슈 #3 — 무인증 API 차단
@@ -626,7 +790,7 @@ Member member = memberRepository.findById(req.memberId())   // 요청 body의 me
 **B 의사 이름으로 처방 기록이 남습니다.**
 
 진료기록 위조에 해당하는 문제라, 로그인한 사용자 정보에서 직접 가져와야 합니다.
-JWT에 이미 `memberId` 클레임이 들어 있어서(`JwtUtil.java:33`) 어렵지 않습니다.
+JWT에 이미 `memberId` 클레임이 들어 있어서(`JwtUtil.java:34`) 어렵지 않습니다.
 
 ## ✅ To-Do List
 
@@ -717,3 +881,13 @@ DB 커넥션은 개수가 정해져 있는 자원인데(기본 10개), 이걸 **
 인가·감사·트랜잭션 경계를 "끼워 넣는" 작업**이다. 그래서 G0가 반나절, G1이 하루로 끝난다.
 
 다만 (F)만은 성격이 다르다. 그건 끼워 넣는 작업이 아니라 **배포 전에 반드시 닫아야 하는 문**이다.
+
+> **G0·G1을 실제로 해 보고 확인된 것**: 예상 공수(반나절 + 1일)는 대체로 맞았다.
+> 다만 두 이슈 모두 **본문에 없던 문제를 각각 1건씩 추가로 발견**했다
+> (#1의 README 키 노출, #2의 hook 누수). 계획서의 지적은 대개 정확하지만 **완전하지는 않으므로**,
+> G2 이후에도 "이슈에 적힌 것만 고치고 닫는" 방식은 피할 것.
+>
+> 그리고 이번에 드러난 (J) — **백엔드 테스트가 컴파일조차 되지 않는다** — 는 이 계획의
+> 우선순위를 한 군데 바꾼다. G4로 미뤄 둔 **CI(감사 32번)를 G2와 함께 앞당기는 것이 맞다.**
+> 테스트가 죽어 있는 것을 6개월간 아무도 몰랐다는 사실 자체가, 남은 G2~G4 작업이
+> 조용히 깨질 수 있다는 뜻이기 때문이다. `compileTestJava`만 도는 워크플로 파일 하나면 시작된다.
