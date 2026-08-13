@@ -3,6 +3,8 @@ package com.artifact.diagnosis;
 import com.artifact.diagnosis.common.jwt.JwtUtil;
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
+import com.artifact.diagnosis.kiosk.PreliminaryAnalysis;
+import com.artifact.diagnosis.kiosk.PreliminaryAnalysisRepository;
 import com.artifact.diagnosis.member.MemberLoginRequest;
 import com.artifact.diagnosis.member.MemberRepository;
 import com.artifact.diagnosis.member.MemberResponse;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -71,6 +74,9 @@ class DiagnosisApplicationTests {
 
 	@Autowired
 	KcdDiseaseRepository kcdDiseaseRepository;
+
+	@Autowired
+	PreliminaryAnalysisRepository preliminaryAnalysisRepository;
 
 	@Autowired
 	JwtUtil jwtUtil;
@@ -222,6 +228,55 @@ class DiagnosisApplicationTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"imageIds\": []}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	/**
+	 * 키오스크 자동 진입이 잡는 대상은 "예비분석을 아직 안 한 접수 중 <b>가장 최근</b> 1건"이다.
+	 *
+	 * <p>태블릿은 3초마다 이 조회를 폴링하다가 대상이 생기면 곧바로 이동한다. 따라서 실제로 태블릿 앞에
+	 * 서 있는 사람은 방금 접수한 환자다. 오래된 순으로 고르면, 접수만 하고 태블릿을 쓰지 않은 묵은 접수가
+	 * 하나라도 남아 있을 때 태블릿이 그 접수를 영원히 반복해 잡아 새 환자가 아무도 진입하지 못한다.
+	 * 이 테스트는 바로 그 "묵은 접수에 갇히지 않는다"를 고정한다.
+	 */
+	@Test
+	void kioskAutoEntryPicksLatestVisitWithoutPreliminaryAnalysis() {
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("한대기")
+				.birthDate(LocalDate.of(1992, 7, 7))
+				.gender(Gender.M)
+				.build());
+
+		// 묵은 접수 — 접수만 하고 태블릿을 쓰지 않아 예비분석이 없다.
+		Visit stale = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 9, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		// 방금 접수한 환자 — 태블릿이 잡아야 할 대상.
+		Visit latest = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 11, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		// 가장 최근이지만 이미 예비분석을 마쳤다 → 건너뛰어야 한다.
+		Visit done = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 12, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		preliminaryAnalysisRepository.save(PreliminaryAnalysis.builder()
+				.visitId(done.getId())
+				.source("clinic")
+				.analyzedAt(LocalDateTime.of(2026, 6, 5, 12, 5))
+				.build());
+
+		List<Visit> picked = visitRepository
+				.findLatestWithoutPreliminaryAnalysis(VisitStatus.RECEIVED, Limit.of(1));
+
+		assertThat(picked).hasSize(1);
+		assertThat(picked.get(0).getId())
+				.isEqualTo(latest.getId())
+				.isNotEqualTo(stale.getId());
 	}
 
 	/** 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다. */

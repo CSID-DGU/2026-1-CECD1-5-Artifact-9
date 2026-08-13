@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.patient;
 
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,6 +26,7 @@ import com.artifact.diagnosis.patient.PatientSearchResponse;
 @RestController
 @RequestMapping("/api/v1/patients")
 @RequiredArgsConstructor
+@StaffAccess // 환자 등록·검색은 접수 직원의 기본 업무다 — 로그인한 전 직책 허용.
 public class PatientController {
 
     private final PatientService patientService;

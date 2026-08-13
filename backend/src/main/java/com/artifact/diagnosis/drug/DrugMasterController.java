@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.drug;
 
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/drugs")
 @RequiredArgsConstructor
+@StaffAccess
 public class DrugMasterController {
 
     private final DrugMasterRepository drugMasterRepository;

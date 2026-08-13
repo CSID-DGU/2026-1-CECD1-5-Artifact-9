@@ -2,8 +2,13 @@ package com.artifact.diagnosis.common.exception;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -18,12 +23,15 @@ import java.util.NoSuchElementException;
  * 모든 컨트롤러 공통 예외 처리.
  *
  *   400  잘못된 요청 (DTO 검증 실패, 잘못된 인자)
+ *   403  직책 권한 부족
  *   404  리소스 없음 (Optional 빈 결과)
  *   409  상태 충돌 (Visit 상태 머신 위반 등)
  *   500  그 외
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /** @Valid 검증 실패. 필드별 메시지를 모아 반환. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -61,6 +69,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AiServiceUnavailableException.class)
     public ResponseEntity<Map<String, Object>> handleAiUnavailable(AiServiceUnavailableException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error(503, e.getMessage(), null));
+    }
+
+    /**
+     * 직책 권한 부족(@StaffAccess/@MedicalAccess/@DoctorAccess 거부) → 403.
+     *
+     * <p><b>이 핸들러가 없으면 403이 아니라 500이 나간다.</b> 메서드 시큐리티가 던지는
+     * {@code AuthorizationDeniedException}은 컨트롤러 호출 시점에 발생하므로 이 @RestControllerAdvice가
+     * 먼저 잡아버리고, 아무 핸들러도 없으면 맨 아래 {@code handleEtc(Exception)}로 떨어지기 때문이다.
+     * Spring Security의 403 변환기(ExceptionTranslationFilter)는 필터 레벨이라 여기까지 오지 못한다.
+     *
+     * <p>500으로 나가면 두 가지가 망가진다 — 프론트가 "권한 없음"과 "서버 고장"을 구분하지 못하고,
+     * 모니터링에서 정상적인 권한 차단이 장애 알람으로 잡힌다.
+     *
+     * <p>권한 거부는 보안 이벤트이므로 누가 무엇을 시도했는지 남긴다. 감사 로그(G3)의 씨앗이다.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException e) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        log.warn("권한 거부 - 계정: {}, 권한: {}, 사유: {}",
+                auth != null ? auth.getName() : "(미인증)",
+                auth != null ? auth.getAuthorities() : "(없음)",
+                e.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(error(403, "이 작업을 수행할 권한이 없습니다.", null));
     }
 
     /** 그 외 잘못된 인자 → 400. */

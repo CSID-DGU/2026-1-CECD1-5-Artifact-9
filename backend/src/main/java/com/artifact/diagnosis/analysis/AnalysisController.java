@@ -1,5 +1,7 @@
 package com.artifact.diagnosis.analysis;
 
+import com.artifact.diagnosis.common.security.MedicalAccess;
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -17,6 +19,7 @@ public class AnalysisController {
 
     @Operation(summary = "AI 분석 요청",
                description = "선택한 이미지를 AI 모델에 전달해 Top-5 병명을 반환합니다. visit 상태: IN_PROGRESS/ANALYZED → ANALYZING → ANALYZED")
+    @MedicalAccess
     @PostMapping
     public AnalysisResponse analyze(
             @PathVariable Long visitId,
@@ -26,6 +29,7 @@ public class AnalysisController {
 
     @Operation(summary = "최근 분석 결과 조회",
                description = "해당 접수의 가장 최근 AI 분석 결과(Top-5 포함)를 반환합니다.")
+    @StaffAccess
     @GetMapping
     public AnalysisResponse getLatest(@PathVariable Long visitId) {
         return analysisService.getLatest(visitId);
@@ -33,6 +37,7 @@ public class AnalysisController {
 
     @Operation(summary = "GradCAM 히트맵 이미지 조회",
                description = "해당 접수의 최근 분석에서 생성된 GradCAM 히트맵 오버레이 이미지를 반환합니다.")
+    @StaffAccess
     @GetMapping("/heatmap")
     public ResponseEntity<byte[]> getHeatmap(@PathVariable Long visitId) {
         return analysisService.getHeatmapContent(visitId);

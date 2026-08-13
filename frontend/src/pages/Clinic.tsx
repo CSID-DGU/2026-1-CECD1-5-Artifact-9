@@ -6,6 +6,7 @@ import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { AuthedImage } from "../components/AuthedImage";
 import { useAuth } from "../components/AuthContext";
+import { hasAtLeast } from "../auth/roles";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
@@ -134,8 +135,15 @@ export default function Clinic() {
 
   const canUploadImage = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
   const canAnalyze = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED";
-  // 처방 폼: 진료중(IN_PROGRESS) 이후 상태에서 표시
-  const canPrescribe = selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED";
+
+  // 간호사도 이 화면에 들어와 이미지 업로드와 AI 분석까지 한다. 하지만 처방 저장·진료 완료는
+  // 의사의 법적 행위라 서버가 403으로 막는다(@DoctorAccess). 눌러도 실패할 UI를 미리 감춰,
+  // 간호사가 처방 폼을 다 채우고 마지막에 막히는 일을 없앤다. 차단 자체는 서버가 한다.
+  const isDoctor = hasAtLeast(user?.role, "DOCTOR");
+
+  // 처방 폼: 의사이면서, 진료중(IN_PROGRESS) 이후 상태일 때 표시
+  const canPrescribe = isDoctor
+    && (selectedVisit?.status === "IN_PROGRESS" || selectedVisit?.status === "ANALYZED" || selectedVisit?.status === "DIAGNOSED");
 
   // ── 목록 로드 ────────────────────────────────────────────────────
   async function loadVisitLists() {
@@ -815,6 +823,13 @@ export default function Clinic() {
             <Card title="처방" className="min-h-0 flex-1" contentClassName="!p-2">
               <div className="flex flex-col gap-2">
 
+                {/* 의사가 아니면 처방 영역이 통째로 비어 보인다 — 왜 없는지 알려준다. */}
+                {!isDoctor && (
+                  <p className="text-[10px] text-gray-400">
+                    처방 입력과 진료 완료는 의사 계정에서만 가능합니다.
+                  </p>
+                )}
+
                 {/* 처방 입력 폼 — ANALYZED 또는 DIAGNOSED */}
                 {canPrescribe && (
                   <div className="flex flex-col gap-2">
@@ -1001,9 +1016,11 @@ export default function Clinic() {
                   <div className="flex flex-col gap-3">
                     <p className="text-[10px] text-blue-400 font-medium">처방 저장됨</p>
                     <PrescriptionSummary prescription={prescription} />
-                    <Button onClick={handleComplete} disabled={isActionLoading} className="py-2 text-xs w-full">
-                      진료 완료
-                    </Button>
+                    {isDoctor && (
+                      <Button onClick={handleComplete} disabled={isActionLoading} className="py-2 text-xs w-full">
+                        진료 완료
+                      </Button>
+                    )}
                   </div>
                 )}
 

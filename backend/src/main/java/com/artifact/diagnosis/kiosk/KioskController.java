@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.common.security.PublicEndpoint;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/kiosk")
 @RequiredArgsConstructor
+@PublicEndpoint // 태블릿에는 JWT가 없다. 대신 접수별 kiosk_token 이 접근 대상을 한정한다 — 위 주석 참고.
 public class KioskController {
 
     private final KioskService kioskService;

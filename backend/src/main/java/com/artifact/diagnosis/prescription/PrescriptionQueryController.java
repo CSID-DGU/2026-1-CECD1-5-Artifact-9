@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.prescription;
 
 import com.artifact.diagnosis.common.jwt.AuthPrincipal;
+import com.artifact.diagnosis.common.security.DoctorAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,6 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/prescriptions")
 @RequiredArgsConstructor
+@DoctorAccess // "내가 처방한 환자" 목록 — 의사 본인만 의미가 있는 조회다.
 public class PrescriptionQueryController {
 
     private final PrescriptionService prescriptionService;

@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -94,6 +95,9 @@ public class KioskService {
      * <p>기본적으로 꺼져 있다. 인증도 토큰도 없이 호출되는 유일한 경로라, 켜두면 누구나
      * 다음 대기 환자의 키오스크 토큰을 받아 그 환자의 세션·히트맵에 접근할 수 있다.
      * 환자 실명은 응답에서 제외한다 — 태블릿은 토큰으로 이동한 뒤 세션 조회에서 이름을 받는다.
+     *
+     * <p>대상 선정은 {@code VisitRepository.findLatestWithoutPreliminaryAnalysis} 한 번으로 끝낸다.
+     * "최신순 1건"인 이유는 그 쿼리 주석 참고 — 오래된 순으로 고르면 태블릿이 묵은 접수에 갇힌다.
      */
     @Transactional
     public KioskPendingResponse findPending() {
@@ -101,19 +105,10 @@ public class KioskService {
             throw new NoSuchElementException("자동 진입이 비활성화되어 있습니다. QR 코드를 사용하세요.");
         }
 
-        List<Visit> received = visitRepository.findByStatusOrderByVisitDateAsc(VisitStatus.RECEIVED);
-
-        Visit target = null;
-        for (Visit visit : received) {
-            if (!preliminaryAnalysisRepository.existsByVisitId(visit.getId())) {
-                target = visit;
-            }
-        }
-
-        if (target == null) {
-            throw new NoSuchElementException("예비분석이 필요한 대기 환자가 없습니다.");
-        }
-        final Visit pendingVisit = target;
+        Visit pendingVisit = visitRepository
+                .findLatestWithoutPreliminaryAnalysis(VisitStatus.RECEIVED, Limit.of(1))
+                .stream().findFirst()
+                .orElseThrow(() -> new NoSuchElementException("예비분석이 필요한 대기 환자가 없습니다."));
 
         // 컬럼 추가 이전에 만들어진 접수 행은 토큰이 없다 — 폴백도 토큰 경로로 이동하므로 여기서 지연 발급한다.
         if (pendingVisit.getKioskToken() == null) {

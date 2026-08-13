@@ -1,6 +1,8 @@
 package com.artifact.diagnosis.prescription;
 
 import com.artifact.diagnosis.common.jwt.AuthPrincipal;
+import com.artifact.diagnosis.common.security.DoctorAccess;
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,6 +25,7 @@ public class PrescriptionController {
                            + "한 트랜잭션에서 PRESCRIBED 로 전이합니다(AI 분석 없이 바로 처방하는 경로 포함). "
                            + "이미 PRESCRIBED 면 기존 처방을 대체하는 재처방으로 처리합니다. "
                + "처방 작성자는 요청 body가 아니라 인증 토큰에서 서버가 직접 결정합니다 — 즉 로그인한 계정으로만 처방됩니다.")
+    @DoctorAccess
     @PostMapping
     public PrescriptionResponse save(
             @PathVariable Long visitId,
@@ -33,11 +36,13 @@ public class PrescriptionController {
 
     @Operation(summary = "처방 조회",
                description = "해당 접수의 최종 처방(상병코드 + 약품 목록)을 조회합니다.")
+    @StaffAccess // 조회 화면(Lookup)에서 지난 처방 내역을 보여준다.
     @GetMapping
     public PrescriptionResponse get(@PathVariable Long visitId) {
         return prescriptionService.get(visitId);
     }
 
+    @DoctorAccess // 외부 LLM(Gemini) 호출 비용이 붙는 경로 — 처방 작성자만 쓴다.
     @PostMapping("/comment")
     public PrescriptionCommentResponse comment(
             @PathVariable Long visitId,

@@ -1,5 +1,7 @@
 package com.artifact.diagnosis.visit;
 
+import com.artifact.diagnosis.common.security.MedicalAccess;
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,6 +33,7 @@ public class VisitImageController {
     @ApiResponse(responseCode = "201", description = "업로드 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
     @ApiResponse(responseCode = "409", description = "진료중 상태가 아님")
+    @MedicalAccess
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<VisitImageResponse> upload(
             @Parameter(description = "접수 ID") @PathVariable Long visitId,
@@ -43,12 +46,14 @@ public class VisitImageController {
     @Operation(summary = "이미지 목록 조회", description = "해당 접수에 업로드된 이미지 전체를 업로드 시각 순으로 반환합니다.")
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
+    @StaffAccess // 조회 화면(Lookup)에서 지난 내원의 사진을 함께 보여준다.
     @GetMapping
     public List<VisitImageResponse> list(
             @Parameter(description = "접수 ID") @PathVariable Long visitId) {
         return visitImageService.findByVisitId(visitId);
     }
 
+    @StaffAccess
     @GetMapping("/{imageId}/content")
     public ResponseEntity<byte[]> getImageContent(
             @PathVariable Long visitId,
