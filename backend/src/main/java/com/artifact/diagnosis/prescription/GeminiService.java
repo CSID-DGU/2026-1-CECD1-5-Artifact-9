@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -25,8 +26,21 @@ public class GeminiService {
     private final DrugMasterRepository drugMasterRepository;
     private final ObjectMapper objectMapper;
 
+    /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
+    private final HttpClient httpClient;
+
     @Value("${gemini.api.key:}")
     private String apiKey;
+
+    /**
+     * Gemini 응답 대기 한도.
+     *
+     * <p>키오스크 예비분석은 이 호출이 끝나야 태블릿에 결과를 띄운다. 무한 대기면 환자가
+     * 로딩 화면만 보게 되므로, 짧게 끊고 아래 fallback 문구로 넘어가는 편이 낫다 —
+     * AI 코멘트는 없어도 되는 부가 정보지 진단 결과가 아니다.
+     */
+    @Value("${gemini.timeout-seconds:15}")
+    private long timeoutSeconds;
 
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=";
@@ -93,15 +107,15 @@ public class GeminiService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(GEMINI_URL + apiKey))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            HttpClient client = HttpClient.newHttpClient();
             HttpResponse<String> response = null;
 
             // 503(서버 과부하) 한정으로 최대 MAX_RETRY회 재시도
             for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 log.debug("Gemini 응답 (attempt={}, status={}): {}", attempt, response.statusCode(), response.body());
 
                 if (response.statusCode() != 503) break;
@@ -181,11 +195,11 @@ public class GeminiService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(GEMINI_URL + apiKey))
                     .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
 
-            HttpClient client = HttpClient.newHttpClient();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             JsonNode root = objectMapper.readTree(response.body());
             if (root.has("error")) {

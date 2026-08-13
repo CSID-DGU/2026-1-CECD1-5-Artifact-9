@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.common.security.MedicalAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/visits/{visitId}/preliminary")
 @RequiredArgsConstructor
+@MedicalAccess // 진료 화면 전용 — 접수 직원은 예비분석 결과를 볼 일이 없다.
 public class PreliminaryAnalysisController {
 
     private final KioskService kioskService;

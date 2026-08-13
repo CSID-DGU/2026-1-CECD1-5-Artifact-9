@@ -9,12 +9,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Schema(description = "처방 저장 요청")
+/**
+ * 처방 저장 요청.
+ *
+ * <p><b>작성자(memberId)는 여기에 없다.</b> 서버가 인증 토큰에서 직접 꺼내 쓴다
+ * ({@code PrescriptionController.save} → {@code PrescriptionService.save}).
+ * 다시 필드로 추가하지 말 것 — 진료기록의 작성 의사를 클라이언트가 지정할 수 있게 되는 순간
+ * 처방의 법적 책임 주체가 위조 가능해진다.
+ */
+@Schema(description = "처방 저장 요청 (작성자는 인증 토큰에서 서버가 결정하므로 body에 담지 않는다)")
 public record PrescriptionRequest(
-
-        @NotNull
-        @Schema(description = "처방 작성 회원 ID", example = "1")
-        Long memberId,
 
         @NotEmpty
         @Valid

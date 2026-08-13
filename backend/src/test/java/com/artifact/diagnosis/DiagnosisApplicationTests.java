@@ -1,7 +1,10 @@
 package com.artifact.diagnosis;
 
+import com.artifact.diagnosis.common.jwt.JwtUtil;
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
+import com.artifact.diagnosis.kiosk.PreliminaryAnalysis;
+import com.artifact.diagnosis.kiosk.PreliminaryAnalysisRepository;
 import com.artifact.diagnosis.member.MemberLoginRequest;
 import com.artifact.diagnosis.member.MemberRepository;
 import com.artifact.diagnosis.member.MemberResponse;
@@ -20,7 +23,11 @@ import com.artifact.diagnosis.visit.VisitRepository;
 import com.artifact.diagnosis.visit.VisitStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Limit;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,7 +35,11 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@AutoConfigureMockMvc
 @SpringBootTest(properties = {
 		"spring.datasource.url=jdbc:h2:mem:artifact_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
 		"spring.datasource.driver-class-name=org.h2.Driver",
@@ -63,6 +74,15 @@ class DiagnosisApplicationTests {
 
 	@Autowired
 	KcdDiseaseRepository kcdDiseaseRepository;
+
+	@Autowired
+	PreliminaryAnalysisRepository preliminaryAnalysisRepository;
+
+	@Autowired
+	JwtUtil jwtUtil;
+
+	@Autowired
+	MockMvc mockMvc;
 
 	@Test
 	void contextLoads() {
@@ -122,8 +142,8 @@ class DiagnosisApplicationTests {
 				.nameKr("아토피피부염")
 				.build());
 
-		PrescriptionResponse saved = prescriptionService.save(visit.getId(), new PrescriptionRequest(
-				member.memberId(),
+		// 작성자는 요청 body가 아니라 별도 인자로 전달된다 — 실서비스에서는 컨트롤러가 JWT에서 꺼내 넣는다.
+		PrescriptionResponse saved = prescriptionService.save(visit.getId(), member.memberId(), new PrescriptionRequest(
 				List.of(new PrescriptionRequest.DiseaseRequest(disease.getId(), true)),
 				null,
 				LocalDate.of(2026, 6, 9),
@@ -146,6 +166,131 @@ class DiagnosisApplicationTests {
 		assertThat(summaries).hasSize(1);
 		assertThat(summaries.get(0).patientName()).isEqualTo("이환자");
 		assertThat(summaries.get(0).memberName()).isEqualTo("김진료");
+	}
+
+	/**
+	 * 처방 작성자는 로그인한 계정으로만 기록되어야 한다.
+	 * 요청 본문에 남의 memberId 를 심어 보내도 서버는 토큰의 신원으로 저장해야 하며,
+	 * 그렇지 않으면 진료기록부의 작성 의사(= 법적 책임 주체)를 아무나 위조할 수 있다.
+	 */
+	@Test
+	void prescriptionAuthorComesFromTokenNotRequestBody() throws Exception {
+		MemberResponse author = memberService.signup(new MemberSignupRequest(
+				"derm-author", "1234", "실제작성자", "LIC-2001", "피부과", null));
+		MemberResponse victim = memberService.signup(new MemberSignupRequest(
+				"derm-victim", "1234", "사칭당한의사", "LIC-2002", "피부과", null));
+
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("박환자")
+				.birthDate(LocalDate.of(1988, 3, 3))
+				.gender(Gender.F)
+				.build());
+		Visit visit = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 3, 9, 0))
+				.status(VisitStatus.DIAGNOSED)
+				.build());
+		KcdDisease disease = kcdDiseaseRepository.save(KcdDisease.builder()
+				.code("L30")
+				.nameKr("기타 피부염")
+				.build());
+
+		String token = jwtUtil.generate(author.memberId(), "derm-author", MemberRole.DOCTOR.name());
+
+		// 수정 전이라면 body 의 memberId 가 그대로 기록됐다. 지금은 무시되어야 한다.
+		String forgedBody = """
+				{
+				  "memberId": %d,
+				  "diseases": [{"kcdDiseaseId": %d, "isPrimary": true}],
+				  "details": [{"medicineName": "보습제"}]
+				}
+				""".formatted(victim.memberId(), disease.getId());
+
+		mockMvc.perform(post("/api/v1/visits/{visitId}/prescription", visit.getId())
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(forgedBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.memberId").value(author.memberId()))
+				.andExpect(jsonPath("$.memberName").value("실제작성자"));
+	}
+
+	/**
+	 * 이미지를 고르지 않고 분석을 누르면 500(서버 오류)이 아니라 400(잘못된 요청)이어야 한다.
+	 * 500은 "우리 서버가 깨졌다"는 신호라, 사용자 실수에 쓰면 진짜 장애를 찾을 때 방해가 된다.
+	 */
+	@Test
+	void analyzeRejectsEmptyImageIdsWithBadRequest() throws Exception {
+		String token = jwtUtil.generate(1L, "derm01", MemberRole.DOCTOR.name());
+
+		mockMvc.perform(post("/api/v1/visits/{visitId}/analysis", 1L)
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"imageIds\": []}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	/**
+	 * 키오스크 자동 진입이 잡는 대상은 "예비분석을 아직 안 한 접수 중 <b>가장 최근</b> 1건"이다.
+	 *
+	 * <p>태블릿은 3초마다 이 조회를 폴링하다가 대상이 생기면 곧바로 이동한다. 따라서 실제로 태블릿 앞에
+	 * 서 있는 사람은 방금 접수한 환자다. 오래된 순으로 고르면, 접수만 하고 태블릿을 쓰지 않은 묵은 접수가
+	 * 하나라도 남아 있을 때 태블릿이 그 접수를 영원히 반복해 잡아 새 환자가 아무도 진입하지 못한다.
+	 * 이 테스트는 바로 그 "묵은 접수에 갇히지 않는다"를 고정한다.
+	 */
+	@Test
+	void kioskAutoEntryPicksLatestVisitWithoutPreliminaryAnalysis() {
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("한대기")
+				.birthDate(LocalDate.of(1992, 7, 7))
+				.gender(Gender.M)
+				.build());
+
+		// 묵은 접수 — 접수만 하고 태블릿을 쓰지 않아 예비분석이 없다.
+		Visit stale = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 9, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		// 방금 접수한 환자 — 태블릿이 잡아야 할 대상.
+		Visit latest = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 11, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		// 가장 최근이지만 이미 예비분석을 마쳤다 → 건너뛰어야 한다.
+		Visit done = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 5, 12, 0))
+				.status(VisitStatus.RECEIVED)
+				.build());
+		preliminaryAnalysisRepository.save(PreliminaryAnalysis.builder()
+				.visitId(done.getId())
+				.source("clinic")
+				.analyzedAt(LocalDateTime.of(2026, 6, 5, 12, 5))
+				.build());
+
+		List<Visit> picked = visitRepository
+				.findLatestWithoutPreliminaryAnalysis(VisitStatus.RECEIVED, Limit.of(1));
+
+		assertThat(picked).hasSize(1);
+		assertThat(picked.get(0).getId())
+				.isEqualTo(latest.getId())
+				.isNotEqualTo(stale.getId());
+	}
+
+	/** 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다. */
+	@Test
+	void prescriptionSaveRejectsUnauthenticatedRequest() throws Exception {
+		mockMvc.perform(post("/api/v1/visits/{visitId}/prescription", 1L)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "diseases": [{"kcdDiseaseId": 1, "isPrimary": true}],
+								  "details": [{"medicineName": "보습제"}]
+								}
+								"""))
+				.andExpect(status().isForbidden());
 	}
 
 }

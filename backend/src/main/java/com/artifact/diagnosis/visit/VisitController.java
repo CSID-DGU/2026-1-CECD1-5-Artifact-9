@@ -1,5 +1,8 @@
 package com.artifact.diagnosis.visit;
 
+import com.artifact.diagnosis.common.security.DoctorAccess;
+import com.artifact.diagnosis.common.security.MedicalAccess;
+import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -33,6 +36,7 @@ public class VisitController {
     @ApiResponse(responseCode = "201", description = "접수 생성 성공")
     @ApiResponse(responseCode = "400", description = "필수값 누락")
     @ApiResponse(responseCode = "404", description = "환자 없음")
+    @StaffAccess
     @PostMapping
     public ResponseEntity<VisitResponse> create(@Valid @RequestBody VisitCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(visitService.create(request));
@@ -41,6 +45,7 @@ public class VisitController {
     @Operation(summary = "접수 단건 조회")
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
+    @StaffAccess
     @GetMapping("/{id}")
     public VisitResponse get(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
@@ -49,6 +54,7 @@ public class VisitController {
 
     @Operation(summary = "접수 목록 조회", description = "status, patientId 또는 date(yyyy-MM-dd)로 필터링합니다. 기본값: RECEIVED (대기열).")
     @ApiResponse(responseCode = "200", description = "조회 성공")
+    @StaffAccess
     @GetMapping
     public List<VisitResponse> list(
             @Parameter(description = "상태 필터", example = "RECEIVED")
@@ -70,6 +76,7 @@ public class VisitController {
     @ApiResponse(responseCode = "200", description = "진료 시작 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
     @ApiResponse(responseCode = "409", description = "RECEIVED 상태가 아님")
+    @MedicalAccess
     @PatchMapping("/{id}/start")
     public VisitResponse startConsultation(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
@@ -80,6 +87,7 @@ public class VisitController {
                description = "대기실 키오스크 진입용 토큰을 반환합니다. 아직 없으면 새로 발급합니다(멱등). 접수 화면의 'QR 다시 보기'용.")
     @ApiResponse(responseCode = "200", description = "발급 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
+    @StaffAccess // 접수 화면의 'QR 다시 보기'.
     @PostMapping("/{id}/kiosk-token")
     public VisitResponse issueKioskToken(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
@@ -93,6 +101,7 @@ public class VisitController {
     @ApiResponse(responseCode = "200", description = "진단 확정 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
     @ApiResponse(responseCode = "409", description = "IN_PROGRESS/ANALYZED 상태가 아님")
+    @DoctorAccess
     @PatchMapping("/{id}/diagnose")
     public VisitResponse markDiagnosed(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
@@ -103,6 +112,7 @@ public class VisitController {
     @ApiResponse(responseCode = "200", description = "진료 완료 성공")
     @ApiResponse(responseCode = "404", description = "접수 없음")
     @ApiResponse(responseCode = "409", description = "PRESCRIBED 상태가 아님")
+    @DoctorAccess
     @PatchMapping("/{id}/complete")
     public VisitResponse markCompleted(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {

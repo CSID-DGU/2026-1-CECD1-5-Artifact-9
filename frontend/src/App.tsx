@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import MainLayout from "./components/MainLayout";
 import PrivateRoute from "./components/PrivateRoute";
+import RoleRoute from "./components/RoleRoute";
 import Reception from "./pages/Reception";
 import Clinic from "./pages/Clinic";
 import Lookup from "./pages/Lookup";
@@ -18,13 +19,24 @@ export default function App() {
           {/* 첫 진입 → 로그인 */}
           <Route path="/" element={<Login />} />
 
-          {/* 로그인한 사용자만 접근 가능 */}
+          {/* 로그인한 사용자만 접근 가능.
+              그 안에서 다시 직책별로 화면을 나눈다 — 어떤 직책이 어느 화면을 여는지는
+              auth/roles.ts 의 SCREEN_MIN_ROLE 한 곳에 모여 있다.
+              화면을 감추는 것은 안내일 뿐이고, 실제 차단은 서버의 @PreAuthorize 가 한다. */}
           <Route element={<PrivateRoute />}>
             <Route path="/main" element={<MainLayout />}>
-              <Route index element={<Reception />} />
-              <Route path="clinic" element={<Clinic />} />
-              <Route path="lookup" element={<Lookup />} />
-              <Route path="certificate" element={<Certificate />} />
+              <Route element={<RoleRoute screen="reception" />}>
+                <Route index element={<Reception />} />
+              </Route>
+              <Route element={<RoleRoute screen="clinic" />}>
+                <Route path="clinic" element={<Clinic />} />
+              </Route>
+              <Route element={<RoleRoute screen="lookup" />}>
+                <Route path="lookup" element={<Lookup />} />
+              </Route>
+              <Route element={<RoleRoute screen="certificate" />}>
+                <Route path="certificate" element={<Certificate />} />
+              </Route>
             </Route>
           </Route>
 

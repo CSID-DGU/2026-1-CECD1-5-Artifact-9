@@ -33,8 +33,11 @@ export type PrescriptionResponse = {
   details: PrescriptionDetail[];
 };
 
+/**
+ * 작성자(memberId)는 보내지 않는다 — 서버가 JWT에서 직접 꺼내 채운다.
+ * 여기에 다시 넣어도 서버는 무시하므로, 화면에 보여줄 작성자는 응답의 memberId/memberName을 쓴다.
+ */
 export type PrescriptionRequest = {
-  memberId: number;
   diseases: Array<{ kcdDiseaseId: number; isPrimary: boolean }>;
   analysisId?: number | null;
   doctorNotes?: string | null;
