@@ -78,6 +78,14 @@ services:
 
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
 
+      # JWT 서명키 — 기본값 없음. 미설정 시 compose가 즉시 중단된다.
+      # 값 생성: openssl rand -base64 48
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET이 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}
+
+      # 초기 관리자 계정 (선택). 비워두면 ADMIN 계정을 만들지 않는다.
+      ADMIN_LOGIN_ID: ${ADMIN_LOGIN_ID:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
       TZ: Asia/Seoul
     volumes:
       - artifact-images:/app/artifact-images
