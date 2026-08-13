@@ -49,8 +49,10 @@ export default function KioskAnalyze() {
     };
   }, [token]);
 
+  // 태블릿에는 JWT가 없다 — 히트맵도 QR 토큰 경로로만 받는다(서버가 gradcamUrl에 그 경로를 내려준다).
+  // 폴백 URL도 visitId가 아니라 토큰으로 조립해야 한다. visitId는 순차 정수라 남의 접수에 닿는다.
   const gradcamImageUrl = result
-    ? `${result.gradcamUrl ?? `/api/kiosk/preliminary/${session?.visitId}/heatmap`}?t=${encodeURIComponent(result.analyzedAt)}`
+    ? `${result.gradcamUrl ?? `/api/kiosk/session/${encodeURIComponent(token ?? "")}/heatmap`}?t=${encodeURIComponent(result.analyzedAt)}`
     : null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

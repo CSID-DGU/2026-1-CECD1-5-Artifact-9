@@ -52,6 +52,14 @@ public class KioskService {
     @Value("${fastapi.url:http://localhost:8000}")
     private String fastapiUrl;
 
+    /**
+     * QR 없이 자동 진입하는 폴백(/api/kiosk/pending)의 활성화 여부. 기본은 꺼짐.
+     * 이 엔드포인트만 유일하게 토큰 없이 접근 대상을 알려주므로 — 즉 아무나 호출해 다음 대기 환자의
+     * 토큰을 받아갈 수 있으므로 — 시연에서 QR을 못 쓸 때만 KIOSK_AUTO_PENDING=true 로 연다.
+     */
+    @Value("${kiosk.auto-pending.enabled:false}")
+    private boolean autoPendingEnabled;
+
     /** 예비분석 모델 소스 — 현재는 임상 사진용 단일 모델만 존재. FastAPI에 라우터가 생기면 여기서 전달한다. */
     private static final String SOURCE = "clinic";
 
@@ -73,9 +81,17 @@ public class KioskService {
      * QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용 — 가장 최근 RECEIVED 상태이면서 예비분석이 없는 Visit 1건.
      * 전역으로 "다음 환자 1명"을 정하는 방식이라 동시 1명만 가능하다. 여러 환자를 동시에 진행하려면
      * 접수 화면의 QR(=토큰별 경로)을 써야 한다.
+     *
+     * <p>기본적으로 꺼져 있다. 인증도 토큰도 없이 호출되는 유일한 경로라, 켜두면 누구나
+     * 다음 대기 환자의 키오스크 토큰을 받아 그 환자의 세션·히트맵에 접근할 수 있다.
+     * 환자 실명은 응답에서 제외한다 — 태블릿은 토큰으로 이동한 뒤 세션 조회에서 이름을 받는다.
      */
     @Transactional
     public KioskPendingResponse findPending() {
+        if (!autoPendingEnabled) {
+            throw new NoSuchElementException("자동 진입이 비활성화되어 있습니다. QR 코드를 사용하세요.");
+        }
+
         List<Visit> received = visitRepository.findByStatusOrderByVisitDateAsc(VisitStatus.RECEIVED);
 
         Visit target = null;
@@ -90,20 +106,12 @@ public class KioskService {
         }
         final Visit pendingVisit = target;
 
-        Patient patient = patientRepository.findById(pendingVisit.getPatientId())
-                .orElseThrow(() -> new NoSuchElementException("환자를 찾을 수 없습니다. id=" + pendingVisit.getPatientId()));
-
         // 컬럼 추가 이전에 만들어진 접수 행은 토큰이 없다 — 폴백도 토큰 경로로 이동하므로 여기서 지연 발급한다.
         if (pendingVisit.getKioskToken() == null) {
             pendingVisit.setKioskToken(kioskTokenGenerator.generate());
         }
 
-        return new KioskPendingResponse(
-                pendingVisit.getId(),
-                patient.getName(),
-                "V" + String.format("%05d", pendingVisit.getId()),
-                pendingVisit.getKioskToken()
-        );
+        return new KioskPendingResponse(pendingVisit.getKioskToken());
     }
 
     /** QR 토큰으로 접수 1건을 조회한다. 태블릿의 본인 확인 화면에서 사용. */
@@ -168,7 +176,7 @@ public class KioskService {
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
-        return toResponse(entity, prediction);
+        return toResponse(token, entity, prediction);
     }
 
     /** 의사 진료 페이지 조회용. 예비분석이 없으면 404(NoSuchElementException). */
@@ -186,21 +194,33 @@ public class KioskService {
 
         return new PreliminaryAnalysisResponse(
                 topK,
-                heatmapApiUrl(entity),
+                doctorHeatmapApiUrl(entity),
                 entity.getAiComment(),
                 entity.getAnalyzedAt()
         );
     }
 
+    /** 태블릿용 — 토큰이 가리키는 접수의 히트맵만 반환한다. 인증 없이 열리는 경로다. */
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> getHeatmapContent(Long visitId) {
+    public ResponseEntity<byte[]> getHeatmapContentByToken(String token) {
+        return heatmapResponse(resolveToken(token).getId());
+    }
+
+    /** 의사 진료 페이지용 — JWT 인증 경로(/api/v1/visits/{visitId}/preliminary/heatmap)에서 호출한다. */
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> getHeatmapContentByVisitId(Long visitId) {
+        return heatmapResponse(visitId);
+    }
+
+    private ResponseEntity<byte[]> heatmapResponse(Long visitId) {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .filter(p -> p.getGradcamUrl() != null)
                 .orElseThrow(() -> new NoSuchElementException("예비분석 히트맵이 없습니다. visitId=" + visitId));
         byte[] bytes = imageStorageService.download(entity.getGradcamUrl());
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
-                .header(HttpHeaders.CACHE_CONTROL, "max-age=31536000, immutable")
+                // 환자 병변 이미지다. 공유 캐시(nginx·프록시)에 남지 않도록 private 로 제한한다.
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=31536000, immutable")
                 .body(bytes);
     }
 
@@ -213,22 +233,31 @@ public class KioskService {
                 .orElseThrow(() -> new NoSuchElementException("유효하지 않은 키오스크 토큰입니다."));
     }
 
-    private PreliminaryAnalysisResponse toResponse(PreliminaryAnalysis entity, FastApiPredictResponse prediction) {
+    private PreliminaryAnalysisResponse toResponse(String token, PreliminaryAnalysis entity, FastApiPredictResponse prediction) {
         List<PreliminaryAnalysisResponse.TopKResult> topK = prediction.top5().stream()
                 .map(r -> new PreliminaryAnalysisResponse.TopKResult(r.diseaseCode(), r.diseaseNameKo(), r.confidence()))
                 .toList();
 
         return new PreliminaryAnalysisResponse(
                 topK,
-                heatmapApiUrl(entity),
+                kioskHeatmapApiUrl(token, entity),
                 entity.getAiComment(),
                 entity.getAnalyzedAt()
         );
     }
 
-    private static String heatmapApiUrl(PreliminaryAnalysis entity) {
+    /**
+     * 같은 히트맵을 두 경로로 노출하는 이유: 태블릿은 JWT가 없어 토큰 경로로만 접근할 수 있고,
+     * 의사 화면은 반대로 토큰을 모르고 JWT만 갖고 있다. 호출자에 맞는 URL을 응답에 실어준다.
+     */
+    private static String kioskHeatmapApiUrl(String token, PreliminaryAnalysis entity) {
         if (entity.getGradcamUrl() == null) return null;
-        return "/api/kiosk/preliminary/" + entity.getVisitId() + "/heatmap";
+        return "/api/kiosk/session/" + token + "/heatmap";
+    }
+
+    private static String doctorHeatmapApiUrl(PreliminaryAnalysis entity) {
+        if (entity.getGradcamUrl() == null) return null;
+        return "/api/v1/visits/" + entity.getVisitId() + "/preliminary/heatmap";
     }
 
     /** AnalysisService.callFastApi()와 동일한 방식 — 키오스크는 파일에서 바로 바이트를 받으므로 스토리지 다운로드 단계가 없다. */

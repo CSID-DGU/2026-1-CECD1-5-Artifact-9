@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,5 +27,16 @@ public class PreliminaryAnalysisController {
     public PreliminaryAnalysisResponse get(
             @Parameter(description = "접수 ID") @PathVariable Long visitId) {
         return kioskService.findByVisitId(visitId);
+    }
+
+    /**
+     * 태블릿용 /api/kiosk/session/{token}/heatmap 과 같은 이미지를 반환하지만 경로가 다르다.
+     * 의사 화면은 JWT를 갖고 있고 키오스크 토큰은 모르므로, 인증 경로에 별도 입구가 필요하다.
+     */
+    @Operation(summary = "예비분석 GradCAM 히트맵 조회", description = "해당 접수의 예비분석 히트맵 이미지를 반환한다. 없으면 404.")
+    @GetMapping("/heatmap")
+    public ResponseEntity<byte[]> heatmap(
+            @Parameter(description = "접수 ID") @PathVariable Long visitId) {
+        return kioskService.getHeatmapContentByVisitId(visitId);
     }
 }

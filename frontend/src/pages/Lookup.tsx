@@ -5,6 +5,7 @@ import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } f
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { getLatestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, type VisitImage } from "../api/images";
+import { AuthedImage } from "../components/AuthedImage";
 import { Card } from "../components/Card";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -556,10 +557,11 @@ export default function Lookup() {
                             : "border-gray-700 hover:border-blue-500/60"
                         }`}
                       >
-                        <img
+                        <AuthedImage
                           src={image.imageUrl}
                           alt={`내원 이미지 ${image.imageId}`}
                           className="h-32 w-full object-cover"
+                          fallback={<div className="h-32 w-full bg-gray-800" />}
                         />
                         <div className="flex flex-col gap-1 px-2 py-2">
                           <span className="font-mono text-[10px] text-blue-300">
