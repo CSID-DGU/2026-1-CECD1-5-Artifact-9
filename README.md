@@ -57,7 +57,7 @@
 
 ### 0) 로그인 / 회원가입 — `/`
 
-직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 초기 테스트 계정은 `admin / 1234` 이다.
+직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 처음 실행할 때는 회원가입으로 계정을 만들면 된다(관리자 계정은 [환경 변수](#-환경-변수-env-예시)로 별도 설정).
 
 <img width="400" height="466" alt="로그인" src="https://github.com/user-attachments/assets/00aa036a-1ad2-4ed7-a560-374a4890e958" />
 <img width="400" height="598" alt="회원가입" src="https://github.com/user-attachments/assets/9cd12b9f-10a8-4a49-a585-a4ca1ea80206" />
@@ -123,7 +123,8 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 - BCrypt로 해시된 비밀번호로 회원가입/로그인하고, 발급된 JWT를 모든 API 호출에 `Authorization: Bearer …` 헤더로 첨부한다.
 - 역할(`MemberRole`): `DOCTOR`, `NURSE`, `STAFF`, `ADMIN`
 - Spring Security + 커스텀 `JwtFilter`로 stateless 인증을 구성한다.
-- 기본 테스트 계정: `admin / 1234`
+- 회원가입으로 지정할 수 있는 역할은 `DOCTOR` / `NURSE` / `STAFF` 뿐이다. 가입 API는 인증 없이 호출할 수 있으므로 `ADMIN` 자가 등록은 서버에서 차단한다.
+- JWT 서명키(`JWT_SECRET`)는 기본값이 없다. 설정하지 않으면 서버가 기동되지 않는다.
 
 ### AI 피부 병변 분석 + GradCAM 설명 히트맵 
 
@@ -456,13 +457,16 @@ npm run dev
 | FastAPI | `http://localhost:8000` | `http://localhost:8000` |
 | Swagger | `http://localhost:8080/swagger-ui/index.html` | `http://localhost:8080/swagger-ui/index.html` |
 
-### 기본 테스트 계정
+### 계정 만들기
 
-| 항목 | 값 |
-| --- | --- |
-| Login ID | `admin` |
-| Password | `1234` |
-| Role | `ADMIN` |
+기본 계정은 저장소에 포함되어 있지 않다. 둘 중 하나로 만든다.
+
+| 방법 | 절차 | 만들어지는 역할 |
+| --- | --- | --- |
+| 화면에서 회원가입 | `http://localhost:3000` → 회원가입 탭 | `DOCTOR` / `NURSE` / `STAFF` |
+| 환경 변수로 자동 생성 | `.env`에 `ADMIN_LOGIN_ID`, `ADMIN_PASSWORD` 지정 후 재기동 | `ADMIN` |
+
+> `ADMIN`은 회원가입으로 만들 수 없다. 가입 API가 인증 없이 열려 있어, 허용하면 누구나 관리자가 되기 때문이다.
 
 ### Docker Compose 서비스 구성
 
@@ -477,7 +481,18 @@ npm run dev
 
 ## 🔐 환경 변수 (`.env` 예시)
 
+> 저장소의 [`.env.example`](.env.example)을 복사해 쓰는 것을 권장한다. — `cp .env.example .env`
+
 ```env
+# JWT — 필수. 비어 있으면 서버가 기동되지 않는다.
+# 생성: openssl rand -base64 48
+JWT_SECRET=
+JWT_EXPIRATION_MS=86400000
+
+# 초기 관리자 계정 (선택). 비워두면 ADMIN 계정을 만들지 않는다.
+ADMIN_LOGIN_ID=
+ADMIN_PASSWORD=
+
 # DB
 DB_PASSWORD=rootpass
 
@@ -497,15 +512,11 @@ MIN_TOP1_CONFIDENCE=0.45
 
 # Gemini LLM (처방 코멘트)
 GEMINI_API_KEY=
-
-# JWT
-JWT_SECRET=artifact-medical-ai-jwt-secret-key-must-be-at-least-256-bits-long
-JWT_EXPIRATION_MS=86400000
 ```
 
 - 로컬 개발에서는 `IMAGE_STORAGE_TYPE=local`로 설정하면 **실제 AWS 없이** 이미지 업로드/분석 흐름을 검증할 수 있다.
 - `GEMINI_API_KEY`가 비어 있으면 코멘트 API는 *"Gemini API 키가 설정되지 않았습니다."* 를 반환한다(앱은 정상 동작).
-- `JWT_SECRET`은 운영 환경에서 반드시 별도 값으로 교체해야 한다.
+- **`JWT_SECRET`은 환경마다 다른 값을 쓴다.** 이 키를 아는 사람은 로그인 없이 임의의 사용자·권한으로 토큰을 위조할 수 있으므로, 저장소·이슈·메신저에 값을 남기지 않는다.
 
 ---
 

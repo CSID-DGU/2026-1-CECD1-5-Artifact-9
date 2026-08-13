@@ -15,8 +15,10 @@ import org.apache.poi.xssf.eventusermodel.XSSFSheetXMLHandler.SheetContentsHandl
 import org.apache.poi.xssf.usermodel.XSSFComment;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.usermodel.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.xml.sax.InputSource;
 import org.xml.sax.XMLReader;
@@ -44,6 +46,14 @@ public class DataInitializer implements CommandLineRunner {
     private final DrugMasterRepository drugMasterRepository;
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
+    private final BCryptPasswordEncoder passwordEncoder;
+
+    /** 초기 관리자 계정. 미설정(빈 값)이면 계정을 만들지 않는다. */
+    @Value("${admin.bootstrap.login-id:}")
+    private String adminLoginId;
+
+    @Value("${admin.bootstrap.password:}")
+    private String adminPassword;
 
     @Override
     public void run(String... args) {
@@ -109,20 +119,40 @@ public class DataInitializer implements CommandLineRunner {
                 }
             }
 
-            jdbcTemplate.update("""
-                    INSERT INTO member (login_id, password, name, license_number, department, role)
-                    SELECT ?, ?, ?, ?, ?, ?
-                    WHERE NOT EXISTS (SELECT 1 FROM member WHERE login_id = ?)
-                    """,
-                    "admin",
-                    "$2b$10$4/MYOFj/eAOxU64eE0sOpO0hujwKyfmEETSQwLgY8a3.pRc1czsrW",
-                    "관리자",
-                    "TEST-0001",
-                    "피부과",
-                    "ADMIN",
-                    "admin");
+            bootstrapAdminAccount();
         } catch (Exception e) {
             log.warn("member 테이블 확인/보정 중 오류: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 초기 ADMIN 계정 생성.
+     *
+     * ADMIN_LOGIN_ID / ADMIN_PASSWORD 가 모두 설정된 경우에만 동작하며,
+     * 비밀번호 해시는 기동 시점에 계산한다 — 소스코드에 계정 정보를 남기지 않기 위함이다.
+     * 이미 같은 login_id 가 있으면 아무것도 하지 않는다(재기동 시 덮어쓰기 방지).
+     */
+    private void bootstrapAdminAccount() {
+        if (adminLoginId.isBlank() || adminPassword.isBlank()) {
+            log.info("초기 관리자 계정: ADMIN_LOGIN_ID/ADMIN_PASSWORD 미설정 → 생성하지 않음");
+            return;
+        }
+
+        int inserted = jdbcTemplate.update("""
+                INSERT INTO member (login_id, password, name, department, role)
+                SELECT ?, ?, ?, ?, 'ADMIN'
+                WHERE NOT EXISTS (SELECT 1 FROM member WHERE login_id = ?)
+                """,
+                adminLoginId,
+                passwordEncoder.encode(adminPassword),
+                "관리자",
+                "피부과",
+                adminLoginId);
+
+        if (inserted > 0) {
+            log.info("초기 관리자 계정을 생성했습니다: {}", adminLoginId);
+        } else {
+            log.info("초기 관리자 계정: 이미 존재함({}), 스킵", adminLoginId);
         }
     }
 

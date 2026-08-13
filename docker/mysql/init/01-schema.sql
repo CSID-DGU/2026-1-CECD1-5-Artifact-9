@@ -39,9 +39,10 @@ CREATE TABLE member (
     UNIQUE KEY uk_member_license_number (license_number)
 ) ENGINE=InnoDB COMMENT='회원 계정 (의사/간호사/일반)';
 
-INSERT INTO member (login_id, password, name, license_number, department, role) VALUES
-  ('admin', '$2b$10$4/MYOFj/eAOxU64eE0sOpO0hujwKyfmEETSQwLgY8a3.pRc1czsrW', '관리자', 'TEST-0001', '피부과', 'ADMIN');
--- 위 해시는 '1234'의 BCrypt 암호화값
+-- 초기 관리자 계정은 여기서 만들지 않는다.
+-- 계정 정보(비밀번호 해시 포함)를 공개 저장소에 두지 않기 위해,
+-- ADMIN_LOGIN_ID / ADMIN_PASSWORD 환경변수를 읽어 애플리케이션 기동 시 생성한다.
+-- (backend DataInitializer.bootstrapAdminAccount() 참고)
 
 -- ---------------------------------------------------------------------
 -- 1. 환자정보 (patient)
