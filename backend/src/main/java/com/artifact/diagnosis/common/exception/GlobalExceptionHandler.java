@@ -101,11 +101,27 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(error(400, e.getMessage(), null));
     }
 
-    /** 마지막 안전망. 운영에선 스택트레이스 마스킹 권장. */
+    /**
+     * 마지막 안전망 — 우리가 예상하지 못한 예외.
+     *
+     * <p><b>예외 내용을 응답에 담지 않는다.</b> 전에는 {@code e.getClass().getSimpleName() + ": " + e.getMessage()}를
+     * 그대로 내보냈다. 이건 두 가지로 잘못이다:
+     *
+     * <ul>
+     *   <li><b>내부 구조 노출.</b> 메시지에 SQL 문장, 테이블·컬럼명, 파일 경로, 라이브러리 이름이 섞여 나온다.
+     *       공격자에게는 다음 수를 정하는 데 쓸 수 있는 정보고, 환자 화면까지 닿을 수 있는 문자열이다.</li>
+     *   <li><b>사용자에게 의미가 없다.</b> 화면에 뜨는 "NullPointerException: null"을 보고
+     *       접수 담당자가 할 수 있는 일은 없다.</li>
+     * </ul>
+     *
+     * <p>대신 스택트레이스를 <b>서버 로그에</b> 남긴다. 디버깅에 필요한 정보는 개발자가 볼 수 있는 곳에
+     * 그대로 있고, 밖으로는 나가지 않는다.
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleEtc(Exception e) {
+        log.error("처리되지 않은 예외", e);
         return ResponseEntity.internalServerError()
-                .body(error(500, e.getClass().getSimpleName() + ": " + e.getMessage(), null));
+                .body(error(500, "서버 내부 오류가 발생했습니다.", null));
     }
 
     private Map<String, Object> error(int status, String message, Object details) {

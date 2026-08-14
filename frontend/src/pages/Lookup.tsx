@@ -5,8 +5,10 @@ import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } f
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import { getLatestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, type VisitImage } from "../api/images";
+import { getErrorMessage } from "../api/errors";
 import { AuthedImage } from "../components/AuthedImage";
 import { Card } from "../components/Card";
+import { formatConfidence } from "../utils/confidence";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   RECEIVED: "접수",
@@ -196,10 +198,10 @@ export default function Lookup() {
       if (hasInvalidChartNo) {
         setSearchError("차트번호 형식이 올바르지 않아 이름으로만 검색했습니다.");
       }
-    } catch {
+    } catch (error) {
       setPatients([]);
       setHasSearched(true);
-      setSearchError("환자 조회 중 오류가 발생했습니다.");
+      setSearchError(getErrorMessage(error));
     } finally {
       setIsSearching(false);
     }
@@ -270,8 +272,8 @@ export default function Lookup() {
         })
       );
       setVisitImages(imageMap);
-    } catch {
-      setPatientDetailError("환자 상세 정보를 불러오지 못했습니다.");
+    } catch (error) {
+      setPatientDetailError(getErrorMessage(error));
       setVisits([]);
       setSelectedVisit(null);
       setSelectedImageIds([]);
@@ -608,7 +610,7 @@ export default function Lookup() {
                       <span className="ml-1 font-mono text-[10px] text-blue-300">({selectedVisit.analysis.top1.diseaseCode})</span>
                     </p>
                     <p className="text-[10px] text-blue-200 mt-0.5">
-                      신뢰도 {(Number(selectedVisit.analysis.top1.confidence) * 100).toFixed(1)}%
+                      신뢰도 {formatConfidence(selectedVisit.analysis.top1.confidence)}
                     </p>
                   </div>
 
@@ -622,7 +624,7 @@ export default function Lookup() {
                         <span className="text-gray-500">{item.rank}</span>
                         <span className="font-mono text-blue-300">{item.diseaseCode}</span>
                         <span className="min-w-0 truncate text-white" title={item.diseaseNameKo}>{item.diseaseNameKo}</span>
-                        <span className="text-right text-gray-300">{(item.confidence * 100).toFixed(1)}%</span>
+                        <span className="text-right text-gray-300">{formatConfidence(item.confidence)}</span>
                       </div>
                     ))}
                   </div>

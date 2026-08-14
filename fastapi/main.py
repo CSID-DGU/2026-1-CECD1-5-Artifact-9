@@ -1,6 +1,7 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import hmac
 import torch
 import timm
 from torchvision import transforms
@@ -37,6 +38,37 @@ INVALID_IMAGE_MESSAGE = (
     "피부 병변 이미지로 판단하기 어렵습니다. "
     "의료 이미지 또는 피부 병변이 명확히 보이는 사진을 업로드해 주세요."
 )
+
+# =============================================
+# 내부 호출 인증 — 백엔드만 추론을 부를 수 있게 한다
+# =============================================
+# 이 서버에는 로그인이 없다. docker-compose 에서 ports 를 빼 두었지만 그건 "호스트에 열지
+# 않는다"일 뿐, **같은 도커 네트워크 안에 있는 것은 무엇이든 그냥 호출할 수 있다**는 뜻이다.
+# 컨테이너가 늘어나는 EC2 환경에서는 그 경계가 더 흐려진다.
+#
+# 그래서 백엔드와 이 서버만 아는 값을 헤더로 주고받고, 맞지 않으면 추론을 거절한다.
+# 완전한 인증은 아니지만, "네트워크에 들어오기만 하면 GPU를 마음껏 쓴다"를 막는 것이 목적이다.
+#
+# 값이 없으면 **서버가 아예 뜨지 않는다.** 기본값을 두면 그 기본값이 곧 공개된 값이 되고
+# (JWT 서명키에서 이미 겪었다), 무엇보다 "조용히 무방비"인 상태가 제일 위험하다.
+INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "")
+if not INTERNAL_API_SECRET:
+    raise RuntimeError(
+        "INTERNAL_API_SECRET 이 설정되지 않았습니다. 추론 엔드포인트가 무방비로 열리므로 "
+        "기동을 중단합니다. 값 생성: openssl rand -base64 32"
+    )
+
+
+def verify_internal_secret(x_internal_secret: str = Header(default="")) -> None:
+    """백엔드가 보낸 공유 시크릿을 확인한다.
+
+    `==` 가 아니라 hmac.compare_digest 를 쓰는 이유: 문자열 비교는 앞에서부터 맞춰보다
+    틀리는 순간 멈추기 때문에, 응답 시간 차이로 값을 한 글자씩 알아낼 수 있다(타이밍 공격).
+    compare_digest 는 항상 같은 시간이 걸린다.
+    """
+    if not hmac.compare_digest(x_internal_secret, INTERNAL_API_SECRET):
+        raise HTTPException(status_code=401, detail="내부 호출 인증에 실패했습니다.")
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -175,6 +207,8 @@ def run_inference(image_bytes: bytes) -> dict:
     }
 
 
+# /health 는 시크릿을 요구하지 않는다 — 도커 헬스체크와 로드밸런서가 부르는 곳이고,
+# 모델 정보 외에는 아무것도 내주지 않는다.
 @app.get("/health")
 def health():
     return {
@@ -184,10 +218,12 @@ def health():
     }
 
 
-@app.post("/predict")
+@app.post("/predict", dependencies=[Depends(verify_internal_secret)])
 def predict(file: UploadFile = File(...)):
     """
     Swagger / curl 직접 테스트용 (multipart)
+
+    직접 호출할 때는 `X-Internal-Secret` 헤더에 INTERNAL_API_SECRET 값을 넣어야 한다.
 
     `async def` 가 아니라 `def` 인 것이 중요하다. run_inference 는 동기 함수라
     `async def` 안에서 호출하면 추론이 끝날 때까지 이벤트 루프 전체가 멈춰
@@ -201,7 +237,7 @@ def predict(file: UploadFile = File(...)):
     return run_inference(contents)
 
 
-@app.post("/predict-base64")
+@app.post("/predict-base64", dependencies=[Depends(verify_internal_secret)])
 def predict_base64(request: PredictRequest):
     """Spring Boot 내부 호출용 (JSON base64)"""
     image_bytes = base64.b64decode(request.image_base64)

@@ -53,7 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"cloud.aws.credentials.secret-key=test-secret-key",
 		"cloud.aws.s3.bucket=test-bucket",
 		"image.storage.type=local",
-		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789"
+		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
+		"fastapi.internal-secret=test-only-internal-secret"
 })
 class EndpointAuthorizationTest {
 

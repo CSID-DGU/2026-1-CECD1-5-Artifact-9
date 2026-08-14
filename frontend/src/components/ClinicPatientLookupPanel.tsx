@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 
+import { getErrorMessage } from "../api/errors";
 import { listVisitImages } from "../api/images";
 import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
 import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
@@ -157,10 +158,10 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
       setPatients(dedupePatients(results));
       setHasSearched(true);
       if (hasInvalidChartNo) setSearchError("차트번호 형식이 올바르지 않아 이름으로만 검색했습니다.");
-    } catch {
+    } catch (error) {
       setPatients([]);
       setHasSearched(true);
-      setSearchError("환자 조회 중 오류가 발생했습니다.");
+      setSearchError(getErrorMessage(error));
     } finally {
       setIsSearching(false);
     }
@@ -219,9 +220,9 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
         }
       }));
       setVisitImageCounts(imageCounts);
-    } catch {
+    } catch (error) {
       setVisits([]);
-      setSearchError("환자 내원 이력을 불러오지 못했습니다.");
+      setSearchError(getErrorMessage(error));
     } finally {
       setIsLoadingVisits(false);
     }

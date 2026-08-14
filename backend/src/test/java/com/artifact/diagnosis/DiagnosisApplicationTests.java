@@ -14,6 +14,7 @@ import com.artifact.diagnosis.member.MemberSignupRequest;
 import com.artifact.diagnosis.patient.Gender;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.patient.PatientRepository;
+import com.artifact.diagnosis.patient.PatientService;
 import com.artifact.diagnosis.prescription.PrescriptionPatientSummaryResponse;
 import com.artifact.diagnosis.prescription.PrescriptionRequest;
 import com.artifact.diagnosis.prescription.PrescriptionResponse;
@@ -35,6 +36,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -53,7 +55,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"image.storage.type=local",
 		// 운영 설정에는 jwt.secret 기본값이 없다(미설정 시 기동 실패가 정상 동작).
 		// 테스트에서만 쓰는 더미 키 — HS256 요구사항인 256bit 이상을 만족해야 한다.
-		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789"
+		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
+		// fastapi.internal-secret 도 기본값이 없다(같은 이유). 테스트는 FastAPI를 부르지 않으므로 값은 아무거나.
+		"fastapi.internal-secret=test-only-internal-secret"
 })
 class DiagnosisApplicationTests {
 
@@ -68,6 +72,9 @@ class DiagnosisApplicationTests {
 
 	@Autowired
 	PatientRepository patientRepository;
+
+	@Autowired
+	PatientService patientService;
 
 	@Autowired
 	VisitRepository visitRepository;
@@ -279,7 +286,19 @@ class DiagnosisApplicationTests {
 				.isNotEqualTo(stale.getId());
 	}
 
-	/** 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다. */
+	/**
+	 * 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다.
+	 *
+	 * <p><b>401이어야 한다 — 403이 아니다.</b> 전에는 Spring Security 기본 진입점이
+	 * 본문 없는 403을 돌려줬다. 그러면 프론트가 두 상황을 구분할 수 없다:
+	 * <b>세션이 만료됐으니 다시 로그인하면 되는 경우</b>와
+	 * <b>직책이 모자라 다시 로그인해도 소용없는 경우</b>가 같은 응답으로 온다.
+	 * 그 결과 토큰이 만료돼도 로그인 화면으로 넘어가지 못하고, 화면은 로그인된 척하면서
+	 * 누르는 것마다 조용히 실패했다.
+	 *
+	 * <p>본문까지 확인하는 이유는, 상태 코드만 맞고 본문이 비면 사용자에게 띄울 문구가
+	 * 없어서 화면에 아무것도 안 뜨기 때문이다. 코드와 본문이 한 쌍으로 계약이다.
+	 */
 	@Test
 	void prescriptionSaveRejectsUnauthenticatedRequest() throws Exception {
 		mockMvc.perform(post("/api/v1/visits/{visitId}/prescription", 1L)
@@ -290,7 +309,55 @@ class DiagnosisApplicationTests {
 								  "details": [{"medicineName": "보습제"}]
 								}
 								"""))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.message").isNotEmpty());
+	}
+
+	/**
+	 * 인증이 필요한 조회 경로도 같은 계약을 지키는지 본다.
+	 *
+	 * <p>위 테스트가 POST 하나만 보고 있어서, 진입점 설정이 특정 경로에만 걸린 것인지
+	 * 전체에 걸린 것인지 구분되지 않는다. 실제로 프론트가 세션 만료를 알아채는 지점은
+	 * 대부분 화면 진입 직후의 GET이다.
+	 */
+	@Test
+	void unauthenticatedReadReturnsUnauthorizedWithJsonBody() throws Exception {
+		mockMvc.perform(get("/api/v1/patients").param("name", "홍"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.message").isNotEmpty());
+	}
+
+	/**
+	 * 검색어에 섞인 LIKE 와일드카드가 글자로 취급되는지 확인한다.
+	 *
+	 * <p>이 테스트가 없으면 조용히 되돌아갈 수 있는 종류의 수정이다. 누군가 편의를 위해
+	 * {@code findByNameContaining} 같은 파생 쿼리로 되돌리는 순간 escape 절이 사라지고,
+	 * <b>검색창에 {@code %} 한 글자만 넣으면 전체 환자 명단이 나오는 상태</b>로 돌아간다.
+	 * 화면상으로는 "검색이 잘 된다"로 보여서 눈으로는 잡히지 않는다.
+	 */
+	@Test
+	void patientSearchTreatsWildcardsAsLiteralCharacters() {
+		patientRepository.save(Patient.builder()
+				.name("와일드카드테스트_김환자").birthDate(LocalDate.of(1990, 1, 1))
+				.gender(Gender.M).phone("010-0000-0001").build());
+		patientRepository.save(Patient.builder()
+				.name("와일드카드테스트_이환자").birthDate(LocalDate.of(1991, 2, 2))
+				.gender(Gender.F).phone("010-0000-0002").build());
+
+		// '%' 는 "아무 글자나" 가 아니라 그냥 % 라는 글자여야 한다 → 일치하는 환자가 없다.
+		assertThat(patientService.searchByName("%")).isEmpty();
+
+		// '_' 도 마찬가지. 이스케이프가 없으면 "와일드카드테스트" + 아무 글자 1개로 두 명이 걸린다.
+		assertThat(patientService.searchByName("와일드카드테스트_")).hasSize(2);
+		assertThat(patientService.searchByName("와일드카드테스트_김")).hasSize(1);
+
+		// 이스케이프 문자 자신(!)이 검색어에 들어와도 깨지지 않아야 한다.
+		assertThat(patientService.searchByName("!")).isEmpty();
+
+		// 평범한 검색은 그대로 동작한다 — 막느라 기능을 죽이면 안 된다.
+		assertThat(patientService.searchByName("김환자")).hasSize(1);
 	}
 
 }

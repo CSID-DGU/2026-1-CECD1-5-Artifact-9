@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
+import { getErrorMessage } from "../api/errors";
 import {
   createPatient,
   getPatient,
@@ -50,10 +51,6 @@ function formatDateTime(value?: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "요청 처리 중 오류가 발생했습니다.";
 }
 
 // ─── 하위 컴포넌트 ────────────────────────────────────────

@@ -70,6 +70,8 @@ frontend/dist/
 .env
 .env.*
 !.env.example
+# 값이 비어 있는 견본 파일이라 커밋한다 (실제 값은 EC2 안에서만 만든다)
+!.env.production.example
 # frontend .env는 시크릿 없음 → 커밋 허용
 !frontend/.env.production
 !frontend/.env.development
