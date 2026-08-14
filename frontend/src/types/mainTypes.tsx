@@ -18,6 +18,11 @@ export type InputProps = {
   type?: string;
   disabled?: boolean;
   className?: string;
+  /** 브라우저·비밀번호 관리자가 값을 채워 넣을 수 있도록 하는 힌트 (예: "username", "current-password"). */
+  autoComplete?: string;
+  required?: boolean;
+  /** 서버의 @Size 상한과 맞춘다 — 넘겨 보내고 400을 받느니 입력 단계에서 막는 편이 낫다. */
+  maxLength?: number;
 };
 
 export type CardProps = {

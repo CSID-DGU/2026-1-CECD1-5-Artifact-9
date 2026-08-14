@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "../auth/AuthContext";
 import { canOpen, type Screen } from "../auth/roles";
 
 /** 헤더 탭 — 직책이 열 수 없는 화면은 아예 보여주지 않는다. 순서가 곧 노출 순서다. */

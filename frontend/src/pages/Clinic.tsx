@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../api/analysis";
+import { getErrorMessage } from "../api/errors";
 import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { AuthedImage } from "../components/AuthedImage";
-import { useAuth } from "../components/AuthContext";
+import { useAuth } from "../auth/AuthContext";
 import { hasAtLeast } from "../auth/roles";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
 import { completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
@@ -14,6 +15,7 @@ import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
+import { formatConfidence } from "../utils/confidence";
 
 const DISEASE_TO_KCD_CODE: Record<string, string> = {
   nv:    'D22',
@@ -75,10 +77,6 @@ function calculateAge(birthDate?: string | null) {
     (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
   if (!passed) age -= 1;
   return `${age}세`;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "요청 처리 중 오류가 발생했습니다.";
 }
 
 export default function Clinic() {
@@ -513,7 +511,7 @@ export default function Clinic() {
                       {preliminaryAnalysis.topK[0].diseaseNameKo} ({preliminaryAnalysis.topK[0].diseaseCode})
                     </p>
                     <p className="mt-0.5 text-xs text-blue-100">
-                      신뢰도 {(preliminaryAnalysis.topK[0].confidence * 100).toFixed(1)}%
+                      신뢰도 {formatConfidence(preliminaryAnalysis.topK[0].confidence)}
                     </p>
                   </div>
                 )}
@@ -540,7 +538,7 @@ export default function Clinic() {
                       <span className="text-gray-400">{idx + 1}</span>
                       <span className="font-mono text-blue-300">{item.diseaseCode}</span>
                       <span className="text-white">{item.diseaseNameKo}</span>
-                      <span className="text-right text-gray-200">{(item.confidence * 100).toFixed(1)}%</span>
+                      <span className="text-right text-gray-200">{formatConfidence(item.confidence)}</span>
                     </div>
                   ))}
                 </div>
@@ -691,7 +689,7 @@ export default function Clinic() {
                       {analysis.top1.diseaseNameKo} ({analysis.top1.diseaseCode})
                     </p>
                     <p className="mt-0.5 text-xs text-blue-100">
-                      신뢰도 {(Number(analysis.top1.confidence) * 100).toFixed(1)}%
+                      신뢰도 {formatConfidence(analysis.top1.confidence)}
                     </p>
                   </div>
 
@@ -787,7 +785,7 @@ export default function Clinic() {
                             <span className="font-mono text-blue-300">{item.diseaseCode}</span>
                             <span className="text-white">{item.diseaseNameKo}</span>
                             <span className="text-right text-gray-200">
-                              {isResolvingCandidate ? "검색 중" : `${(item.confidence * 100).toFixed(1)}%`}
+                              {isResolvingCandidate ? "검색 중" : `${formatConfidence(item.confidence)}`}
                             </span>
                             <span className="text-right">
                               {item.reason && item.rank <= 2 && (

@@ -36,6 +36,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -285,7 +286,19 @@ class DiagnosisApplicationTests {
 				.isNotEqualTo(stale.getId());
 	}
 
-	/** 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다. */
+	/**
+	 * 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다.
+	 *
+	 * <p><b>401이어야 한다 — 403이 아니다.</b> 전에는 Spring Security 기본 진입점이
+	 * 본문 없는 403을 돌려줬다. 그러면 프론트가 두 상황을 구분할 수 없다:
+	 * <b>세션이 만료됐으니 다시 로그인하면 되는 경우</b>와
+	 * <b>직책이 모자라 다시 로그인해도 소용없는 경우</b>가 같은 응답으로 온다.
+	 * 그 결과 토큰이 만료돼도 로그인 화면으로 넘어가지 못하고, 화면은 로그인된 척하면서
+	 * 누르는 것마다 조용히 실패했다.
+	 *
+	 * <p>본문까지 확인하는 이유는, 상태 코드만 맞고 본문이 비면 사용자에게 띄울 문구가
+	 * 없어서 화면에 아무것도 안 뜨기 때문이다. 코드와 본문이 한 쌍으로 계약이다.
+	 */
 	@Test
 	void prescriptionSaveRejectsUnauthenticatedRequest() throws Exception {
 		mockMvc.perform(post("/api/v1/visits/{visitId}/prescription", 1L)
@@ -296,7 +309,24 @@ class DiagnosisApplicationTests {
 								  "details": [{"medicineName": "보습제"}]
 								}
 								"""))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.message").isNotEmpty());
+	}
+
+	/**
+	 * 인증이 필요한 조회 경로도 같은 계약을 지키는지 본다.
+	 *
+	 * <p>위 테스트가 POST 하나만 보고 있어서, 진입점 설정이 특정 경로에만 걸린 것인지
+	 * 전체에 걸린 것인지 구분되지 않는다. 실제로 프론트가 세션 만료를 알아채는 지점은
+	 * 대부분 화면 진입 직후의 GET이다.
+	 */
+	@Test
+	void unauthenticatedReadReturnsUnauthorizedWithJsonBody() throws Exception {
+		mockMvc.perform(get("/api/v1/patients").param("name", "홍"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.status").value(401))
+				.andExpect(jsonPath("$.message").isNotEmpty());
 	}
 
 	/**

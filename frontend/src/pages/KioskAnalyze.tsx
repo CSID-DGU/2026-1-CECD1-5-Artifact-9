@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ApiError } from "../api/client";
+import { getErrorMessage, isNotFound } from "../api/errors";
 import { analyzeKioskSession, getKioskSession, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { formatConfidence } from "../utils/confidence";
 
 const DISCLAIMER =
   "⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.";
+
+/**
+ * 결과 화면 상단용 축약 고지.
+ *
+ * <p>전체 문구를 위아래로 두 번 쓰면 같은 글이 반복돼 읽히지 않는다. 그렇다고 위쪽을 없애면,
+ * 환자가 스크롤하기 전에 보는 것은 "악성 흑색종 99.2%" 같은 숫자뿐이다.
+ * 그래서 위에는 숫자 옆에 붙는 한 줄, 아래 확인 버튼 앞에는 전체 문구를 둔다.
+ */
+const SHORT_DISCLAIMER = "⚠️ AI 보조 참고용 결과입니다 · 의학적 진단이 아닙니다";
+
 const MIN_ANALYSIS_LOADING_MS = 1200;
 
 /**
@@ -30,6 +41,16 @@ export default function KioskAnalyze() {
   const [error, setError] = useState<string | null>(null);
   const [gradcamError, setGradcamError] = useState(false);
   const [result, setResult] = useState<PreliminaryAnalysis | null>(null);
+  const [imageViewMode, setImageViewMode] = useState<"heatmap" | "original">("heatmap");
+
+  // 촬영한 원본 사진의 blob URL. 결과 화면의 "원본 이미지" 토글이 이 값을 그대로 쓴다 —
+  // 방금 올린 파일이라 서버에 다시 요청할 필요가 없고, 태블릿에는 JWT도 없다.
+  // 교체·이탈 시 revoke 하지 않으면 재촬영을 반복하는 만큼 메모리에 쌓인다.
+  const previewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
 
   // 잘못된 QR을 찍었거나 토큰이 만료된 경우를 촬영 전에 걸러낸다.
   useEffect(() => {
@@ -40,8 +61,15 @@ export default function KioskAnalyze() {
       .then((data) => {
         if (!cancelled) setSession(data);
       })
-      .catch(() => {
-        if (!cancelled) setSessionError("유효하지 않은 QR 코드입니다. 접수처에 문의해 주세요.");
+      .catch((error) => {
+        if (cancelled) return;
+        // 404만 "QR이 잘못됐다"는 뜻이다. 서버가 죽었거나 태블릿 와이파이가 끊긴 경우까지
+        // 같은 문구를 띄우면, 환자는 멀쩡한 QR을 들고 접수처로 되돌아가게 된다.
+        setSessionError(
+          isNotFound(error)
+            ? "유효하지 않은 QR 코드입니다. 접수처에 문의해 주세요."
+            : `${getErrorMessage(error)} 문제가 계속되면 접수처에 문의해 주세요.`
+        );
       });
 
     return () => {
@@ -62,7 +90,11 @@ export default function KioskAnalyze() {
     setError(null);
     setGradcamError(false);
     setGradcamLoading(false);
-    setPreviewUrl(selected ? URL.createObjectURL(selected) : null);
+    setImageViewMode("heatmap");
+
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = selected ? URL.createObjectURL(selected) : null;
+    setPreviewUrl(previewUrlRef.current);
   };
 
   const openGalleryPicker = () => {
@@ -92,8 +124,7 @@ export default function KioskAnalyze() {
       ]);
       setResult(response);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "분석에 실패했습니다. 다시 시도해 주세요.";
-      setError(message);
+      setError(getErrorMessage(err));
       setGradcamLoading(false);
     } finally {
       setLoading(false);
@@ -205,9 +236,13 @@ export default function KioskAnalyze() {
       </p>
       <Card title="피부 사진 예비 분석" contentClassName="!p-3">
         <div className="flex flex-col gap-3">
-          <p className="rounded border border-yellow-500/40 bg-yellow-500/10 px-2 py-1.5 text-[11px] text-yellow-200">
-            {DISCLAIMER}
-          </p>
+          {/* 촬영 전에는 전체 문구를 띄운다. 결과 화면에서는 아래쪽 확인 버튼 앞에 같은 문구가
+              다시 나오므로 여기서는 감춘다 — 한 화면에 똑같은 글이 두 번 있으면 둘 다 안 읽힌다. */}
+          {!result && (
+            <p className="rounded border border-yellow-500/40 bg-yellow-500/10 px-2 py-1.5 text-[11px] text-yellow-200">
+              {DISCLAIMER}
+            </p>
+          )}
 
           {!result && (
             <div className="flex flex-col items-center gap-3">
@@ -281,40 +316,82 @@ export default function KioskAnalyze() {
                     {result.topK[0].diseaseNameKo} ({result.topK[0].diseaseCode})
                   </p>
                   <p className="mt-0.5 text-xs text-blue-100">
-                    신뢰도 {(result.topK[0].confidence * 100).toFixed(1)}%
+                    신뢰도 {formatConfidence(result.topK[0].confidence)}
                   </p>
                 </div>
               )}
 
-              <div className="relative min-h-40 rounded border border-gray-700 bg-gray-900 overflow-hidden">
-                {gradcamLoading && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/80 text-xs text-gray-200">
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-500 border-t-blue-300" />
-                    <span>Grad-CAM 이미지 생성중...</span>
-                    <span className="text-[10px] text-gray-500">AI가 주목한 병변 영역을 불러오고 있습니다.</span>
+              <p className="text-[11px] leading-relaxed text-yellow-200/90">{SHORT_DISCLAIMER}</p>
+
+              {/* 원본 사진 / 히트맵 토글 — 진료실 화면과 같은 방식이다.
+                  <img> 태그를 하나만 두고 src만 바꾼다: 태그가 유지되므로 전환할 때 컨테이너
+                  높이가 튀지 않는다. 히트맵만 보여주면 환자는 빨간 얼룩이 자기 피부의 어디인지
+                  알 수 없어서, 원본과 번갈아 봐야 비로소 위치가 읽힌다. */}
+              {(() => {
+                const showHeatmap = imageViewMode === "heatmap" && !gradcamError;
+                const displayUrl = showHeatmap ? gradcamImageUrl : previewUrl;
+
+                return (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-gray-400">
+                        {showHeatmap ? "AI 병변 분석 히트맵" : "촬영한 원본 사진"}
+                      </span>
+                      {/* 히트맵이 아직 안 왔거나 실패했으면 전환할 대상이 없으니 버튼도 내보내지 않는다. */}
+                      {gradcamImageUrl && !gradcamError && !gradcamLoading && (
+                        <button
+                          type="button"
+                          onClick={() => setImageViewMode(showHeatmap ? "original" : "heatmap")}
+                          className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                            showHeatmap
+                              ? "bg-orange-600 text-white hover:bg-orange-500"
+                              : "bg-gray-700 text-gray-200 hover:bg-gray-600"
+                          }`}
+                        >
+                          {showHeatmap ? "원본 이미지" : "히트맵 보기"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="relative min-h-40 rounded border border-gray-700 bg-gray-900 overflow-hidden">
+                      {gradcamLoading && (
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/80 text-xs text-gray-200">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-500 border-t-blue-300" />
+                          <span>Grad-CAM 이미지 생성중...</span>
+                          <span className="text-[10px] text-gray-500">AI가 주목한 병변 영역을 불러오고 있습니다.</span>
+                        </div>
+                      )}
+                      {displayUrl && (
+                        <img
+                          src={displayUrl}
+                          alt={showHeatmap ? "GradCAM 히트맵" : "촬영한 원본 사진"}
+                          className={`w-full ${gradcamLoading ? "opacity-0" : "opacity-100"}`}
+                          style={{ display: "block", transition: "opacity 0.15s ease" }}
+                          onLoad={() => setGradcamLoading(false)}
+                          onError={() => {
+                            setGradcamLoading(false);
+                            // 원본은 방금 고른 파일의 blob이라 실패할 일이 없다 → 실패했다면 히트맵 쪽이다.
+                            if (showHeatmap) setGradcamError(true);
+                          }}
+                        />
+                      )}
+                      {showHeatmap && !gradcamLoading && (
+                        <p className="px-2 py-1 text-[10px] text-gray-400">
+                          🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · Grad-CAM 기반
+                        </p>
+                      )}
+                      {gradcamError && (
+                        <p className="px-2 py-1 text-[11px] text-yellow-200">
+                          Grad-CAM 이미지를 불러오지 못해 촬영한 원본 사진만 표시합니다. 분석 결과는 아래 표를 확인해 주세요.
+                        </p>
+                      )}
+                      <div className="absolute left-2 top-2 z-20 rounded bg-gray-950/80 px-2 py-1 text-[10px] text-gray-300">
+                        {showHeatmap ? "Grad-CAM" : "원본"}
+                      </div>
+                    </div>
                   </div>
-                )}
-                {gradcamImageUrl && (
-                  <img
-                    src={gradcamImageUrl}
-                    alt="GradCAM 히트맵"
-                    className={`w-full ${gradcamLoading ? "opacity-0" : "opacity-100"}`}
-                    onLoad={() => setGradcamLoading(false)}
-                    onError={() => {
-                      setGradcamLoading(false);
-                      setGradcamError(true);
-                    }}
-                  />
-                )}
-                {gradcamError && (
-                  <div className="flex min-h-40 items-center justify-center px-4 text-center text-xs text-yellow-200">
-                    Grad-CAM 이미지를 불러오지 못했습니다. 진료실 화면에서 다시 확인해 주세요.
-                  </div>
-                )}
-                <div className="absolute left-2 top-2 z-20 rounded bg-gray-950/80 px-2 py-1 text-[10px] text-gray-300">
-                  Grad-CAM
-                </div>
-              </div>
+                );
+              })()}
 
               <div className="border border-gray-700 rounded overflow-hidden">
                 <div className="grid grid-cols-[34px_72px_1fr_64px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
@@ -325,7 +402,7 @@ export default function KioskAnalyze() {
                     <span className="text-gray-400">{idx + 1}</span>
                     <span className="font-mono text-blue-300">{item.diseaseCode}</span>
                     <span className="text-white">{item.diseaseNameKo}</span>
-                    <span className="text-right text-gray-200">{(item.confidence * 100).toFixed(1)}%</span>
+                    <span className="text-right text-gray-200">{formatConfidence(item.confidence)}</span>
                   </div>
                 ))}
               </div>

@@ -25,6 +25,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * `/api/kiosk/**` 로 통째로 열어두면 이후 이 컨트롤러에 엔드포인트를 추가할 때마다
  * 자동으로 공개된다. 그래서 토큰 스코프인 경로만 하나씩 명시한다 —
  * 새 엔드포인트는 기본적으로 막히고, 열려면 여기에 의도적으로 추가해야 한다.
+ *
+ * <p><b>차단 응답은 {@link SecurityErrorResponder}가 만든다.</b> 이 설정을 붙이기 전에는
+ * 미인증 요청이 본문 없는 403으로 나가서, 프론트가 "세션 만료"와 "권한 부족"을 구분하지 못했다.
+ * 401(재로그인 필요)과 403(재로그인해도 안 됨)을 갈라주는 것이 그 클래스의 역할이다.
  */
 @Configuration
 @EnableMethodSecurity
@@ -32,6 +36,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final SecurityErrorResponder securityErrorResponder;
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
@@ -58,6 +63,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/kiosk/pending").permitAll()
 
                 .anyRequest().authenticated()
+            )
+            // 필터 단계에서 걸린 요청은 @RestControllerAdvice까지 가지 못한다.
+            // 여기서 직접 JSON 본문을 만들어주지 않으면 응답이 빈 껍데기로 나간다.
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(securityErrorResponder)   // 미인증 → 401
+                .accessDeniedHandler(securityErrorResponder)        // 인증됐으나 권한 부족 → 403
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

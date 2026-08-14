@@ -1,90 +1,77 @@
-import { createContext, useContext, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { apiRequest } from "../api/client";
-import { STORAGE_KEYS } from "../constants";
+import { getErrorMessage } from "../api/errors";
+import {
+  clearSession,
+  loadUser,
+  saveSession,
+  setSessionExpiredHandler,
+} from "../api/session";
+import {
+  AuthContext,
+  type AuthResult,
+  type Member,
+  type SignupPayload,
+} from "../auth/AuthContext";
 
-export interface Member {
-  memberId: number;
-  loginId: string;
-  name: string;
-  role: string;
-}
-
-interface AuthContextType {
-  user: Member | null;
-  login: (loginId: string, password: string) => Promise<boolean>;
-  signup: (payload: SignupPayload) => Promise<boolean>;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function getToken(): string | null {
-  return localStorage.getItem(STORAGE_KEYS.TOKEN);
-}
-
-export type SignupPayload = {
-  loginId: string;
-  password: string;
-  name: string;
-  role?: string;
-  licenseNumber?: string | null;
-  department?: string | null;
-};
-
+/**
+ * 로그인 상태를 앱 전체에 공급한다.
+ *
+ * <p>이 파일은 컴포넌트만 내보낸다. `useAuth`와 타입은 `auth/AuthContext.ts`에 있다 —
+ * 섞어 두면 Fast Refresh가 꺼져서 화면 수정마다 로그인이 풀린다(그쪽 주석 참고).
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Member | null>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.USER);
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<Member | null>(() => loadUser<Member>());
+  const [sessionExpired, setSessionExpired] = useState(false);
 
-  const login = async (loginId: string, password: string): Promise<boolean> => {
-    try {
-      const res = await apiRequest<Member & { token: string }>("/api/v1/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ loginId, password }),
-      });
-      const { token, ...member } = res;
-      setUser(member);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(member));
-      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const logout = useCallback(() => {
+    clearSession();
+    setUser(null);
+  }, []);
 
-  const signup = async (payload: SignupPayload): Promise<boolean> => {
+  /**
+   * 토큰이 만료·위조로 거부되면(401) 저장된 로그인 상태를 지운다.
+   *
+   * <p>이게 없으면 <b>토큰만 죽고 화면은 로그인된 척한다.</b> localStorage에 사용자 정보가
+   * 남아 있으니 메뉴도 이름도 그대로인데, 누르는 것마다 조용히 실패한다.
+   * JWT 만료(개발 24시간 / 운영 8시간)는 드문 일이 아니라 매일 일어나는 일이다.
+   *
+   * <p>user가 null이 되면 PrivateRoute가 로그인 화면으로 보낸다 — 여기서 직접 이동시키지 않는다.
+   */
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setSessionExpired(true);
+    });
+    return () => setSessionExpiredHandler(null);
+  }, []);
+
+  const authenticate = async (path: string, payload: unknown): Promise<AuthResult> => {
     try {
-      const res = await apiRequest<Member & { token: string }>("/api/v1/auth/signup", {
+      const res = await apiRequest<Member & { token: string }>(path, {
         method: "POST",
         body: JSON.stringify(payload),
       });
       const { token, ...member } = res;
+      saveSession(token, member);
       setUser(member);
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(member));
-      localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-      return true;
-    } catch {
-      return false;
+      setSessionExpired(false);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: getErrorMessage(error) };
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-  };
+  const login = (loginId: string, password: string) =>
+    authenticate("/api/v1/auth/login", { loginId, password });
+
+  const signup = (payload: SignupPayload) =>
+    authenticate("/api/v1/auth/signup", payload);
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, sessionExpired, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
-  return context;
 }

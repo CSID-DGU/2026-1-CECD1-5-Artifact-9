@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getErrorMessage } from "../api/errors";
 
 export type SearchItem = {
   id: number;
@@ -20,6 +21,7 @@ export function SearchModal({ isOpen, onClose, onSelect, title, placeholder, onS
   const [results, setResults] = useState<SearchItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -27,6 +29,7 @@ export function SearchModal({ isOpen, onClose, onSelect, title, placeholder, onS
       setQuery("");
       setResults([]);
       setHasSearched(false);
+      setErrorMessage(null);
       setTimeout(() => inputRef.current?.focus(), 60);
     }
   }, [isOpen]);
@@ -34,13 +37,17 @@ export function SearchModal({ isOpen, onClose, onSelect, title, placeholder, onS
   async function handleSearch() {
     if (!query.trim()) return;
     setIsSearching(true);
+    setErrorMessage(null);
     try {
       const res = await onSearch(query.trim(), 50);
       setResults(res.content);
       setHasSearched(true);
-    } catch {
+    } catch (error) {
+      // 실패를 "검색 결과 없음"으로 보여주면 안 된다. 권한이 없거나 서버가 죽은 것을
+      // 사용자는 "그런 질병/약품이 없구나"로 읽고, 검색어만 바꿔가며 계속 시도하게 된다.
       setResults([]);
       setHasSearched(true);
+      setErrorMessage(getErrorMessage(error));
     } finally {
       setIsSearching(false);
     }
@@ -89,7 +96,11 @@ export function SearchModal({ isOpen, onClose, onSelect, title, placeholder, onS
 
         {/* Result list */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          {!hasSearched ? (
+          {errorMessage ? (
+            <p role="alert" className="px-4 py-10 text-xs text-red-300 text-center">
+              {errorMessage}
+            </p>
+          ) : !hasSearched ? (
             <p className="px-4 py-10 text-xs text-gray-400 text-center">
               검색어를 입력하고 검색하세요 (예: 흑색종, 타크로리무스)
             </p>
