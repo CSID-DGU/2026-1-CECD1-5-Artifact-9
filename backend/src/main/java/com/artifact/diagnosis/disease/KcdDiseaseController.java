@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.disease;
 
 import com.artifact.diagnosis.common.security.StaffAccess;
+import com.artifact.diagnosis.common.util.LikeEscape;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +36,6 @@ public class KcdDiseaseController {
             @ParameterObject
             @PageableDefault(size = 20, sort = "code", direction = Sort.Direction.ASC)
             Pageable pageable) {
-        return kcdDiseaseRepository.findByCodeContainingOrNameKrContaining(query, query, pageable);
+        return kcdDiseaseRepository.searchByPattern(LikeEscape.contains(query), pageable);
     }
 }

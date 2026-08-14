@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.patient;
 
+import com.artifact.diagnosis.common.util.LikeEscape;
 import com.artifact.diagnosis.visit.VisitRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +59,9 @@ public class PatientService {
 
         Specification<Patient> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.like(root.get("name"), "%" + name + "%"));
+            // 검색어에 섞인 %·_ 는 와일드카드가 아니라 글자로 취급한다 — LikeEscape 주석 참고.
+            predicates.add(cb.like(
+                    root.get("name"), LikeEscape.contains(name), LikeEscape.ESCAPE_CHAR));
             if (birthDate != null) {
                 predicates.add(cb.equal(root.get("birthDate"), birthDate));
             }
@@ -96,7 +99,7 @@ public class PatientService {
     /** 이름 부분 검색. 조회 화면에서 환자를 찾을 때 사용. */
     @Transactional(readOnly = true)
     public List<PatientResponse> searchByName(String name) {
-        return patientRepository.findByNameContaining(name)
+        return patientRepository.searchByNamePattern(LikeEscape.contains(name))
                 .stream()
                 .map(PatientResponse::from)
                 .toList();
@@ -116,7 +119,7 @@ public class PatientService {
 
         if (name != null && !name.isBlank()) {
             Set<Long> nameMatchedIds = new LinkedHashSet<>(
-                    patientRepository.findByNameContaining(name.trim()).stream()
+                    patientRepository.searchByNamePattern(LikeEscape.contains(name.trim())).stream()
                             .map(Patient::getId)
                             .toList()
             );

@@ -89,6 +89,7 @@ class AnalysisResilienceTest {
         registry.add("cloud.aws.s3.bucket", () -> "test-bucket");
         registry.add("image.storage.type", () -> "local");
         registry.add("jwt.secret", () -> "test-only-dummy-signing-key-not-used-anywhere-else-0123456789");
+        registry.add("fastapi.internal-secret", () -> "test-only-internal-secret");
     }
 
     @Autowired

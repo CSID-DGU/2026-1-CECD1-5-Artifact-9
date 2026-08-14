@@ -65,6 +65,10 @@ public class KioskService {
     @Value("${fastapi.timeout-seconds:30}")
     private long fastapiTimeoutSeconds;
 
+    /** FastAPI 와 공유하는 내부 호출 시크릿. AnalysisService 와 같은 값. */
+    @Value("${fastapi.internal-secret}")
+    private String fastapiInternalSecret;
+
     /**
      * QR 없이 자동 진입하는 폴백(/api/kiosk/pending)의 활성화 여부. 기본은 꺼짐.
      * 이 엔드포인트만 유일하게 토큰 없이 접근 대상을 알려주므로 — 즉 아무나 호출해 다음 대기 환자의
@@ -275,6 +279,7 @@ public class KioskService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
                     .header("Content-Type", "application/json")
+                    .header("X-Internal-Secret", fastapiInternalSecret)
                     // 태블릿은 결과를 기다리는 화면이다. 무한 대기면 환자가 로딩만 보다 끝난다.
                     .timeout(Duration.ofSeconds(fastapiTimeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))

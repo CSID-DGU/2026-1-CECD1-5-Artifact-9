@@ -13,17 +13,22 @@ services:
     container_name: artifact-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpass}
+      # 기본값을 두지 않는다. 예전의 `:-rootpass` 는 .env 에 DB_PASSWORD 를 비워두기만 해도
+      # 공개 저장소에 적힌 그 값으로 조용히 넘어갔다 — JWT 서명키와 똑같은 함정이 한 층 아래에
+      # 남아 있던 셈이다. 아래 3306 포트와 겹치면 "인터넷에 열린 DB + 공개된 비밀번호"가 된다.
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}
       MYSQL_DATABASE: artifact_db
       TZ: Asia/Seoul
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # 로컬에서 DB 도구로 직접 붙어보기 위한 포트. 운영(EC2)에서는 절대 열지 않는다 —
+    # docker-compose.prod.yml 이 이 항목을 지운다.
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-rootpass}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,8 +46,12 @@ services:
     restart: unless-stopped
     environment:
       MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.45}
+      # 백엔드와 공유하는 내부 호출 시크릿. 아래 backend 에도 같은 값이 들어간다.
+      # 미설정 시 FastAPI 가 기동을 거부한다(main.py 상단) — 무방비로 뜨는 것보다 안 뜨는 게 낫다.
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET이 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}
     # ports 를 두지 않는다 — FastAPI에는 인증이 없어서 호스트에 열면 누구나 추론 엔드포인트를
     # 직접 호출하게 된다. backend 는 같은 네트워크에서 http://fastapi:8000 으로 접근하므로 문제없다.
+    # (같은 네트워크 안에서의 무단 호출은 위 INTERNAL_API_SECRET 헤더가 막는다.)
     # 로컬에서 직접 찔러봐야 할 때만 아래를 임시로 켠다(외부에 열리지 않도록 127.0.0.1 바인딩).
     #   ports:
     #     - "127.0.0.1:8000:8000"
@@ -65,7 +74,7 @@ services:
       # Spring → MySQL 연결 (컨테이너끼리 통신은 서비스명 'mysql'로)
       DB_URL: jdbc:mysql://mysql:3306/artifact_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
       DB_USERNAME: root
-      DB_PASSWORD: ${DB_PASSWORD:-rootpass}
+      DB_PASSWORD: ${DB_PASSWORD}
 
       # AWS S3 (.env에서 읽음)
       AWS_ACCESS_KEY: ${AWS_ACCESS_KEY:-local-dev-access-key}
@@ -78,6 +87,8 @@ services:
       IMAGE_LOCAL_UPLOAD_DIR: /app/artifact-images
 
       FASTAPI_URL: http://fastapi:8000
+      # 위 fastapi 컨테이너와 같은 값이어야 한다. 다르면 추론 호출이 401로 거절된다.
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
 
       # QR 없이 "다음 대기 환자"로 자동 진입하는 폴백. 토큰 없이 접근 대상을 알려주므로 기본은 꺼둔다.
       KIOSK_AUTO_PENDING: ${KIOSK_AUTO_PENDING:-false}
@@ -95,6 +106,8 @@ services:
       TZ: Asia/Seoul
     volumes:
       - artifact-images:/app/artifact-images
+    # 로컬에서 Swagger(:8080/swagger-ui)와 curl 로 직접 찔러보기 위한 포트.
+    # 운영에서는 nginx(frontend)가 /api/ 를 프록시하므로 필요 없다 — prod 오버라이드가 지운다.
     ports:
       - "8080:8080"
     networks:

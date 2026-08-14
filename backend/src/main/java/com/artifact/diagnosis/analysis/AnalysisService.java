@@ -46,6 +46,13 @@ public class AnalysisService {
     @Value("${fastapi.timeout-seconds:30}")
     private long fastapiTimeoutSeconds;
 
+    /**
+     * FastAPI 와 공유하는 내부 호출 시크릿. 기본값을 두지 않는다 — 미설정 시 기동 실패.
+     * FastAPI 쪽 {@code INTERNAL_API_SECRET} 과 같은 값이어야 한다.
+     */
+    @Value("${fastapi.internal-secret}")
+    private String fastapiInternalSecret;
+
     private static final String MODEL_VERSION = "efficientnet_b0_v1";
 
     private static final Map<String, String> DISEASE_NAME_KO = Map.of(
@@ -188,6 +195,9 @@ public class AnalysisService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
                     .header("Content-Type", "application/json")
+                    // FastAPI 에는 로그인이 없다. 같은 네트워크 안의 아무나 추론을 부르지 못하도록
+                    // 백엔드와 FastAPI 만 아는 값을 함께 보낸다(FastAPI verify_internal_secret).
+                    .header("X-Internal-Secret", fastapiInternalSecret)
                     // 이 한 줄이 없으면 무한 대기다. 상대가 죽지 않고 멈추기만 해도 요청 스레드가 영영 묶인다.
                     .timeout(Duration.ofSeconds(fastapiTimeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
