@@ -1,0 +1,27 @@
+# HTTPS 오버라이드. prod 위에 한 겹 더 얹는다.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml up -d
+services:
+
+  frontend:
+    # 80번을 Caddy가 가져가므로 프론트는 밖으로 열지 않는다.
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: artifact-caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # 발급받은 인증서 보관. 지우면 재발급됨
+      - caddy-config:/config
+    networks:
+      - artifact-network
+
+volumes:
+  caddy-data:
+  caddy-config:

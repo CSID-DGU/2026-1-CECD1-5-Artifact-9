@@ -1,0 +1,143 @@
+# =============================================
+# CI — PR 올릴 때마다 자동으로 도는 검사
+# =============================================
+# 목적은 "main 에 깨진 코드가 들어가는 것을 막는 것" 하나다.
+# 배포는 하지 않는다 (그건 deploy.yml).
+#
+# 세 서비스를 각각 다른 job 으로 나눠 병렬로 돌린다. 하나가 실패해도
+# 나머지 결과는 나오므로, 어디가 깨졌는지 한 번에 보인다.
+# =============================================
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+# 같은 브랜치에 연달아 푸시하면 이전 실행을 취소한다.
+# 안 그러면 3번 푸시했을 때 3개가 동시에 돌면서 결과가 뒤섞인다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# 이 워크플로는 코드를 읽기만 한다. 기본값(쓰기 가능)을 그대로 두지 않는다.
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------
+  # 백엔드 — 실제 테스트 18개를 돌린다
+  # -------------------------------------------
+  backend:
+    name: 백엔드 테스트
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # gradle-wrapper.jar 는 저장소에 커밋된 바이너리이고 CI 가 그걸 실행한다.
+      # 누군가 이 jar 를 몰래 바꿔치기하면 러너에서 임의 코드가 돈다.
+      # 공식 Gradle 배포본의 체크섬과 대조해서 그 경로를 막는다.
+      - name: Gradle wrapper 검증
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: JDK 21 준비
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Gradle 의존성을 캐싱한다. 없으면 매번 200MB 넘게 다시 받는다.
+          cache: gradle
+
+      - name: 테스트 실행
+        working-directory: backend
+        run: ./gradlew test --no-daemon
+
+      # 실패했을 때 "무엇이" 실패했는지 보려면 리포트가 필요하다.
+      # if: always() 가 없으면 테스트 실패 시 이 단계가 건너뛰어져 리포트를 못 본다.
+      - name: 테스트 리포트 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: backend/build/reports/tests/test
+          retention-days: 7
+
+  # -------------------------------------------
+  # 프론트엔드 — 타입체크 + 린트 + 프로덕션 빌드
+  # -------------------------------------------
+  frontend:
+    name: 프론트 린트·빌드
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 20 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm install 이 아니라 npm ci 다. lock 파일 그대로 설치하므로
+      # "내 노트북에선 됐는데" 를 막는다.
+      - name: 의존성 설치
+        working-directory: frontend
+        run: npm ci
+
+      - name: 린트
+        working-directory: frontend
+        run: npm run lint
+
+      # package.json 의 build 는 `tsc -b && vite build` 라서
+      # 타입 오류도 여기서 같이 걸린다.
+      - name: 타입체크 + 빌드
+        working-directory: frontend
+        run: npm run build
+
+  # -------------------------------------------
+  # FastAPI — 이미지가 빌드되고 실제로 뜨는지까지 확인
+  # -------------------------------------------
+  # 파이썬은 문법이 틀려도 임포트하기 전엔 모른다. requirements 충돌도 마찬가지다.
+  # 그래서 "빌드해서 띄우고 /health 를 찔러본다" 까지 해야 의미가 있다.
+  #
+  # runs-on 이 ARM 인 이유: 배포 대상(EC2 t4g)이 ARM64다. x86 에서 빌드하면
+  # 되는데 ARM 에서 안 되는 경우를 CI 가 놓친다. 공개 저장소는 ARM 러너가 무료다.
+  fastapi:
+    name: FastAPI 빌드·기동
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 이미지 빌드
+        uses: docker/build-push-action@v6
+        with:
+          context: ./fastapi
+          load: true
+          tags: artifact-fastapi:ci
+          # torch 설치가 느리다. 캐시가 없으면 매번 5분씩 걸린다.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 기동해서 /health 확인
+        run: |
+          # INTERNAL_API_SECRET 이 없으면 main.py 가 기동을 거부한다(의도된 동작).
+          # CI 용 더미값이며 실제 시크릿이 아니다.
+          docker run -d --name fastapi-ci \
+            -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
+            -p 8000:8000 artifact-fastapi:ci
+
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "✅ 기동 확인"
+              docker rm -f fastapi-ci
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "❌ 60초 안에 기동하지 못했습니다. 컨테이너 로그:"
+          docker logs fastapi-ci
+          exit 1

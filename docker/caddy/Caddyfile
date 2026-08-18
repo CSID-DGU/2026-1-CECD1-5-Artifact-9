@@ -1,0 +1,6 @@
+artifact-prod.duckdns.org {
+    reverse_proxy frontend:80
+    request_body {
+        max_size 25MB
+    }
+}
