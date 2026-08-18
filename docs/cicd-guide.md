@@ -125,6 +125,7 @@ CI 를 붙여도 **머지를 막지 않으면 의미가 절반이다.** 빨간 X
 
 | 증상 | 원인과 해결 |
 |---|---|
+| `Unable to access jarfile ... gradle-wrapper.jar` | `.gitignore` 의 `*.jar` 가 wrapper jar 까지 먹은 것. `!**/gradle/wrapper/gradle-wrapper.jar` 예외를 넣고 `git add -f` 로 커밋한다 (**실제로 이 저장소에서 났던 문제**) |
 | `Permission denied` — `./gradlew` | 실행 권한 누락. 로컬에서 `git update-index --chmod=+x backend/gradlew` 후 커밋 |
 | `npm ci` 가 `lock file mismatch` | `package.json` 과 `package-lock.json` 이 어긋남. 로컬에서 `npm install` 후 lock 파일도 커밋 |
 | `fastapi` job 이 `no space left` | 캐시가 부풀었을 때. Actions → Caches 에서 삭제 |

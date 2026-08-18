@@ -44,6 +44,8 @@ backend/uploads/
 *.class
 *.jar
 *.war
+# Gradle wrapper 의 jar 는 반드시 커밋해야 한다 (없으면 ./gradlew 자체가 실행 불가)
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # === Python ===
 __pycache__/
