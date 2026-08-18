@@ -1,0 +1,89 @@
+# =============================================
+# CD — main 에 들어간 코드를 EC2 에 자동 배포
+# =============================================
+# 지금까지 손으로 하던 것과 똑같은 일을 한다:
+#   ssh → cd ~/artifact → git pull → docker compose up -d --build
+#
+# 다른 점은 "누가" 하느냐다. EC2 안에서 도는 self-hosted 러너가 GitHub 에
+# 일감을 물어보고(outbound), 있으면 실행한다. 그래서 22번 포트를 인터넷에
+# 열 필요가 없다 — 자세한 이유는 docs/cicd-guide.md 2-0 참고.
+# =============================================
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # 콘솔에서 손으로도 돌릴 수 있게 (배포 실패 후 재시도용)
+  workflow_dispatch:
+
+# 배포는 절대 동시에 돌면 안 된다. 두 개가 겹치면 빌드 중인 이미지를
+# 다른 실행이 갈아엎는다. cancel-in-progress 를 false 로 두어
+# 앞 배포가 끝날 때까지 기다리게 한다.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: EC2 배포
+    # 2단계에서 등록할 러너의 라벨. 라벨이 안 맞으면 job 이 영원히 대기한다.
+    runs-on: [self-hosted, artifact-prod]
+
+    steps:
+      # ⚠️ actions/checkout 을 쓰지 않는다. 일부러다.
+      #
+      # checkout 은 러너 작업폴더(~/actions-runner/_work/...)에 코드를 푼다.
+      # 거기서 compose 를 실행하면 **프로젝트 이름이 폴더명에서 나오기 때문에**
+      # 볼륨 이름이 artifact_mysql-data 가 아니라 다른 이름이 된다.
+      # → 빈 DB 가 새로 생기고, 환자 데이터가 사라진 것처럼 보인다.
+      #
+      # 그래서 기존 배포 폴더(~/artifact)를 그대로 쓴다.
+      - name: 최신 코드 받기
+        run: |
+          cd ~/artifact
+          git fetch origin main
+          # 이 커밋으로 정확히 맞춘다. origin/main 을 쓰면 그 사이 들어온
+          # 다른 커밋까지 딸려와 "무엇이 배포됐는지" 가 흐려진다.
+          git reset --hard ${{ github.sha }}
+          echo "배포 대상: $(git log --oneline -1)"
+
+      - name: 빌드 · 재기동
+        run: |
+          cd ~/artifact
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prod.yml \
+            -f docker-compose.https.yml \
+            up -d --build
+
+      - name: 헬스체크
+        run: |
+          URL="${{ vars.PUBLIC_URL || 'https://artifact-prod.duckdns.org' }}"
+          echo "확인 대상: $URL"
+
+          # 백엔드 기동에 30초 이상 걸린다(DataInitializer 가 KCD/약품 마스터를 적재).
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "✅ 배포 성공 (${i}회차에 응답)"
+              exit 0
+            fi
+            echo "  ... HTTP $code (${i}/40)"
+            sleep 5
+          done
+
+          echo "❌ 200초 안에 200 을 받지 못했습니다."
+          cd ~/artifact
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml logs --tail 50 backend
+          exit 1
+
+      # 빌드할 때마다 예전 이미지가 쌓인다. 30GB 디스크가 몇 주면 찬다.
+      # 실패해도 배포 자체는 성공했으므로 결과에 영향을 주지 않는다.
+      - name: 안 쓰는 이미지 정리
+        if: always()
+        continue-on-error: true
+        run: docker image prune -f
