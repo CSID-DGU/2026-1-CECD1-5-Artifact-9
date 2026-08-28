@@ -50,6 +50,50 @@ jobs:
           git reset --hard ${{ github.sha }}
           echo "배포 대상: $(git log --oneline -1)"
 
+      # -------------------------------------------
+      # 스키마 마이그레이션
+      # -------------------------------------------
+      # docker/mysql/init/*.sql 은 **데이터 볼륨이 비어 있을 때 한 번만** 실행된다
+      # (MySQL 의 docker-entrypoint-initdb.d 규칙). 운영 DB 에는 이미 데이터가 있으므로
+      # 나중에 추가된 테이블은 영원히 만들어지지 않고, ddl-auto=none 이라 Hibernate 도
+      # 만들어주지 않는다. 그대로 두면 배포는 "성공" 하는데 해당 API 만 500 이 난다
+      # (헬스체크가 / 만 보므로 아무도 눈치채지 못한다).
+      #
+      # 새 코드가 뜨기 **전에** 돌린다. 순서가 반대면 배포 직후 잠깐 "테이블 없음" 이 난다.
+      # 구버전 코드는 새 테이블을 모르므로 미리 만들어도 무해하다.
+      #
+      # 여기 나열하는 SQL 은 반드시 CREATE TABLE IF NOT EXISTS 여야 한다 — 배포마다 다시 돈다.
+      - name: 스키마 마이그레이션
+        run: |
+          cd ~/artifact
+
+          # 나중에 테이블이 추가되면 이 줄에만 파일을 덧붙인다.
+          MIGRATIONS="docker/mysql/init/04-certificate.sql"
+
+          # 빌드 전이라 mysql 이 내려가 있을 수 있다. 이 단계에서만 먼저 띄운다.
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d mysql
+
+          # .env 는 git 에 올라가지 않으므로 배포 폴더의 실제 파일에서 읽는다.
+          PW=$(grep -m1 '^DB_PASSWORD=' .env | cut -d= -f2-)
+          if [ -z "$PW" ]; then
+            echo "❌ ~/artifact/.env 에서 DB_PASSWORD 를 읽지 못했습니다."
+            exit 1
+          fi
+
+          # MySQL 이 접속을 받을 때까지 기다린다.
+          for i in $(seq 1 30); do
+            if docker compose exec -T mysql mysqladmin ping -uroot -p"$PW" --silent 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          for sql in $MIGRATIONS; do
+            echo "  → $sql"
+            docker compose exec -T mysql mysql -uroot -p"$PW" < "$sql"
+          done
+          echo "✅ 마이그레이션 완료"
+
       - name: 빌드 · 재기동
         run: |
           cd ~/artifact

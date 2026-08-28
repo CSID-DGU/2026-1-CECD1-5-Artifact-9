@@ -94,6 +94,17 @@ services:
       KIOSK_AUTO_PENDING: ${KIOSK_AUTO_PENDING:-false}
 
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # 비워두면 application.properties 의 기본 모델을 쓴다.
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+
+      # 제증명(진단서·처방전 등) 문서 머리말에 찍히는 의료기관 정보.
+      # 여기 나열하지 않으면 .env 에 적어도 컨테이너 안으로 전달되지 않는다.
+      # 비워두면 문서의 해당 칸이 빈 채로 출력될 뿐, 기동에는 영향이 없다.
+      HOSPITAL_NAME: ${HOSPITAL_NAME:-}
+      HOSPITAL_ADDRESS: ${HOSPITAL_ADDRESS:-}
+      HOSPITAL_PHONE: ${HOSPITAL_PHONE:-}
+      HOSPITAL_REGISTRATION_NO: ${HOSPITAL_REGISTRATION_NO:-}
+      HOSPITAL_SEAL_IMAGE_URL: ${HOSPITAL_SEAL_IMAGE_URL:-}
 
       # JWT 서명키 — 기본값 없음. 미설정 시 compose가 즉시 중단된다.
       # 값 생성: openssl rand -base64 48
