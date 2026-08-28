@@ -23,6 +23,12 @@ public record CertificateDocument(
         String hospitalAddress,
         String hospitalPhone,
         String hospitalRegistrationNo,
+        /**
+         * 문서 하단에 찍히는 직인 이미지 주소. 비어 있으면 '(직인생략)' 으로 표기된다.
+         * 다른 병원 정보와 마찬가지로 발급 당시 값이 스냅샷에 박힌다 — 나중에 직인을 바꿔도
+         * 이미 발급된 문서는 그때 찍힌 도장을 그대로 유지해야 하기 때문이다.
+         */
+        String hospitalSealImageUrl,
 
         // ── 환자 ──
         String patientName,
@@ -84,6 +90,7 @@ public record CertificateDocument(
                                              String referralTo) {
         return new CertificateDocument(
                 hospitalName, hospitalAddress, hospitalPhone, hospitalRegistrationNo,
+                hospitalSealImageUrl,
                 patientName, patientResidentNo, patientGender, patientBirthDate, patientPhone,
                 visitDate, treatmentPeriodFrom, treatmentPeriodTo, diseases,
                 opinion, treatmentPlan, referralReason, remarks,
@@ -98,6 +105,7 @@ public record CertificateDocument(
     public CertificateDocument withSerialNo(String serialNo) {
         return new CertificateDocument(
                 hospitalName, hospitalAddress, hospitalPhone, hospitalRegistrationNo,
+                hospitalSealImageUrl,
                 patientName, patientResidentNo, patientGender, patientBirthDate, patientPhone,
                 visitDate, treatmentPeriodFrom, treatmentPeriodTo, diseases,
                 opinion, treatmentPlan, referralReason, remarks,

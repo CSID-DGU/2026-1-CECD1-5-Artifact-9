@@ -35,6 +35,8 @@ export type CertificateDocument = {
   hospitalAddress: string | null;
   hospitalPhone: string | null;
   hospitalRegistrationNo: string | null;
+  /** 직인 이미지 주소. 비어 있으면 '(직인생략)' 으로 표기된다. */
+  hospitalSealImageUrl: string | null;
 
   patientName: string | null;
   patientResidentNo: string | null;
