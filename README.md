@@ -108,11 +108,12 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 <img width="3024" height="1938" alt="image" src="https://github.com/user-attachments/assets/fdc2c7a9-eef3-4740-a172-ff63d97e6495" />
 
 
-### 7) 증명서 발급 화면 — `/main/certificate` *(준비 중 UI)*
+### 7) 증명서 발급 화면 — `/main/certificate` 
 
-진단서 · 소견서 · 진료확인서 · 처방전 발급 UI 목업이 구성되어 있으며, **실제 서류 목적별 AI 생성 발급 기능은 추후 구현 예정**이다.
+진단서 · 소견서 · 진료확인서 · 처방전 발급 UI 목업이 구성되어 있으며, 제출 및 기타 목적에 따라 AI가 필요 내용을 자동으로 생성하여 작성하여 제공한다.
 
-<img width="1327" height="455" alt="image" src="https://github.com/user-attachments/assets/a021d5aa-02f6-4f9c-ba78-fb47da97094a" />
+<img width="3016" height="1578" alt="image" src="https://github.com/user-attachments/assets/64e9fe43-fea8-4d91-9203-5ef3fcdbb328" />
+
 
 ---
 
