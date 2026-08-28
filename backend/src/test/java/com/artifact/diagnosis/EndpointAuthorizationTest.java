@@ -221,6 +221,38 @@ class EndpointAuthorizationTest {
 				.andExpect(status().isNotFound());
 	}
 
+	/**
+	 * 제증명 — 원무과가 열 수 있는 경로와 의사만 열 수 있는 경로가 갈린다.
+	 *
+	 * <p>진단명이 들어가는 서류(진단서·소견서·의뢰서)는 직접 진찰한 의사만 발급할 수 있고
+	 * (의료법 제17조), 그 서술 항목을 만드는 AI 초안도 같은 제한을 받는다.
+	 * 발급 기록을 무효화하는 것은 진료기록 정정에 준하므로 역시 의사 전용이다.
+	 *
+	 * <p>반대로 발급대장 조회는 원무과 업무다 — 실제 병원에서 제증명 발급 창구는 원무과에 있다.
+	 */
+	@Test
+	void staffCannotDraftOrVoidCertificates() throws Exception {
+		String staffToken = tokenFor(MemberRole.STAFF);
+
+		mockMvc.perform(post("/api/v1/visits/{visitId}/certificates/draft", 999_999L)
+						.header("Authorization", "Bearer " + staffToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"type\": \"DIAGNOSIS\"}"))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(post("/api/v1/certificates/{id}/void", 999_999L)
+						.header("Authorization", "Bearer " + staffToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reason\": \"오발급\"}"))
+				.andExpect(status().isForbidden());
+
+		// 발급대장 조회는 원무과 업무 — 403이 아니어야 한다(대상이 없어 빈 목록).
+		mockMvc.perform(get("/api/v1/certificates")
+						.header("Authorization", "Bearer " + staffToken)
+						.param("patientId", "999999"))
+				.andExpect(status().isOk());
+	}
+
 	/** 관리자는 사다리 꼭대기 — 의사 전용 경로까지 인가를 통과한다(대상이 없어 404). */
 	@Test
 	void adminPassesDoctorOnlyAuthorization() throws Exception {
