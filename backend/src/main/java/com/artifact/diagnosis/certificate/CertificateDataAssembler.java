@@ -97,6 +97,7 @@ public class CertificateDataAssembler {
                 hospital.getAddress(),
                 hospital.getPhone(),
                 hospital.getRegistrationNo(),
+                hospital.getSealImageUrl(),
 
                 patient.getName(),
                 ResidentNumberMask.of(patient.getBirthDate(), patient.getGender()),

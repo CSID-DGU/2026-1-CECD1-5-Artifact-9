@@ -237,7 +237,7 @@ class CertificateServiceTest {
 
     private CertificateDocument emptyDocument() {
         return new CertificateDocument(
-                null, null, null, null,
+                null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null,
                 null, null, null, null,

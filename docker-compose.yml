@@ -109,7 +109,11 @@ services:
       HOSPITAL_ADDRESS: ${HOSPITAL_ADDRESS:-}
       HOSPITAL_PHONE: ${HOSPITAL_PHONE:-}
       HOSPITAL_REGISTRATION_NO: ${HOSPITAL_REGISTRATION_NO:-}
-      HOSPITAL_SEAL_IMAGE_URL: ${HOSPITAL_SEAL_IMAGE_URL:-}
+      # 직인 이미지. frontend/public/hospital-seal.svg 를 nginx 가 그대로 서빙하므로
+      # 같은 출처의 절대경로로 준다. 기본값을 application.properties 가 아니라 여기에 두는 것은
+      # CORS_ALLOWED_ORIGINS 와 같은 이유다 — compose 가 빈 문자열을 넘기면
+      # Spring 의 ${...:기본값} 이 조용히 무시되기 때문이다.
+      HOSPITAL_SEAL_IMAGE_URL: ${HOSPITAL_SEAL_IMAGE_URL:-/hospital-seal.svg}
 
       # JWT 서명키 — 기본값 없음. 미설정 시 compose가 즉시 중단된다.
       # 값 생성: openssl rand -base64 48

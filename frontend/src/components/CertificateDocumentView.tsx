@@ -263,9 +263,20 @@ function Footer({ doc, type }: { doc: CertificateDocument; type: string }) {
         <div className="text-right leading-relaxed">
           {doc.department && <div>{doc.department}</div>}
           <div>면허번호 제 {doc.doctorLicenseNo ?? "-"} 호</div>
-          <div className="mt-1 text-[14px]">
-            의사 <span className="font-bold">{doc.doctorName ?? "-"}</span>
-            <span className="ml-2 text-[11px] text-gray-600">(직인생략)</span>
+          <div className="mt-1 flex items-center justify-end gap-2 text-[14px]">
+            <span>
+              의사 <span className="font-bold">{doc.doctorName ?? "-"}</span>
+            </span>
+            {doc.hospitalSealImageUrl ? (
+              // 배경 인쇄를 꺼도 도장이 나와야 하므로 CSS 배경이 아니라 img 로 넣는다.
+              <img
+                src={doc.hospitalSealImageUrl}
+                alt="직인"
+                className="h-12 w-12 object-contain"
+              />
+            ) : (
+              <span className="text-[11px] text-gray-600">(직인생략)</span>
+            )}
           </div>
         </div>
       </div>
