@@ -93,6 +93,11 @@ services:
       # QR 없이 "다음 대기 환자"로 자동 진입하는 폴백. 토큰 없이 접근 대상을 알려주므로 기본은 꺼둔다.
       KIOSK_AUTO_PENDING: ${KIOSK_AUTO_PENDING:-false}
 
+      # 배포 도메인. 이 목록에 없는 출처에서 온 요청은 로그인부터 403 Invalid CORS request 다
+      # (브라우저가 same-origin POST 에도 Origin 헤더를 붙이기 때문 — WebConfig 주석 참고).
+      # 도메인이 바뀌면 .env 의 CORS_ALLOWED_ORIGINS 로 덮어쓴다. 쉼표로 여러 개 가능.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://artifact-prod.duckdns.org}
+
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # 비워두면 application.properties 의 기본 모델을 쓴다.
       GEMINI_MODEL: ${GEMINI_MODEL:-}
