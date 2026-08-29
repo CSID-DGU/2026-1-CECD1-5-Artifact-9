@@ -14,7 +14,7 @@ public record AnalysisResponse(
         /**
          * 이 결과를 만든 근거 이미지({@code visit_image.image_id}) 목록.
          *
-         * <p>화면에서 고른 것 전부가 아니라 <b>모델에 실제로 들어간 것</b>만 담긴다.
+         * 화면에서 고른 것 전부가 아니라 모델에 실제로 들어간 것만 담긴다.
          * 2026-08-30 이전 분석은 매핑 기록 자체가 없어 빈 배열이다.
          */
         @Schema(description = "분석에 실제로 사용된 이미지 ID 목록", example = "[1]")

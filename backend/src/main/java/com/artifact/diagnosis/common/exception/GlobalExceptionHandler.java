@@ -63,7 +63,7 @@ public class GlobalExceptionHandler {
     /**
      * 외부 AI 서버(FastAPI)가 응답하지 않음 → 503.
      *
-     * <p>우리 코드의 버그가 아니라 상대 서버의 일시적 장애다. 500으로 뭉뚱그리면
+     * 우리 코드의 버그가 아니라 상대 서버의 일시적 장애다. 500으로 뭉뚱그리면
      * 로그만 봐서는 원인이 어느 쪽인지 알 수 없어, 상태 코드로 분리해 둔다.
      */
     @ExceptionHandler(AiServiceUnavailableException.class)
@@ -74,15 +74,15 @@ public class GlobalExceptionHandler {
     /**
      * 직책 권한 부족(@StaffAccess/@MedicalAccess/@DoctorAccess 거부) → 403.
      *
-     * <p><b>이 핸들러가 없으면 403이 아니라 500이 나간다.</b> 메서드 시큐리티가 던지는
+     * 이 핸들러가 없으면 403이 아니라 500이 나간다. 메서드 시큐리티가 던지는
      * {@code AuthorizationDeniedException}은 컨트롤러 호출 시점에 발생하므로 이 @RestControllerAdvice가
      * 먼저 잡아버리고, 아무 핸들러도 없으면 맨 아래 {@code handleEtc(Exception)}로 떨어지기 때문이다.
      * Spring Security의 403 변환기(ExceptionTranslationFilter)는 필터 레벨이라 여기까지 오지 못한다.
      *
-     * <p>500으로 나가면 두 가지가 망가진다 — 프론트가 "권한 없음"과 "서버 고장"을 구분하지 못하고,
+     * 500으로 나가면 두 가지가 망가진다 — 프론트가 "권한 없음"과 "서버 고장"을 구분하지 못하고,
      * 모니터링에서 정상적인 권한 차단이 장애 알람으로 잡힌다.
      *
-     * <p>권한 거부는 보안 이벤트이므로 누가 무엇을 시도했는지 남긴다. 감사 로그(G3)의 씨앗이다.
+     * 권한 거부는 보안 이벤트이므로 누가 무엇을 시도했는지 남긴다. 감사 로그(G3)의 씨앗이다.
      */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException e) {
@@ -104,17 +104,15 @@ public class GlobalExceptionHandler {
     /**
      * 마지막 안전망 — 우리가 예상하지 못한 예외.
      *
-     * <p><b>예외 내용을 응답에 담지 않는다.</b> 전에는 {@code e.getClass().getSimpleName() + ": " + e.getMessage()}를
+     * 예외 내용을 응답에 담지 않는다. 전에는 {@code e.getClass().getSimpleName() + ": " + e.getMessage()}를
      * 그대로 내보냈다. 이건 두 가지로 잘못이다:
      *
-     * <ul>
-     *   <li><b>내부 구조 노출.</b> 메시지에 SQL 문장, 테이블·컬럼명, 파일 경로, 라이브러리 이름이 섞여 나온다.
-     *       공격자에게는 다음 수를 정하는 데 쓸 수 있는 정보고, 환자 화면까지 닿을 수 있는 문자열이다.</li>
-     *   <li><b>사용자에게 의미가 없다.</b> 화면에 뜨는 "NullPointerException: null"을 보고
-     *       접수 담당자가 할 수 있는 일은 없다.</li>
-     * </ul>
+     *   - 내부 구조 노출. 메시지에 SQL 문장, 테이블·컬럼명, 파일 경로, 라이브러리 이름이 섞여 나온다.
+     *       공격자에게는 다음 수를 정하는 데 쓸 수 있는 정보고, 환자 화면까지 닿을 수 있는 문자열이다.
+     *   - 사용자에게 의미가 없다. 화면에 뜨는 "NullPointerException: null"을 보고
+     *       접수 담당자가 할 수 있는 일은 없다.
      *
-     * <p>대신 스택트레이스를 <b>서버 로그에</b> 남긴다. 디버깅에 필요한 정보는 개발자가 볼 수 있는 곳에
+     * 대신 스택트레이스를 서버 로그에 남긴다. 디버깅에 필요한 정보는 개발자가 볼 수 있는 곳에
      * 그대로 있고, 밖으로는 나가지 않는다.
      */
     @ExceptionHandler(Exception.class)

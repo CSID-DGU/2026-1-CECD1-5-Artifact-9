@@ -97,11 +97,11 @@ public class KioskService {
      * 전역으로 "다음 환자 1명"을 정하는 방식이라 동시 1명만 가능하다. 여러 환자를 동시에 진행하려면
      * 접수 화면의 QR(=토큰별 경로)을 써야 한다.
      *
-     * <p>기본적으로 꺼져 있다. 인증도 토큰도 없이 호출되는 유일한 경로라, 켜두면 누구나
+     * 기본적으로 꺼져 있다. 인증도 토큰도 없이 호출되는 유일한 경로라, 켜두면 누구나
      * 다음 대기 환자의 키오스크 토큰을 받아 그 환자의 세션·히트맵에 접근할 수 있다.
      * 환자 실명은 응답에서 제외한다 — 태블릿은 토큰으로 이동한 뒤 세션 조회에서 이름을 받는다.
      *
-     * <p>대상 선정은 {@code VisitRepository.findLatestWithoutPreliminaryAnalysis} 한 번으로 끝낸다.
+     * 대상 선정은 {@code VisitRepository.findLatestWithoutPreliminaryAnalysis} 한 번으로 끝낸다.
      * "최신순 1건"인 이유는 그 쿼리 주석 참고 — 오래된 순으로 고르면 태블릿이 묵은 접수에 갇힌다.
      */
     @Transactional
@@ -146,7 +146,7 @@ public class KioskService {
      * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
      * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
      *
-     * <p><b>{@code @Transactional} 이 없는 것은 의도된 것이다.</b> 한 번 호출에 외부 왕복이
+     * {@code @Transactional} 이 없는 것은 의도된 것이다. 한 번 호출에 외부 왕복이
      * 세 번(FastAPI 추론 → 히트맵 업로드 → Gemini) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
      * DB 커넥션을 붙잡는다. 태블릿 몇 대가 동시에 촬영하면 커넥션 풀이 말라 진료실 화면까지 멈춘다.
      * DB 쓰기는 마지막에 {@link KioskTransactionService#saveResult} 한 번으로 끝낸다.

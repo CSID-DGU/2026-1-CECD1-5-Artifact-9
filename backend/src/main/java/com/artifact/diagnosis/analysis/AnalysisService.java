@@ -79,13 +79,13 @@ public class AnalysisService {
     /**
      * AI 분석 요청.
      *
-     * <p><b>이 메서드에는 의도적으로 {@code @Transactional} 이 없다.</b>
+     * 이 메서드에는 의도적으로 {@code @Transactional} 이 없다.
      * FastAPI 추론과 히트맵 업로드는 수 초가 걸리는 외부 호출인데, 트랜잭션 안에서 부르면
      * 그동안 DB 커넥션을 하나씩 붙잡고 있게 된다. 커넥션 풀(기본 10개)이 마르면 분석과 무관한
      * 접수·조회 화면까지 통째로 멈춘다 — 진료실에서는 "서버가 죽었다"로 보인다.
      * DB 작업은 {@link AnalysisTransactionService} 의 짧은 트랜잭션으로 나눠 처리한다.
      *
-     * <p>대신 트랜잭션이 실패를 자동으로 되돌려 주지 않으므로, 외부 호출이 실패하면
+     * 대신 트랜잭션이 실패를 자동으로 되돌려 주지 않으므로, 외부 호출이 실패하면
      * ANALYZING 상태를 직접 복구해야 한다(아래 catch 절).
      */
     public AnalysisResponse analyze(Long visitId, List<Long> imageIds) {
@@ -139,20 +139,20 @@ public class AnalysisService {
     }
 
     /**
-     * 화면에서 고른 이미지들 중 <b>모델에 실제로 넣을 것</b>을 고른다.
+     * 화면에서 고른 이미지들 중 모델에 실제로 넣을 것을 고른다.
      *
-     * <p><b>모델을 확장할 때 고쳐야 하는 곳은 여기 한 군데다.</b> 지금 FastAPI 는 이미지 1장만
+     * 모델을 확장할 때 고쳐야 하는 곳은 여기 한 군데다. 지금 FastAPI 는 이미지 1장만
      * 받으므로 첫 장만 고른다. 다중 입력 모델로 바뀌면 이 메서드가 {@code imageIds} 를 그대로
      * 돌려주기만 하면 되고, {@code beginAnalysis → callFastApi → saveResult} 는 이미 리스트를
      * 받도록 되어 있어 {@code analysis_image} 에 N행이 자동으로 쌓인다.
      * 테이블의 복합 PK {@code (analysis_id, image_id)} 가 처음부터 그걸 상정하고 만들어졌다.
      *
-     * <p><b>고르지 않은 이미지는 매핑에 남기지 않는다.</b> 테이블 코멘트가 '분석에 사용된 이미지'이기
+     * 고르지 않은 이미지는 매핑에 남기지 않는다. 테이블 코멘트가 '분석에 사용된 이미지'이기
      * 때문이다. 모델이 보지도 않은 사진을 근거로 적어 두면 나중에 "이 진단은 무엇을 보고 내렸나"에
      * 거짓으로 답하게 되고, 그 답은 처방({@code prescription.analysis_id})과
      * 제증명({@code certificate})까지 그대로 흘러간다.
      *
-     * <p><b>알려진 UX 간극.</b> 진료 화면은 사진을 여러 장 선택할 수 있는데(Clinic.tsx
+     * 알려진 UX 간극. 진료 화면은 사진을 여러 장 선택할 수 있는데(Clinic.tsx
      * {@code toggleSelectedImage}) 실제로는 첫 장만 분석된다. 선택 UI 를 1장으로 제한하거나
      * 다중 입력 모델을 도입하기 전까지는 아래 경고 로그가 그 간극을 드러내는 유일한 신호다.
      */
@@ -167,7 +167,7 @@ public class AnalysisService {
     /**
      * 이 분석이 근거로 삼은 이미지 ID 목록.
      *
-     * <p>2026-08-30 이전에 만들어진 분석은 매핑이 없어 <b>빈 목록</b>이 나온다.
+     * 2026-08-30 이전에 만들어진 분석은 매핑이 없어 빈 목록이 나온다.
      * 그 시절 기록에는 근거 이미지가 실제로 존재하지 않으므로, 추측해서 채우지 않고 비워 둔다.
      */
     private List<Long> findAnalyzedImageIds(Long analysisId) {

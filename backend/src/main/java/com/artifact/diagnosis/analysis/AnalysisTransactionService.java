@@ -21,12 +21,12 @@ import java.util.Objects;
 /**
  * {@link AnalysisService} 의 DB 작업만 떼어낸 트랜잭션 경계.
  *
- * <p><b>왜 클래스를 나눴는가.</b> 취향이 아니라 Spring 프록시 동작 때문이다.
+ * 왜 클래스를 나눴는가. 취향이 아니라 Spring 프록시 동작 때문이다.
  * 같은 빈 안에서 {@code this.saveResult()} 를 부르면 프록시를 거치지 않아
  * {@code @Transactional} 이 조용히 무시된다. 외부 호출(FastAPI 추론·스토리지 업로드)을
- * 트랜잭션 밖으로 빼려면 DB 구간이 <b>다른 빈</b>에 있어야 한다.
+ * 트랜잭션 밖으로 빼려면 DB 구간이 다른 빈에 있어야 한다.
  *
- * <p><b>규칙: 이 클래스의 메서드는 DB만 만진다.</b> HTTP 호출이나 S3 업로드를 여기에 넣는 순간
+ * 규칙: 이 클래스의 메서드는 DB만 만진다. HTTP 호출이나 S3 업로드를 여기에 넣는 순간
  * 그 시간만큼 DB 커넥션을 붙잡게 되고, 원래 고치려던 문제로 그대로 되돌아간다.
  */
 @Slf4j
@@ -43,7 +43,7 @@ class AnalysisTransactionService {
     /**
      * 분석 시작 표시 + 추론에 넘길 이미지 경로. 실패 시 되돌릴 수 있도록 직전 상태도 함께 돌려준다.
      *
-     * <p><b>리스트인 이유.</b> 지금 모델은 1장만 받지만, 다중 입력 모델로 바뀌어도
+     * 리스트인 이유. 지금 모델은 1장만 받지만, 다중 입력 모델로 바뀌어도
      * 이 record 와 아래 두 메서드는 그대로 쓸 수 있게 해 둔 것이다.
      * 확장 시 실제로 고쳐야 하는 곳은 {@code AnalysisService.selectInferenceTargets} 한 군데다.
      */
@@ -56,7 +56,7 @@ class AnalysisTransactionService {
     }
 
     /**
-     * @param imageIds <b>모델에 실제로 넣을</b> 이미지들. 화면에서 고른 것 전부가 아니라
+     * @param imageIds 모델에 실제로 넣을 이미지들. 화면에서 고른 것 전부가 아니라
      *                 {@code AnalysisService.selectInferenceTargets} 가 추려낸 결과다.
      */
     @Transactional
@@ -88,7 +88,7 @@ class AnalysisTransactionService {
     /**
      * 추론이 실패했을 때 ANALYZING 을 직전 상태로 되돌린다.
      *
-     * <p>이걸 빠뜨리면 접수가 ANALYZING 에 갇힌다 — {@code markAnalyzing()} 이 그 상태를 거부하므로
+     * 이걸 빠뜨리면 접수가 ANALYZING 에 갇힌다 — {@code markAnalyzing()} 이 그 상태를 거부하므로
      * 재시도조차 막히고, 의사는 DB를 직접 고치기 전까지 그 환자를 진행시킬 수 없다.
      */
     @Transactional
@@ -106,7 +106,7 @@ class AnalysisTransactionService {
     /**
      * 분석 결과 저장 + 근거 이미지 매핑 + ANALYZED 전이. 외부 호출이 모두 끝난 뒤에만 호출한다.
      *
-     * <p>결과 행과 이미지 매핑은 <b>반드시 같은 트랜잭션</b>이어야 한다. 나눠 놓으면 결과만 저장되고
+     * 결과 행과 이미지 매핑은 반드시 같은 트랜잭션이어야 한다. 나눠 놓으면 결과만 저장되고
      * 매핑이 빠진 행이 생길 수 있는데, 그건 이 테이블이 3개월간 비어 있던 상태와 정확히 같다.
      *
      * @param imageIds 모델에 실제로 넣은 이미지들 — {@link #beginAnalysis} 에 넘긴 것과 같은 목록

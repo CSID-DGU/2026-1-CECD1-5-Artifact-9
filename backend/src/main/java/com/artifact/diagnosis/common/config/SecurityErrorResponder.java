@@ -20,32 +20,27 @@ import java.util.Map;
 /**
  * 필터 단계에서 걸린 요청에 JSON 오류 본문을 돌려준다.
  *
- * <p><b>왜 필요한가.</b> 이걸 붙이기 전에는 로그인하지 않은 요청이
- * <b>본문이 비어 있는 403</b>으로 나갔다. 두 가지가 망가진다:
+ * 왜 필요한가. 이걸 붙이기 전에는 로그인하지 않은 요청이
+ * 본문이 비어 있는 403으로 나갔다. 두 가지가 망가진다:
  *
- * <ol>
- *   <li>프론트가 <b>"세션이 만료됨"과 "권한이 부족함"을 구분하지 못한다.</b>
+ *   - 프론트가 "세션이 만료됨"과 "권한이 부족함"을 구분하지 못한다.
  *       전자는 다시 로그인시켜야 하고 후자는 로그인해도 소용없는데, 둘 다 403이면
- *       화면이 할 수 있는 일은 "알 수 없는 오류"를 띄우는 것뿐이다.</li>
- *   <li>본문이 비어 있어 <b>보여줄 메시지 자체가 없다.</b> 사용자는 아무 설명 없이
- *       실패한 화면만 본다.</li>
- * </ol>
+ *       화면이 할 수 있는 일은 "알 수 없는 오류"를 띄우는 것뿐이다.
+ *   - 본문이 비어 있어 보여줄 메시지 자체가 없다. 사용자는 아무 설명 없이
+ *       실패한 화면만 본다.
  *
- * <p>Spring Security는 인증 수단(formLogin/httpBasic)을 하나도 설정하지 않으면
+ * Spring Security는 인증 수단(formLogin/httpBasic)을 하나도 설정하지 않으면
  * 기본 진입점으로 {@code Http403ForbiddenEntryPoint}를 쓴다. JWT만 쓰는 우리 구조에서는
  * 그 기본값이 맞지 않으므로 401을 돌려주도록 바꾼다.
  *
- * <p>본문 형태는 {@code GlobalExceptionHandler}가 내는 것과 같은
+ * 본문 형태는 {@code GlobalExceptionHandler}가 내는 것과 같은
  * {@code {timestamp, status, message}} 로 맞춘다 — 프론트가 오류 본문을 한 가지 모양으로만
  * 다루면 되도록.
  *
- * <h2>어느 쪽이 어느 상황인가</h2>
- * <table>
- *   <tr><th>상황</th><th>처리 주체</th><th>응답</th></tr>
- *   <tr><td>토큰 없음·만료·위조</td><td>이 클래스 {@link #commence}</td><td>401</td></tr>
- *   <tr><td>인증됐으나 직책 부족(필터 단계)</td><td>이 클래스 {@link #handle}</td><td>403</td></tr>
- *   <tr><td>인증됐으나 직책 부족(@PreAuthorize)</td><td>{@code GlobalExceptionHandler}</td><td>403</td></tr>
- * </table>
+ * 어느 쪽이 어느 상황인지 정리하면:
+ *   - 토큰 없음·만료·위조 → 이 클래스의 {@link #commence} → 401
+ *   - 인증됐으나 직책 부족(필터 단계) → 이 클래스의 {@link #handle} → 403
+ *   - 인증됐으나 직책 부족(@PreAuthorize) → {@code GlobalExceptionHandler} → 403
  */
 @Slf4j
 @Component

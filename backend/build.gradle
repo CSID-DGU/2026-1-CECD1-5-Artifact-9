@@ -41,4 +41,12 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+
+	// @SpringBootTest 컨텍스트 4개(각각 Hibernate·Spring Security·AWS SDK·springdoc 포함)가
+	// 이 JVM 하나에서 순서대로 뜬다. JVM 기본 힙(물리 메모리의 1/4 추정치)에 맡겨두면
+	// CI 러너마다 실제로 잡히는 크기가 달라 어느 조합에서는 마지막 컨텍스트를 띄우다가
+	// OutOfMemoryError 로 죽는다 — 실제로 CorsConfigTest 에서 이렇게 CI 가 죽은 적이 있다.
+	// 힙을 고정값으로 못박아 두면 러너 사양과 무관하게 항상 같은 양이 보장된다.
+	minHeapSize = "512m"
+	maxHeapSize = "2g"
 }

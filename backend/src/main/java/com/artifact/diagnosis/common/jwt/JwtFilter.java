@@ -23,11 +23,11 @@ import java.util.List;
  * Authorization 헤더의 JWT를 검증해 SecurityContext에 인증을 심는다.
  * 토큰이 없거나 유효하지 않으면 인증을 심지 않고 그대로 통과시키고, 차단은 SecurityConfig가 한다.
  *
- * <p>심는 principal은 {@link AuthPrincipal} 이다 — loginId뿐 아니라 <b>memberId까지</b> 담는다.
+ * 심는 principal은 {@link AuthPrincipal} 이다 — loginId뿐 아니라 memberId까지 담는다.
  * "이 요청을 한 사람이 누구인가"를 서버가 토큰에서 직접 알 수 있어야, 처방 작성자 같은 값을
  * 요청 body에서 받지 않고 서버가 채울 수 있다.
  *
- * <p>검증 실패는 삼키지 않고 종류별로 남긴다 — 서명 불일치는 위조 시도일 수 있어 만료·형식오류와
+ * 검증 실패는 삼키지 않고 종류별로 남긴다 — 서명 불일치는 위조 시도일 수 있어 만료·형식오류와
  * 구분해야 하고, 실패를 전부 조용히 넘기면 배포 후 "왜 403이 나는지" 알 방법이 없어진다.
  * 다만 토큰 원문은 절대 로그에 남기지 않는다(그대로 재사용 가능한 자격증명이다).
  */

@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
@@ -28,22 +29,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 역할 기반 인가(감사 4번)를 고정하는 테스트.
  *
- * <p>두 가지를 본다.
- * <ol>
- *   <li><b>빠뜨림 방지</b> — 등록된 모든 핸들러가 인가 애노테이션을 갖고 있는가.
- *       새 엔드포인트를 추가하면서 애노테이션을 잊으면 여기서 빌드가 깨진다.</li>
- *   <li><b>실제 차단</b> — 애노테이션이 붙어 있다고 실제로 막히는 건 아니다.
- *       필터 체인을 태워 직책별 403을 확인한다.</li>
- * </ol>
+ * 두 가지를 본다.
+ *   - 빠뜨림 방지 — 등록된 모든 핸들러가 인가 애노테이션을 갖고 있는가.
+ *       새 엔드포인트를 추가하면서 애노테이션을 잊으면 여기서 빌드가 깨진다.
+ *   - 실제 차단 — 애노테이션이 붙어 있다고 실제로 막히는 건 아니다.
+ *       필터 체인을 태워 직책별 403을 확인한다.
  *
- * <p>계획서는 이 자리에 ArchUnit을 제안했지만 Gradle 의존성을 늘리지 않고 같은 보장을 얻었다.
- * ArchUnit은 <i>바이트코드</i>를 훑어 "컨트롤러처럼 생긴 클래스"를 찾지만, 이 테스트는 Spring이
- * <b>실제로 등록한 핸들러 목록</b>을 그대로 읽는다 — 등록되지 않은 코드는 애초에 대상이 아니고,
+ * 계획서는 이 자리에 ArchUnit을 제안했지만 Gradle 의존성을 늘리지 않고 같은 보장을 얻었다.
+ * ArchUnit은 바이트코드를 훑어 "컨트롤러처럼 생긴 클래스"를 찾지만, 이 테스트는 Spring이
+ * 실제로 등록한 핸들러 목록을 그대로 읽는다 — 등록되지 않은 코드는 애초에 대상이 아니고,
  * 등록됐는데 빠진 것은 반드시 걸린다.
  */
+// 컨텍스트를 이 클래스 전용으로 격리한다. DiagnosisApplicationTests 와 설정값이 완전히
+// 같아서 원래는 Spring 이 컨텍스트를 재사용했는데, 그러면 두 클래스가 같은 H2 인메모리
+// DB 를 공유하게 되어 한쪽이 넣은 데이터를 다른 쪽이 실행 순서에 따라 우연히 보거나
+// 못 보는 숨은 결합이 생긴다. 격리하는 김에 컨텍스트를 즉시 닫아 CI 에서 여러
+// SpringBootTest 컨텍스트가 동시에 쌓여 OutOfMemoryError 로 이어지는 것도 막는다
+// (build.gradle 의 test 힙 설정 주석 참고).
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureMockMvc
 @SpringBootTest(properties = {
-		"spring.datasource.url=jdbc:h2:mem:artifact_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.datasource.url=jdbc:h2:mem:artifact_endpoint_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
 		"spring.datasource.driver-class-name=org.h2.Driver",
 		"spring.datasource.username=sa",
 		"spring.datasource.password=",
@@ -82,7 +88,7 @@ class EndpointAuthorizationTest {
 	 * 우리 패키지의 모든 핸들러는 {@code @PreAuthorize} 계열(=@StaffAccess/@MedicalAccess/@DoctorAccess)
 	 * 또는 {@code @PublicEndpoint} 중 하나를 반드시 갖는다.
 	 *
-	 * <p>둘 다 없다는 것은 "로그인만 하면 누구나 호출 가능"이라는 뜻인데, 그게 의도였다면
+	 * 둘 다 없다는 것은 "로그인만 하면 누구나 호출 가능"이라는 뜻인데, 그게 의도였다면
 	 * {@code @StaffAccess}를 달아 의도를 밝혀야 한다. 아무것도 안 붙은 상태는 결정을 안 한 상태다.
 	 */
 	@Test
@@ -112,9 +118,9 @@ class EndpointAuthorizationTest {
 	/**
 	 * 공개 컨트롤러는 위 목록이 전부여야 한다.
 	 *
-	 * <p>{@code @PublicEndpoint}만으로는 부족하다 — 그 애노테이션은 붙이면 통과되므로,
+	 * {@code @PublicEndpoint}만으로는 부족하다 — 그 애노테이션은 붙이면 통과되므로,
 	 * 급한 마음에 아무 컨트롤러에나 붙여 인가를 우회하는 길이 열린다. 목록을 함께 고정해
-	 * <b>공개 대상을 늘리려면 이 테스트를 고쳐야만 하게</b> 만든다.
+	 * 공개 대상을 늘리려면 이 테스트를 고쳐야만 하게 만든다.
 	 */
 	@Test
 	void publicEndpointsAreOnlyTheExpectedOnes() {
@@ -135,7 +141,7 @@ class EndpointAuthorizationTest {
 	/**
 	 * 접수 직원은 진료 행위를 할 수 없다 — 이미지 업로드·AI 분석·진료 시작.
 	 *
-	 * <p>존재하지 않는 접수 ID로 호출한다. 인가가 걸려 있으면 서비스 로직에 닿기 전에 403이므로
+	 * 존재하지 않는 접수 ID로 호출한다. 인가가 걸려 있으면 서비스 로직에 닿기 전에 403이므로
 	 * 데이터를 만들 필요가 없고, 인가가 빠져 있으면 404가 나와 테스트가 실패한다.
 	 */
 	@Test
@@ -160,7 +166,7 @@ class EndpointAuthorizationTest {
 	/**
 	 * 간호사는 진료를 도울 수 있지만 처방·진단 확정은 의사의 행위다.
 	 *
-	 * <p>처방 body는 <b>검증을 통과하는 값</b>이어야 한다. 빈 배열을 보내면 {@code @Valid}가
+	 * 처방 body는 검증을 통과하는 값이어야 한다. 빈 배열을 보내면 {@code @Valid}가
 	 * 메서드 시큐리티보다 먼저 돌아 400이 나가고, 그러면 인가가 걸렸는지 확인하지 못한다.
 	 * (Spring MVC 순서: 인자 바인딩·검증 → 컨트롤러 호출을 감싼 시큐리티 인터셉터)
 	 */
@@ -197,7 +203,7 @@ class EndpointAuthorizationTest {
 	/**
 	 * 조회는 전 직책에 열려 있다 — 접수 직원도 환자를 찾아야 접수를 할 수 있다.
 	 *
-	 * <p>여기서 확인하는 것은 "차단되지 않는다"이지 "성공한다"가 아니다. 없는 접수를 조회하므로
+	 * 여기서 확인하는 것은 "차단되지 않는다"이지 "성공한다"가 아니다. 없는 접수를 조회하므로
 	 * 404가 정상이며, 403만 아니면 인가는 통과한 것이다.
 	 */
 	@Test
@@ -224,11 +230,11 @@ class EndpointAuthorizationTest {
 	/**
 	 * 제증명 — 원무과가 열 수 있는 경로와 의사만 열 수 있는 경로가 갈린다.
 	 *
-	 * <p>진단명이 들어가는 서류(진단서·소견서·의뢰서)는 직접 진찰한 의사만 발급할 수 있고
+	 * 진단명이 들어가는 서류(진단서·소견서·의뢰서)는 직접 진찰한 의사만 발급할 수 있고
 	 * (의료법 제17조), 그 서술 항목을 만드는 AI 초안도 같은 제한을 받는다.
 	 * 발급 기록을 무효화하는 것은 진료기록 정정에 준하므로 역시 의사 전용이다.
 	 *
-	 * <p>반대로 발급대장 조회는 원무과 업무다 — 실제 병원에서 제증명 발급 창구는 원무과에 있다.
+	 * 반대로 발급대장 조회는 원무과 업무다 — 실제 병원에서 제증명 발급 창구는 원무과에 있다.
 	 */
 	@Test
 	void staffCannotDraftOrVoidCertificates() throws Exception {

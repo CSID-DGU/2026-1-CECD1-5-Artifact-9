@@ -14,7 +14,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long>,
     /**
      * 이름으로 부분 검색 (조회 화면용).
      *
-     * <p>파생 쿼리({@code findByNameContaining})를 쓰지 않는 이유는 <b>거기엔 escape 절을 붙일 수 없어서</b>다.
+     * 파생 쿼리({@code findByNameContaining})를 쓰지 않는 이유는 거기엔 escape 절을 붙일 수 없어서다.
      * 그대로 두면 검색창에 {@code %} 한 글자만 넣어도 전체 환자가 나온다.
      * 패턴은 반드시 {@link com.artifact.diagnosis.common.util.LikeEscape#contains(String)} 로 만들 것.
      */

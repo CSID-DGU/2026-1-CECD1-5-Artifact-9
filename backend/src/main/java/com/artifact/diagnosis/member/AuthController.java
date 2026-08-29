@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
-@PublicEndpoint // 로그인/가입은 토큰을 <b>받기 위한</b> 경로다. 인증을 요구하면 아무도 로그인할 수 없다.
+@PublicEndpoint // 로그인/가입은 토큰을 받기 위한 경로다. 인증을 요구하면 아무도 로그인할 수 없다.
 public class AuthController {
 
     private final MemberService memberService;

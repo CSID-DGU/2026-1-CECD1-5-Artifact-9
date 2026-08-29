@@ -13,9 +13,9 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * 대기실 키오스크 REST API. 태블릿은 JWT가 없으므로 이 경로는 인증 없이 연다(SecurityConfig 참고).
  * 인증 대신, 접수 시 발급되는 접수별 토큰(visit.kiosk_token)으로 접근 대상을 한정한다 —
- * 태블릿은 QR로 받은 /kiosk/{token} 경로로 진입하고, <b>읽기·쓰기 API가 모두 토큰 스코프다.</b>
+ * 태블릿은 QR로 받은 /kiosk/{token} 경로로 진입하고, 읽기·쓰기 API가 모두 토큰 스코프다.
  *
- * <p>여기에 엔드포인트를 추가할 때는 반드시 {@code /session/{token}/...} 아래에 두고,
+ * 여기에 엔드포인트를 추가할 때는 반드시 {@code /session/{token}/...} 아래에 두고,
  * SecurityConfig의 permitAll 목록에도 명시적으로 추가해야 한다. visitId처럼 추측 가능한 값을
  * 경로에 받으면 같은 LAN의 누구나 임의 환자의 데이터에 닿게 된다.
  */

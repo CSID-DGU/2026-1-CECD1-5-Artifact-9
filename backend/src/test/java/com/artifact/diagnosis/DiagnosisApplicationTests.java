@@ -28,6 +28,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Limit;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
@@ -41,9 +42,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// EndpointAuthorizationTest 와 설정값이 완전히 같아 Spring 이 컨텍스트를 재사용했는데,
+// 그러면 두 클래스가 같은 H2 인메모리 DB 를 공유하게 되어 실행 순서에 따라 한쪽이 넣은
+// 데이터를 다른 쪽이 우연히 보거나 못 보는 숨은 결합이 생긴다. 격리하는 김에 컨텍스트를
+// 즉시 닫아 CI 에서 여러 SpringBootTest 컨텍스트가 동시에 쌓여 OutOfMemoryError 로
+// 이어지는 것도 막는다(build.gradle 의 test 힙 설정 주석 참고).
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureMockMvc
 @SpringBootTest(properties = {
-		"spring.datasource.url=jdbc:h2:mem:artifact_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
+		"spring.datasource.url=jdbc:h2:mem:artifact_app_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
 		"spring.datasource.driver-class-name=org.h2.Driver",
 		"spring.datasource.username=sa",
 		"spring.datasource.password=",
@@ -238,9 +245,9 @@ class DiagnosisApplicationTests {
 	}
 
 	/**
-	 * 키오스크 자동 진입이 잡는 대상은 "예비분석을 아직 안 한 접수 중 <b>가장 최근</b> 1건"이다.
+	 * 키오스크 자동 진입이 잡는 대상은 "예비분석을 아직 안 한 접수 중 가장 최근 1건"이다.
 	 *
-	 * <p>태블릿은 3초마다 이 조회를 폴링하다가 대상이 생기면 곧바로 이동한다. 따라서 실제로 태블릿 앞에
+	 * 태블릿은 3초마다 이 조회를 폴링하다가 대상이 생기면 곧바로 이동한다. 따라서 실제로 태블릿 앞에
 	 * 서 있는 사람은 방금 접수한 환자다. 오래된 순으로 고르면, 접수만 하고 태블릿을 쓰지 않은 묵은 접수가
 	 * 하나라도 남아 있을 때 태블릿이 그 접수를 영원히 반복해 잡아 새 환자가 아무도 진입하지 못한다.
 	 * 이 테스트는 바로 그 "묵은 접수에 갇히지 않는다"를 고정한다.
@@ -289,14 +296,14 @@ class DiagnosisApplicationTests {
 	/**
 	 * 토큰 없이 처방을 저장할 수 있으면 위의 보장이 통째로 무의미해진다.
 	 *
-	 * <p><b>401이어야 한다 — 403이 아니다.</b> 전에는 Spring Security 기본 진입점이
+	 * 401이어야 한다 — 403이 아니다. 전에는 Spring Security 기본 진입점이
 	 * 본문 없는 403을 돌려줬다. 그러면 프론트가 두 상황을 구분할 수 없다:
-	 * <b>세션이 만료됐으니 다시 로그인하면 되는 경우</b>와
-	 * <b>직책이 모자라 다시 로그인해도 소용없는 경우</b>가 같은 응답으로 온다.
+	 * 세션이 만료됐으니 다시 로그인하면 되는 경우와
+	 * 직책이 모자라 다시 로그인해도 소용없는 경우가 같은 응답으로 온다.
 	 * 그 결과 토큰이 만료돼도 로그인 화면으로 넘어가지 못하고, 화면은 로그인된 척하면서
 	 * 누르는 것마다 조용히 실패했다.
 	 *
-	 * <p>본문까지 확인하는 이유는, 상태 코드만 맞고 본문이 비면 사용자에게 띄울 문구가
+	 * 본문까지 확인하는 이유는, 상태 코드만 맞고 본문이 비면 사용자에게 띄울 문구가
 	 * 없어서 화면에 아무것도 안 뜨기 때문이다. 코드와 본문이 한 쌍으로 계약이다.
 	 */
 	@Test
@@ -317,7 +324,7 @@ class DiagnosisApplicationTests {
 	/**
 	 * 인증이 필요한 조회 경로도 같은 계약을 지키는지 본다.
 	 *
-	 * <p>위 테스트가 POST 하나만 보고 있어서, 진입점 설정이 특정 경로에만 걸린 것인지
+	 * 위 테스트가 POST 하나만 보고 있어서, 진입점 설정이 특정 경로에만 걸린 것인지
 	 * 전체에 걸린 것인지 구분되지 않는다. 실제로 프론트가 세션 만료를 알아채는 지점은
 	 * 대부분 화면 진입 직후의 GET이다.
 	 */
@@ -332,9 +339,9 @@ class DiagnosisApplicationTests {
 	/**
 	 * 검색어에 섞인 LIKE 와일드카드가 글자로 취급되는지 확인한다.
 	 *
-	 * <p>이 테스트가 없으면 조용히 되돌아갈 수 있는 종류의 수정이다. 누군가 편의를 위해
+	 * 이 테스트가 없으면 조용히 되돌아갈 수 있는 종류의 수정이다. 누군가 편의를 위해
 	 * {@code findByNameContaining} 같은 파생 쿼리로 되돌리는 순간 escape 절이 사라지고,
-	 * <b>검색창에 {@code %} 한 글자만 넣으면 전체 환자 명단이 나오는 상태</b>로 돌아간다.
+	 * 검색창에 {@code %} 한 글자만 넣으면 전체 환자 명단이 나오는 상태로 돌아간다.
 	 * 화면상으로는 "검색이 잘 된다"로 보여서 눈으로는 잡히지 않는다.
 	 */
 	@Test
