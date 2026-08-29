@@ -53,8 +53,6 @@ public class AnalysisService {
     @Value("${fastapi.internal-secret}")
     private String fastapiInternalSecret;
 
-    private static final String MODEL_VERSION = "efficientnet_b0_v1";
-
     private static final Map<String, String> DISEASE_NAME_KO = Map.of(
             "akiec", "광선각화증/상피내암",
             "bcc",   "기저세포암",
@@ -118,7 +116,7 @@ public class AnalysisService {
 
             // (3) 짧은 트랜잭션 — 결과 저장 + ANALYZED 전이
             result = analysisTransactionService.saveResult(
-                    visitId, MODEL_VERSION, prediction.top1().diseaseCode(),
+                    visitId, prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
                     prediction.top1().confidence(), topK, inferenceMs, heatmapKey);
         } catch (RuntimeException e) {
             analysisTransactionService.abortAnalysis(visitId, target.previousStatus());
@@ -263,7 +261,8 @@ public class AnalysisService {
             Double threshold,
             FastApiTop1 top1,
             List<FastApiTop5Item> top5,
-            @JsonProperty("heatmap_base64") String heatmapBase64
+            @JsonProperty("heatmap_base64") String heatmapBase64,
+            @JsonProperty("model_version") String modelVersion
     ) {
         private boolean isValidOrDefault() {
             return isValid == null || isValid;
@@ -273,6 +272,13 @@ public class AnalysisService {
             return message != null && !message.isBlank()
                     ? message
                     : "AI 분석에 적합하지 않은 이미지입니다.";
+        }
+
+        /** model_version 컬럼은 NOT NULL 이라, 구버전 FastAPI가 필드를 안 보내는 과도기에도 저장이 깨지면 안 된다. */
+        private String modelVersionOrDefault() {
+            return modelVersion != null && !modelVersion.isBlank()
+                    ? modelVersion
+                    : "unknown";
         }
     }
 

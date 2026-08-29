@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, File, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import hashlib
 import hmac
 import torch
 import timm
@@ -76,6 +77,13 @@ model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=7)
 model.load_state_dict(torch.load("model.pth", map_location=device, weights_only=True))
 model.to(device)
 model.eval()
+
+# 가중치 파일 자체의 해시로 버전을 만든다 — 사람이 적는 문자열 상수는 파일을 바꿔도
+# 저절로 안 바뀌므로 언젠가 거짓말을 하게 된다. 해시는 model.pth 가 바뀌는 즉시,
+# 그리고 그럴 때만 바뀐다.
+with open("model.pth", "rb") as f:
+    _model_hash = hashlib.sha256(f.read()).hexdigest()
+MODEL_VERSION = f"efficientnet_b0-{_model_hash[:12]}"
 
 # 모델은 서버 전체가 하나를 공유한다. Grad-CAM 은 그 model 객체에 forward hook 을
 # 등록해 중간 activation 을 꺼내는 방식이라, A 요청이 hook 을 붙인 상태에서
@@ -204,6 +212,7 @@ def run_inference(image_bytes: bytes) -> dict:
         "top1": results[0],
         "top5": results,
         "heatmap_base64": heatmap_base64,
+        "model_version": MODEL_VERSION,
     }
 
 
@@ -215,6 +224,8 @@ def health():
         "status": "ok",
         "device": str(device),
         "min_top1_confidence": MIN_TOP1_CONFIDENCE,
+        "model_version": MODEL_VERSION,
+        "classes": CLASSES,
     }
 
 
