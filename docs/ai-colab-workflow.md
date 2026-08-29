@@ -20,13 +20,14 @@ preprocess_config.json
 
 ```json
 {
-  "0": "nv",
-  "1": "mel",
+  "0": "akiec",
+  "1": "bcc",
   "2": "bkl",
-  "3": "bcc",
-  "4": "akiec",
-  "5": "df",
-  "6": "vasc"
+  "3": "df",
+  "4": "mel",
+  "5": "nv",
+  "6": "vasc",
+  "7": "inflammatory"
 }
 ```
 

@@ -21,4 +21,5 @@ Colab에서 이미지 분류 모델을 빠르게 학습하고 테스트하는 �
 주의:
 
 - 라벨 값은 백엔드 `disease.disease_code`와 같아야 한다.
-- 현재 백엔드 기본 질병코드는 `nv`, `mel`, `bkl`, `bcc`, `akiec`, `df`, `vasc`다.
+- 현재 백엔드 기본 질병코드는 `akiec`, `bcc`, `bkl`, `df`, `mel`, `nv`, `vasc`, `inflammatory` 8종이다.
+- 순서가 `fastapi/main.py` 의 `CLASSES` 와 정확히 같아야 한다 — 인덱스가 어긋나면 조용히 다른 병명이 나온다.

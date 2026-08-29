@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CLASSES = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
+CLASSES = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc", "inflammatory"]
 CLASS_NAMES_KO = {
     "akiec": "광선각화증/상피내암",
     "bcc":   "기저세포암",
@@ -32,6 +32,7 @@ CLASS_NAMES_KO = {
     "mel":   "악성 흑색종",
     "nv":    "멜라닌세포모반",
     "vasc":  "혈관성 병변",
+    "inflammatory": "염증성 피부질환",
 }
 
 MIN_TOP1_CONFIDENCE = float(os.getenv("MIN_TOP1_CONFIDENCE", "0.45"))
@@ -73,7 +74,7 @@ def verify_internal_secret(x_internal_secret: str = Header(default="")) -> None:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=7)
+model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=8)
 model.load_state_dict(torch.load("model.pth", map_location=device, weights_only=True))
 model.to(device)
 model.eval()

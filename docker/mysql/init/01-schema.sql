@@ -61,18 +61,18 @@ CREATE TABLE patient (
 ) ENGINE=InnoDB COMMENT='환자 마스터';
 
 -- ---------------------------------------------------------------------
--- 2. 병명 마스터 (disease) — HAM10000 7-class (AI 모델 출력 기준)
+-- 2. 병명 마스터 (disease) — AI 모델 출력 8종 (HAM10000 7종 + SCIN 통합 염증성 1종)
 -- ---------------------------------------------------------------------
 CREATE TABLE disease (
     disease_id   BIGINT      NOT NULL AUTO_INCREMENT  COMMENT '질병ID (PK)',
-    disease_code VARCHAR(20) NOT NULL UNIQUE          COMMENT 'HAM10000 코드 (nv, mel, ...)',
+    disease_code VARCHAR(20) NOT NULL UNIQUE          COMMENT '모델 클래스 코드 (nv, mel, inflammatory, ...)',
     name_ko      VARCHAR(100) NOT NULL                COMMENT '한글 병명',
     name_en      VARCHAR(100) NULL                    COMMENT '영문 병명',
     description  TEXT        NULL                     COMMENT '질병 설명',
     severity     ENUM('LOW','MEDIUM','HIGH') NULL     COMMENT '심각도',
     created_at   DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (disease_id)
-) ENGINE=InnoDB COMMENT='AI 모델 출력 병명 마스터 (HAM10000 7종)';
+) ENGINE=InnoDB COMMENT='AI 모델 출력 병명 마스터 (8종)';
 
 INSERT INTO disease (disease_code, name_ko, name_en, severity) VALUES
   ('nv',    '멜라닌세포모반',      'Melanocytic nevus',                           'LOW'),
@@ -81,7 +81,10 @@ INSERT INTO disease (disease_code, name_ko, name_en, severity) VALUES
   ('bcc',   '기저세포암',          'Basal cell carcinoma',                        'HIGH'),
   ('akiec', '광선각화증/상피내암', 'Actinic keratoses / Intraepithelial carcinoma','MEDIUM'),
   ('df',    '피부섬유종',           'Dermatofibroma',                              'LOW'),
-  ('vasc',  '혈관성 병변',          'Vascular lesions',                            'LOW');
+  ('vasc',  '혈관성 병변',          'Vascular lesions',                            'LOW'),
+  -- SCIN 데이터셋으로 추가한 비색소성 염증 질환 통합 클래스
+  -- (습진 / 접촉피부염 / 두드러기 / 벌레물림을 하나로 묶었다)
+  ('inflammatory', '염증성 피부질환', 'Inflammatory skin condition',              'LOW');
 
 -- ---------------------------------------------------------------------
 -- 3. KCD 상병코드 마스터 (kcd_disease) — 엑셀 import, 수만 건

@@ -577,6 +577,7 @@ GEMINI_API_KEY=
 | `mel` | 악성 흑색종 | Melanoma |
 | `nv` | 멜라닌세포모반 | Melanocytic nevi |
 | `vasc` | 혈관성 병변 | Vascular lesions |
+| `inflammatory` | 염증성 피부질환 | Inflammatory skin condition |
 
 ### FastAPI 엔드포인트
 
