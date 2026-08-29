@@ -1,12 +1,28 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
-# torch 와 torchvision 은 짝으로 움직인다 — torchvision 0.20.1 은 torch==2.5.1 을 못박아 요구한다.
-# 한쪽만 올리면 pip 이 ResolutionImpossible 로 설치를 거부하므로 (Dependabot 이 실제로 그렇게 올렸다)
-# 올릴 때는 둘을 함께, 호환되는 조합으로 올린다. 그리고 버전을 올린 뒤에는 실제 추론을 한 번 돌려
-# 결과를 대조한다 — 가중치 파일이 같아도 연산 구현이 바뀌면 예측이 달라질 수 있다.
-torch==2.5.1
-torchvision==0.20.1
+
+# 배포 대상(EC2 t4g)에는 GPU 가 없다. 그런데 PyPI 의 torch 는 2.13 부터 aarch64 에서도
+# CUDA 런타임(nvidia-* 19개, cudnn·triton 포함)을 의존성으로 끌고 와 이미지가 1.2GB → 9GB 가 된다.
+# 배포 중에는 새 이미지와 옛 이미지가 함께 있으므로(정리는 배포가 끝난 뒤에 돈다)
+# 그대로 두면 EC2 디스크가 감당하지 못한다.
+#
+# 이 인덱스를 추가하면 pip 이 같은 버전의 CPU 전용 wheel 을 대신 고른다 — 로컬 버전이 붙은
+# 2.13.0+cpu 가 PEP 440 상 2.13.0 보다 높기 때문이다. 버전 핀은 그대로라 Dependabot 도 계속 추적한다.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# torch 와 torchvision 은 반드시 짝으로 올린다. torchvision 은 자기와 맞는 torch 버전을
+# 정확히 못박아 요구해서, 한쪽만 올리면 pip 이 ResolutionImpossible 로 설치를 거부한다
+# (Dependabot 이 실제로 두 번 그렇게 올렸다 — PR #87, #89).
+#
+# 여기에 버전 번호를 적지 않는 이유가 있다. Dependabot 은 주석 속 버전 문자열까지 기계적으로
+# 치환하기 때문에, 적어두면 다음 PR 에서 주석 자체가 거짓말이 된다(#89 에서 실제로 그랬다).
+#
+# 올린 뒤에는 반드시 실제 추론을 돌려 결과를 대조한다. 가중치가 같아도 연산 구현이 바뀌면
+# 확률이 미세하게 달라진다 — 2.5.1 → 2.13.0 에서 절대오차 약 2e-5 를 관측했다.
+# 그 정도면 클래스 순위도 임계값 판정도 바뀌지 않지만, 확인 없이 넘길 일은 아니다.
+torch==2.13.0
+torchvision==0.28.0
 timm==1.0.11
 Pillow==12.3.0
-python-multipart==0.0.31
+python-multipart==0.0.32
 numpy
