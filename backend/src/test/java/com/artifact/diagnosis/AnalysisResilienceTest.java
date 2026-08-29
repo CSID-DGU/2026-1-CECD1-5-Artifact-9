@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -33,12 +34,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * AI 분석이 외부 장애를 만났을 때의 동작 검증.
  *
- * <p>여기서 재현하는 것은 "FastAPI가 죽은" 상황이 아니라 <b>"살아 있는데 응답하지 않는"</b> 상황이다.
+ * 여기서 재현하는 것은 "FastAPI가 죽은" 상황이 아니라 "살아 있는데 응답하지 않는" 상황이다.
  * 죽으면 연결이 즉시 거절돼 바로 실패하지만, 멈추기만 하면 타임아웃이 없는 한 요청 스레드가 영원히 묶인다.
  * 진료실 입장에서는 후자가 훨씬 흔하고 훨씬 나쁘다 — 서버는 살아 있는데 화면 전체가 먹통이 된다.
  *
- * <p>본 테스트 클래스가 별도 컨텍스트를 쓰는 이유는 {@code fastapi.url} 을 가짜 서버로 바꿔야 하기 때문이다.
+ * 본 테스트 클래스가 별도 컨텍스트를 쓰는 이유는 {@code fastapi.url} 을 가짜 서버로 바꿔야 하기 때문이다.
  */
+// 이 클래스는 @DynamicPropertySource 를 쓰기 때문에 애초에 다른 테스트와 컨텍스트를
+// 공유하지 않는다. 그래도 끝나면 즉시 닫아야 CI 에서 SpringBootTest 컨텍스트 여러 개가
+// 동시에 쌓여 OutOfMemoryError 로 이어지는 것을 막을 수 있다(build.gradle 의 test 힙 설정 주석 참고).
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest
 class AnalysisResilienceTest {
 
@@ -111,7 +116,7 @@ class AnalysisResilienceTest {
      * 응답하지 않는 추론 서버를 만나면 제한 시간 안에 503으로 끊고,
      * 접수 상태는 분석 시작 전으로 되돌아가야 한다.
      *
-     * <p>상태 복구가 특히 중요하다. ANALYZING 에 갇히면 {@code markAnalyzing()} 이 그 상태를 거부하므로
+     * 상태 복구가 특히 중요하다. ANALYZING 에 갇히면 {@code markAnalyzing()} 이 그 상태를 거부하므로
      * 재시도조차 막히고, 의사는 DB를 직접 고치기 전까지 그 환자를 진행시킬 수 없다.
      */
     @Test

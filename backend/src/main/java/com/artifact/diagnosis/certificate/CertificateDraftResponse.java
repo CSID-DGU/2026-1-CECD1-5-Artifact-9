@@ -3,7 +3,7 @@ package com.artifact.diagnosis.certificate;
 /**
  * LLM이 만든 서술 칸 초안.
  *
- * <p>{@code generated=false} 여도 에러가 아니다. AI 초안은 타자를 대신 쳐주는 편의 기능이지
+ * {@code generated=false} 여도 에러가 아니다. AI 초안은 타자를 대신 쳐주는 편의 기능이지
  * 발급의 전제 조건이 아니므로, 실패하면 의사가 직접 쓰면 된다. 그래서 실패 사유를
  * {@code message} 로 알려주고 화면은 수기 작성으로 계속 진행한다.
  */

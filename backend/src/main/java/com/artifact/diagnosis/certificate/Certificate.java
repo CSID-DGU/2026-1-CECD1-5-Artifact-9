@@ -11,12 +11,12 @@ import java.time.LocalDateTime;
 /**
  * 제증명 발급 기록 한 건. 실제 병원의 "제증명 발급대장" 한 줄에 해당한다.
  *
- * <p>핵심은 {@link #content} 다. 발급 당시 종이에 찍힌 값 전체를 JSON으로 굳혀 보관한다.
+ * 핵심은 {@link #content} 다. 발급 당시 종이에 찍힌 값 전체를 JSON으로 굳혀 보관한다.
  * 진단서를 떼어준 뒤 의사가 처방을 고치더라도(재처방은 기존 처방을 지우고 다시 만든다),
  * 이미 환자 손에 나간 서류와 시스템이 보여주는 내용이 달라지면 안 된다.
  * 그래서 재발급은 지금 데이터로 다시 만드는 것이 아니라 이 스냅샷을 그대로 다시 출력한다.
  *
- * <p>DB 테이블: certificate (docker/mysql/init/04-certificate.sql)
+ * DB 테이블: certificate (docker/mysql/init/04-certificate.sql)
  */
 @Entity
 @Table(name = "certificate")

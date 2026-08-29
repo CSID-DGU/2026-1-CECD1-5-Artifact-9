@@ -18,7 +18,7 @@ import {
 /**
  * 로그인 상태를 앱 전체에 공급한다.
  *
- * <p>이 파일은 컴포넌트만 내보낸다. `useAuth`와 타입은 `auth/AuthContext.ts`에 있다 —
+ * 이 파일은 컴포넌트만 내보낸다. `useAuth`와 타입은 `auth/AuthContext.ts`에 있다 —
  * 섞어 두면 Fast Refresh가 꺼져서 화면 수정마다 로그인이 풀린다(그쪽 주석 참고).
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -33,11 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * 토큰이 만료·위조로 거부되면(401) 저장된 로그인 상태를 지운다.
    *
-   * <p>이게 없으면 <b>토큰만 죽고 화면은 로그인된 척한다.</b> localStorage에 사용자 정보가
+   * 이게 없으면 토큰만 죽고 화면은 로그인된 척한다. localStorage에 사용자 정보가
    * 남아 있으니 메뉴도 이름도 그대로인데, 누르는 것마다 조용히 실패한다.
    * JWT 만료(개발 24시간 / 운영 8시간)는 드문 일이 아니라 매일 일어나는 일이다.
    *
-   * <p>user가 null이 되면 PrivateRoute가 로그인 화면으로 보낸다 — 여기서 직접 이동시키지 않는다.
+   * user가 null이 되면 PrivateRoute가 로그인 화면으로 보낸다 — 여기서 직접 이동시키지 않는다.
    */
   useEffect(() => {
     setSessionExpiredHandler(() => {

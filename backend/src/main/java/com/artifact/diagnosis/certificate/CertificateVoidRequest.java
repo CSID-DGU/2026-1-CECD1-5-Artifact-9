@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 /**
  * 증명서 무효 처리 요청.
  *
- * <p>사유를 필수로 받는다. 발급대장에 "무효"라고만 남고 이유가 없으면
+ * 사유를 필수로 받는다. 발급대장에 "무효"라고만 남고 이유가 없으면
  * 나중에 그 서류가 왜 취소됐는지 아무도 설명할 수 없다.
  */
 public record CertificateVoidRequest(

@@ -3,12 +3,12 @@ import { STORAGE_KEYS } from "../constants";
 /**
  * 로그인 세션의 단일 보관소.
  *
- * <p><b>왜 별도 파일인가.</b> `client.ts`는 401을 받으면 "세션이 끝났다"고 알려야 하고,
+ * 왜 별도 파일인가. `client.ts`는 401을 받으면 "세션이 끝났다"고 알려야 하고,
  * `AuthContext`는 그 신호를 받아 로그아웃해야 한다. 그런데 `AuthContext`가 이미 `client.ts`를
  * 쓰고 있어서, `client.ts`가 거꾸로 `AuthContext`를 import하면 순환 참조가 된다.
  * 둘 다 의존할 수 있는 얇은 모듈을 하나 두어 끊는다.
  *
- * <p>덤으로 토큰을 꺼내는 코드가 한 곳에 모인다. 전에는 `client.ts`와 `AuthedImage.tsx`가
+ * 덤으로 토큰을 꺼내는 코드가 한 곳에 모인다. 전에는 `client.ts`와 `AuthedImage.tsx`가
  * 각자 `localStorage.getItem(...)`을 호출하고 있어서, 저장 방식을 바꾸려면 두 곳을 같이 고쳐야 했다.
  */
 
@@ -57,8 +57,8 @@ export function setSessionExpiredHandler(next: SessionExpiredHandler | null): vo
 /**
  * 토큰이 만료·위조로 거부됐을 때 호출한다. 세션을 지우고 등록된 핸들러를 한 번만 부른다.
  *
- * <p><b>한 번만 부르는 이유.</b> 화면 하나가 진료기록·이미지·분석결과를 병렬로 요청하는데,
- * 토큰이 만료되면 이들이 <b>동시에</b> 401로 떨어진다. 매번 알리면 "세션이 만료됐습니다"가
+ * 한 번만 부르는 이유. 화면 하나가 진료기록·이미지·분석결과를 병렬로 요청하는데,
+ * 토큰이 만료되면 이들이 동시에 401로 떨어진다. 매번 알리면 "세션이 만료됐습니다"가
  * 대여섯 번 겹쳐 뜨고 라우터 이동도 그만큼 중복된다. 다음 로그인 성공 시 {@link saveSession}이 푼다.
  */
 export function notifySessionExpired(): void {

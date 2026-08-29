@@ -10,7 +10,7 @@ export type ApiErrorBody = {
 /**
  * 서버가 돌려준 오류, 또는 서버에 닿지도 못한 실패.
  *
- * <p>`status`는 HTTP 상태 코드이고, 네트워크 실패처럼 응답 자체가 없는 경우에만
+ * `status`는 HTTP 상태 코드이고, 네트워크 실패처럼 응답 자체가 없는 경우에만
  * {@link NETWORK_ERROR_STATUS}(0)이다. 화면에 뿌릴 문구는 직접 만들지 말고
  * `getErrorMessage()`(./errors)에 맡긴다.
  */
@@ -89,7 +89,7 @@ export async function apiRequest<T>(
 /**
  * 응답 본문을 안전하게 읽는다.
  *
- * <p>본문이 없는 응답(204 No Content, Content-Length: 0)에 `response.json()`을 부르면
+ * 본문이 없는 응답(204 No Content, Content-Length: 0)에 `response.json()`을 부르면
  * "Unexpected end of JSON input"으로 터진다. 정작 요청은 성공했는데 실패로 보이게 된다.
  */
 async function readBody(response: Response): Promise<unknown> {

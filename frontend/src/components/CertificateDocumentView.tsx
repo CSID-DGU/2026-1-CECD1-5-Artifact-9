@@ -7,10 +7,10 @@ import type {
 /**
  * 발급된 증명서를 A4 한 장으로 그린다.
  *
- * <p>그리는 재료는 `certificate.content` 스냅샷뿐이다. 지금 DB에 있는 처방이나 환자 정보를
+ * 그리는 재료는 `certificate.content` 스냅샷뿐이다. 지금 DB에 있는 처방이나 환자 정보를
  * 다시 읽지 않는다 — 발급 후 처방이 수정되어도 이미 나간 종이와 화면이 같아야 하기 때문이다.
  *
- * <p>인쇄 대상 영역을 `id="certificate-print-area"`로 표시한다. 인쇄 CSS(index.css)가
+ * 인쇄 대상 영역을 `id="certificate-print-area"`로 표시한다. 인쇄 CSS(index.css)가
  * 이 id 하나만 남기고 나머지 화면을 숨기므로, 종이 출력과 PDF 저장이 같은 경로로 처리된다.
  */
 export function CertificateDocumentView({ certificate }: { certificate: CertificateResponse }) {
