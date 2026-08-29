@@ -51,48 +51,17 @@ jobs:
           echo "배포 대상: $(git log --oneline -1)"
 
       # -------------------------------------------
-      # 스키마 마이그레이션
+      # 스키마 마이그레이션은 여기서 하지 않는다 — Flyway 가 한다.
       # -------------------------------------------
-      # docker/mysql/init/*.sql 은 **데이터 볼륨이 비어 있을 때 한 번만** 실행된다
-      # (MySQL 의 docker-entrypoint-initdb.d 규칙). 운영 DB 에는 이미 데이터가 있으므로
-      # 나중에 추가된 테이블은 영원히 만들어지지 않고, ddl-auto=none 이라 Hibernate 도
-      # 만들어주지 않는다. 그대로 두면 배포는 "성공" 하는데 해당 API 만 500 이 난다
-      # (헬스체크가 / 만 보므로 아무도 눈치채지 못한다).
+      # 예전에는 이 자리에서 docker/mysql/init/*.sql 을 손으로 골라 실행했다.
+      # MySQL 의 docker-entrypoint-initdb.d 는 데이터 볼륨이 비어 있을 때만 돌기 때문에,
+      # 운영처럼 이미 데이터가 있는 DB 에는 나중에 추가된 테이블이 영영 안 생겼기 때문이다.
+      # 그 방식은 "배포에 파일을 덧붙이는 것을 사람이 기억해야 한다" 는 게 약점이었다.
       #
-      # 새 코드가 뜨기 **전에** 돌린다. 순서가 반대면 배포 직후 잠깐 "테이블 없음" 이 난다.
-      # 구버전 코드는 새 테이블을 모르므로 미리 만들어도 무해하다.
-      #
-      # 여기 나열하는 SQL 은 반드시 CREATE TABLE IF NOT EXISTS 여야 한다 — 배포마다 다시 돈다.
-      - name: 스키마 마이그레이션
-        run: |
-          cd ~/artifact
-
-          # 나중에 테이블이 추가되면 이 줄에만 파일을 덧붙인다.
-          MIGRATIONS="docker/mysql/init/04-certificate.sql"
-
-          # 빌드 전이라 mysql 이 내려가 있을 수 있다. 이 단계에서만 먼저 띄운다.
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d mysql
-
-          # .env 는 git 에 올라가지 않으므로 배포 폴더의 실제 파일에서 읽는다.
-          PW=$(grep -m1 '^DB_PASSWORD=' .env | cut -d= -f2-)
-          if [ -z "$PW" ]; then
-            echo "❌ ~/artifact/.env 에서 DB_PASSWORD 를 읽지 못했습니다."
-            exit 1
-          fi
-
-          # MySQL 이 접속을 받을 때까지 기다린다.
-          for i in $(seq 1 30); do
-            if docker compose exec -T mysql mysqladmin ping -uroot -p"$PW" --silent 2>/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-
-          for sql in $MIGRATIONS; do
-            echo "  → $sql"
-            docker compose exec -T mysql mysql -uroot -p"$PW" < "$sql"
-          done
-          echo "✅ 마이그레이션 완료"
+      # 지금은 backend/src/main/resources/db/migration 의 V*.sql 이 jar 에 실려 가고,
+      # 백엔드가 뜰 때 Flyway 가 flyway_schema_history 를 보고 안 돌린 것만 적용한다.
+      # 그 뒤 ddl-auto=validate 가 엔티티와 실제 테이블을 대조하므로,
+      # 마이그레이션을 빠뜨린 배포는 헬스체크까지 가지 못하고 여기서 멈춘다.
 
       - name: 빌드 · 재기동
         run: |
@@ -121,8 +90,18 @@ jobs:
 
           echo "❌ 200초 안에 200 을 받지 못했습니다."
           cd ~/artifact
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml ps
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml logs --tail 50 backend
+          COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml"
+          $COMPOSE ps
+
+          # 스키마 문제로 안 뜬 경우 원인 줄이 스택트레이스 수백 줄에 묻힌다.
+          # Flyway·validate 관련 줄만 먼저 뽑아 무엇이 어긋났는지 바로 보이게 한다.
+          echo "--- 스키마 관련 로그 ---"
+          $COMPOSE logs backend 2>&1 \
+            | grep -iE "flyway|schema-validation|migration|checksum" | tail -20 \
+            || echo "(스키마 관련 줄 없음 — 다른 원인일 가능성이 높다)"
+
+          echo "--- 최근 로그 ---"
+          $COMPOSE logs --tail 50 backend
           exit 1
 
       # 빌드할 때마다 예전 이미지가 쌓인다. 30GB 디스크가 몇 주면 찬다.

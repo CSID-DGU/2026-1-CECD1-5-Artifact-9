@@ -446,11 +446,16 @@ journalctl -u actions.runner.* -f      # 로그
 
 초록불이 떴다고 "안전하다" 는 뜻은 아니다. 지금 CI 의 한계는 다음과 같다.
 
-**하나. DB 스키마 문제를 전혀 못 잡는다.**
-테스트는 H2 + `ddl-auto=create-drop` 으로 돌고, 운영은 MySQL + `ddl-auto=none` +
-`DataInitializer` 의 수동 DDL 이다. **완전히 다른 코드 경로**라서, 스키마가 어긋나도
-테스트는 초록불이다 (`security-remediation-plan.md` (J)항). 해결하려면 Testcontainers 로
-바꿔야 하고, 그건 G4 과제다.
+**하나. CI 는 DB 스키마 문제를 못 잡는다 — 대신 배포가 잡는다.**
+테스트는 H2 + `ddl-auto=create-drop` 으로 돈다(`spring.flyway.enabled=false` 로 마이그레이션을
+꺼둔다 — `db/migration` 의 V*.sql 이 MySQL 방언이라 H2 에서 문법 오류가 난다).
+운영은 MySQL + Flyway 다. **서로 다른 코드 경로**라서, 스키마가 어긋나도 CI 는 초록불이다
+(`security-remediation-plan.md` (J)항).
+
+다만 어긋난 채로 배포가 끝나지는 않는다. 운영 백엔드는 `ddl-auto=validate` 로 뜨기 때문에
+엔티티와 실제 테이블이 다르면 기동 자체가 실패하고, CD 의 헬스체크가 200 을 못 받아
+배포가 빨간불로 끝난다. 바뀐 것은 "조용히 깨진 채로 도는" 경우가 사라졌다는 것이지,
+CI 가 미리 알려주게 된 것은 아니다. 미리 잡으려면 Testcontainers 가 필요하고, 그건 G4 과제다.
 
 **둘. 화면이 실제로 동작하는지 모른다.**
 프론트는 "빌드가 되는지" 만 본다. 버튼을 눌렀을 때 API 가 제대로 불리는지는 검사하지 않는다.

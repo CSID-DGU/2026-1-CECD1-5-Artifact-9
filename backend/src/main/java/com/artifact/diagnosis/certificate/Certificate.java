@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * 이미 환자 손에 나간 서류와 시스템이 보여주는 내용이 달라지면 안 된다.
  * 그래서 재발급은 지금 데이터로 다시 만드는 것이 아니라 이 스냅샷을 그대로 다시 출력한다.
  *
- * DB 테이블: certificate (docker/mysql/init/04-certificate.sql)
+ * DB 테이블: certificate (db/migration/V4__certificate.sql)
  */
 @Entity
 @Table(name = "certificate")
