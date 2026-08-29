@@ -22,9 +22,10 @@ const DISEASE_TO_KCD_CODE: Record<string, string> = {
   mel:   'C43',
   bkl:   'L82',
   bcc:   'C44',
-  akiec: 'L57.0',
+  akiec: 'L570',
   df:    'D23',
   vasc:  'D18',
+  inflammatory: 'L309',
 };
 
 const STATUS_LABELS: Record<VisitStatus, string> = {

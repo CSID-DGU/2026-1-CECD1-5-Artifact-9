@@ -88,7 +88,8 @@ public class KioskService {
             "df",    "피부섬유종",
             "mel",   "악성 흑색종",
             "nv",    "멜라닌세포모반",
-            "vasc",  "혈관성 병변"
+            "vasc",  "혈관성 병변",
+            "inflammatory", "염증성 피부질환"
     );
 
     /**

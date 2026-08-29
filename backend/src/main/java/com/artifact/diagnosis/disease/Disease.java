@@ -23,7 +23,7 @@ public class Disease {
     @Column(name = "disease_id")
     private Long id;
 
-    /** HAM10000 코드 — nv, mel, bkl, bcc, akiec, df, vasc */
+    /** 모델 클래스 코드 — nv, mel, bkl, bcc, akiec, df, vasc, inflammatory */
     @Column(name = "disease_code", nullable = false, length = 20, unique = true)
     private String diseaseCode;
 
