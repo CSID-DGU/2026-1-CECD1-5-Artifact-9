@@ -1,15 +1,29 @@
 -- =====================================================================
 -- Team Artifact - 의료 영상 기반 AI 보조 진단/처방 지원 시스템
--- MySQL 8.0+ Schema v0.4
+-- MySQL 8.0+ Schema v0.6
 -- =====================================================================
 -- 변경 이력:
 --   v0.1: 팀장 초안 (4테이블)
 --   v0.2: AI 분석 결과 / 처방 상세 / 처방 템플릿 추가
 --   v0.3: prescription_detail에 prescription_type ENUM 추가
+--         ↑ 실제로는 적용되지 않았다. 이 컬럼은 prescription_detail 에 없고
+--           엔티티에도 없다. 계획만 적히고 구현이 따라오지 않은 항목.
 --   v0.4: visit 상태 IN_PROGRESS 추가, image_url 제거
 --         visit_image / analysis_image / kcd_disease / drug_master 추가
 --         prescription → kcd_disease_id, prescription_detail → drug_id
 --   v0.5: doctor 테이블 및 prescription 작성 의사 스냅샷 추가
+--         ↑ doctor 테이블은 만들어지지 않았다. 회원 정보는 member 로 통합됐고
+--           (license_number / department / role) 작성자 스냅샷은
+--           prescription.member_name 으로 들어갔다.
+--   v0.6: (2026-08-30) 8번째 모델 클래스 inflammatory 추가.
+--         prescription_template 정리 — 2026-05-30(b822c4c)에 주상병+부상병
+--         조합 도입으로 주석 처리된 뒤 방치돼 있던 자바 엔티티/리포지터리를 삭제.
+--         analysis_image 사용 개시 — 만들어진 지 3개월 넘게 0행이던 매핑을
+--         AnalysisTransactionService.saveResult 가 채우기 시작.
+--
+--   ⚠️ 이 변경 이력은 손으로 적는 것이라 위처럼 **거짓말을 한다.**
+--      Flyway 도입 후에는 flyway_schema_history 테이블이 실제 적용 여부를
+--      기록하므로 이 주석이 아니라 그쪽을 진실로 삼는다.
 -- =====================================================================
 
 CREATE DATABASE IF NOT EXISTS artifact_db
