@@ -32,6 +32,7 @@ public class AnalysisService {
 
     private final AnalysisTransactionService analysisTransactionService;
     private final AnalysisResultRepository analysisResultRepository;
+    private final AnalysisImageRepository analysisImageRepository;
     private final DiseaseRepository diseaseRepository;
     private final ImageStorageService imageStorageService;
     private final ObjectMapper objectMapper;
@@ -94,16 +95,21 @@ public class AnalysisService {
             throw new IllegalArgumentException("분석할 이미지를 선택해주세요.");
         }
 
-        // (1) 짧은 트랜잭션 — 분석 시작 표시 + 대상 이미지 경로 조회
+        // 화면에서 고른 것 중 **모델에 실제로 넣을 것**만 추린다 (아래 메서드 주석 참고)
+        List<Long> targetImageIds = selectInferenceTargets(imageIds);
+
+        // (1) 짧은 트랜잭션 — 분석 시작 표시 + 대상 이미지 경로 조회 + 소유 검사
         AnalysisTransactionService.AnalysisTarget target =
-                analysisTransactionService.beginAnalysis(visitId, imageIds.get(0));
+                analysisTransactionService.beginAnalysis(visitId, targetImageIds);
 
         AnalysisResult result;
         FastApiPredictResponse prediction;
         try {
             // (2) 트랜잭션 밖 — 여기서 몇 초가 걸려도 DB 커넥션은 하나도 잡혀 있지 않다
             long startMs = System.currentTimeMillis();
-            prediction = callFastApi(target.imageUrl());
+            // 현재 FastAPI /predict-base64 는 이미지 1장을 받는다(fastapi/main.py PredictRequest).
+            // 다중 입력 모델이 되면 target.imageUrls() 를 그대로 넘기도록 여기만 바꾼다.
+            prediction = callFastApi(target.primaryImageUrl());
             int inferenceMs = (int) (System.currentTimeMillis() - startMs);
 
             if (!prediction.isValidOrDefault()) {
@@ -116,9 +122,10 @@ public class AnalysisService {
 
             String heatmapKey = uploadHeatmap(visitId, prediction);
 
-            // (3) 짧은 트랜잭션 — 결과 저장 + ANALYZED 전이
+            // (3) 짧은 트랜잭션 — 결과 저장 + 근거 이미지 매핑 + ANALYZED 전이
             result = analysisTransactionService.saveResult(
-                    visitId, prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
+                    visitId, targetImageIds,
+                    prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
                     prediction.top1().confidence(), topK, inferenceMs, heatmapKey);
         } catch (RuntimeException e) {
             analysisTransactionService.abortAnalysis(visitId, target.previousStatus());
@@ -128,7 +135,45 @@ public class AnalysisService {
         log.info("분석 완료 visitId={} top1={} confidence={}", visitId,
                 prediction.top1().diseaseCode(), prediction.top1().confidence());
 
-        return toResponse(result, prediction);
+        return toResponse(result, prediction, targetImageIds);
+    }
+
+    /**
+     * 화면에서 고른 이미지들 중 <b>모델에 실제로 넣을 것</b>을 고른다.
+     *
+     * <p><b>모델을 확장할 때 고쳐야 하는 곳은 여기 한 군데다.</b> 지금 FastAPI 는 이미지 1장만
+     * 받으므로 첫 장만 고른다. 다중 입력 모델로 바뀌면 이 메서드가 {@code imageIds} 를 그대로
+     * 돌려주기만 하면 되고, {@code beginAnalysis → callFastApi → saveResult} 는 이미 리스트를
+     * 받도록 되어 있어 {@code analysis_image} 에 N행이 자동으로 쌓인다.
+     * 테이블의 복합 PK {@code (analysis_id, image_id)} 가 처음부터 그걸 상정하고 만들어졌다.
+     *
+     * <p><b>고르지 않은 이미지는 매핑에 남기지 않는다.</b> 테이블 코멘트가 '분석에 사용된 이미지'이기
+     * 때문이다. 모델이 보지도 않은 사진을 근거로 적어 두면 나중에 "이 진단은 무엇을 보고 내렸나"에
+     * 거짓으로 답하게 되고, 그 답은 처방({@code prescription.analysis_id})과
+     * 제증명({@code certificate})까지 그대로 흘러간다.
+     *
+     * <p><b>알려진 UX 간극.</b> 진료 화면은 사진을 여러 장 선택할 수 있는데(Clinic.tsx
+     * {@code toggleSelectedImage}) 실제로는 첫 장만 분석된다. 선택 UI 를 1장으로 제한하거나
+     * 다중 입력 모델을 도입하기 전까지는 아래 경고 로그가 그 간극을 드러내는 유일한 신호다.
+     */
+    private List<Long> selectInferenceTargets(List<Long> imageIds) {
+        if (imageIds.size() > 1) {
+            log.warn("이미지 {}장이 선택됐지만 현재 모델은 1장만 분석한다. 사용={} 무시={}",
+                    imageIds.size(), imageIds.get(0), imageIds.subList(1, imageIds.size()));
+        }
+        return List.of(imageIds.get(0));
+    }
+
+    /**
+     * 이 분석이 근거로 삼은 이미지 ID 목록.
+     *
+     * <p>2026-08-30 이전에 만들어진 분석은 매핑이 없어 <b>빈 목록</b>이 나온다.
+     * 그 시절 기록에는 근거 이미지가 실제로 존재하지 않으므로, 추측해서 채우지 않고 비워 둔다.
+     */
+    private List<Long> findAnalyzedImageIds(Long analysisId) {
+        return analysisImageRepository.findByAnalysisIdOrderByImageIdAsc(analysisId).stream()
+                .map(AnalysisImage::getImageId)
+                .toList();
     }
 
     /** 히트맵 저장 (키만 DB에 보관, URL은 응답 시 생성). 스토리지 왕복이므로 트랜잭션 밖에서 부른다. */
@@ -161,6 +206,7 @@ public class AnalysisService {
         return new AnalysisResponse(
                 result.getId(),
                 result.getVisitId(),
+                findAnalyzedImageIds(result.getId()),
                 result.getModelVersion(),
                 new AnalysisResponse.Top1Result(
                         disease.getDiseaseCode(),
@@ -225,7 +271,8 @@ public class AnalysisService {
         }
     }
 
-    private AnalysisResponse toResponse(AnalysisResult result, FastApiPredictResponse prediction) {
+    private AnalysisResponse toResponse(AnalysisResult result, FastApiPredictResponse prediction,
+                                        List<Long> analyzedImageIds) {
         List<AnalysisResponse.TopKResult> top5 = prediction.top5().stream()
                 .map(r -> new AnalysisResponse.TopKResult(
                         r.rank(), r.diseaseCode(),
@@ -238,6 +285,7 @@ public class AnalysisService {
         return new AnalysisResponse(
                 result.getId(),
                 result.getVisitId(),
+                analyzedImageIds,
                 result.getModelVersion(),
                 new AnalysisResponse.Top1Result(
                         prediction.top1().diseaseCode(),

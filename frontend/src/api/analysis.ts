@@ -3,6 +3,8 @@ import { apiRequest } from "./client";
 export type AnalysisResponse = {
   analysisId: number;
   visitId: number;
+  /** 실제로 모델에 들어간 이미지 ID. 2026-08-30 이전 분석은 기록이 없어 빈 배열이다. */
+  analyzedImageIds: number[];
   modelVersion: string;
   top1: {
     diseaseCode: string;
