@@ -55,6 +55,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"spring.datasource.username=sa",
 		"spring.datasource.password=",
 		"spring.jpa.hibernate.ddl-auto=create-drop",
+		// db/migration 의 SQL 은 MySQL 방언이라 H2 에서 문법 오류로 죽는다.
+		// 테스트 스키마는 바로 위 create-drop 이 엔티티에서 만들어 준다.
+		"spring.flyway.enabled=false",
 		"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
 		"cloud.aws.credentials.access-key=test-access-key",
 		"cloud.aws.credentials.secret-key=test-secret-key",

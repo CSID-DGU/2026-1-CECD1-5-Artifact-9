@@ -40,8 +40,12 @@ public class Visit {
     /**
      * 대기실 키오스크 QR 진입용 토큰. 접수 시 발급되며 URL(/kiosk/{token})에 그대로 실린다.
      * visit_id는 순차 정수라 LAN에서 추측 가능하므로, 태블릿에 노출되는 경로는 이 불투명 값으로 받는다.
+     *
+     * 타입을 CHAR 로 못박는 이유. base62 12자 고정 길이라 스키마도 CHAR(12) 다.
+     * 그런데 length 만 지정하면 Hibernate 는 String 을 VARCHAR 로 추론해서
+     * ddl-auto=validate 가 "found char, expecting varchar(12)" 로 부팅을 막는다.
      */
-    @Column(name = "kiosk_token", length = 12, unique = true)
+    @Column(name = "kiosk_token", columnDefinition = "CHAR(12)", unique = true)
     private String kioskToken;
 
     @Enumerated(EnumType.STRING)
