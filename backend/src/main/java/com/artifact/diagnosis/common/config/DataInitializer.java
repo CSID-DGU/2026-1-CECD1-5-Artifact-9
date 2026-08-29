@@ -25,16 +25,30 @@ import org.xml.sax.XMLReader;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
-import javax.sql.DataSource;
-import java.sql.Connection;
 import java.io.InputStream;
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 기동 직후 한 번 도는 데이터 초기화 — 테이블을 "채우는" 일만 한다.
+ *
+ * 테이블을 "만드는" 일은 여기서 하지 않는다. 스키마는 Flyway(db/migration)가 책임진다.
+ * 예전에는 이 클래스가 CREATE TABLE / ALTER TABLE 로 빠진 테이블과 컬럼을 런타임에
+ * 보정했다. MySQL 의 docker-entrypoint-initdb.d 가 데이터 볼륨이 비어 있을 때만 돌아서,
+ * 이미 데이터가 있는 DB 에는 나중에 추가된 스키마가 영영 안 들어갔기 때문이다.
+ *
+ * 그 보정 코드는 Flyway 도입과 함께 지웠다. 되살리지 않는 편이 좋은 이유가 두 가지 있다.
+ *   - 진실의 출처가 둘로 갈린다. 같은 테이블 정의가 V*.sql 과 자바 문자열에 각각 있으면
+ *     한쪽만 고쳤을 때 어느 쪽이 맞는지 아무도 모르게 된다.
+ *   - 애초에 실행되지 않는다. CommandLineRunner 는 애플리케이션 컨텍스트가 다 뜬 뒤에
+ *     돌고, ddl-auto=validate 는 그보다 먼저 EntityManagerFactory 를 만들 때 돈다.
+ *     스키마가 어긋나 있으면 여기 도달하기 전에 기동이 실패한다.
+ *
+ * 스키마를 바꿔야 하면 새 번호의 마이그레이션(V6, V7…)을 추가한다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -44,7 +58,6 @@ public class DataInitializer implements CommandLineRunner {
 
     private final KcdDiseaseRepository kcdDiseaseRepository;
     private final DrugMasterRepository drugMasterRepository;
-    private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final BCryptPasswordEncoder passwordEncoder;
 
@@ -57,12 +70,13 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        ensureMemberTable();
-        ensurePreliminaryAnalysisTable();
-        ensureVisitReceptionMemoColumn();
-        ensureVisitKioskTokenColumn();
-        ensureAnalysisResultHeatmapColumn();
+        // 실패하면 예외가 그대로 올라가 기동이 멈춘다(예전에는 스키마 보정 코드의 try 안에 있어
+        // log.warn 으로 묻혔다). member 테이블은 Flyway 가 보장하므로 여기서 터진다는 것은
+        // DB 자체에 문제가 있다는 뜻이고, 그런 상태로는 뜨지 않는 편이 낫다.
+        bootstrapAdminAccount();
 
+        // 마스터 데이터(KCD 5만건 + 약품 50만건)는 적재에 수십 초가 걸린다.
+        // 메인 스레드에서 하면 그동안 서버가 요청을 못 받아 헬스체크가 실패한다.
         new Thread(() -> {
             try {
                 if (kcdDiseaseRepository.count() == 0) loadKcdDiseases();
@@ -74,55 +88,6 @@ public class DataInitializer implements CommandLineRunner {
                 log.error("데이터 초기화 중 오류 발생", e);
             }
         }, "data-initializer").start();
-    }
-
-    private void ensureMemberTable() {
-        try (Connection connection = dataSource.getConnection()) {
-            if (!tableExists(connection, "member")) {
-                jdbcTemplate.execute("""
-                        CREATE TABLE member (
-                            member_id      BIGINT       NOT NULL AUTO_INCREMENT COMMENT '회원ID (PK)',
-                            login_id       VARCHAR(50)  NOT NULL                COMMENT '로그인 ID',
-                            password       VARCHAR(100) NOT NULL                COMMENT '비밀번호 (BCrypt)',
-                            name           VARCHAR(50)  NOT NULL                COMMENT '이름',
-                            license_number VARCHAR(50)  NULL                    COMMENT '면허번호 (의사/간호사)',
-                            department     VARCHAR(100) NULL                    COMMENT '진료과',
-                            role           VARCHAR(20)  NOT NULL DEFAULT 'DOCTOR' COMMENT '역할 (DOCTOR/NURSE/STAFF/ADMIN)',
-                            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                            updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                            PRIMARY KEY (member_id),
-                            UNIQUE KEY uk_member_login_id (login_id),
-                            UNIQUE KEY uk_member_license_number (license_number)
-                        ) ENGINE=InnoDB COMMENT='회원 계정 (의사/간호사/일반)'
-                        """);
-                log.info("member 테이블을 생성했습니다.");
-            } else {
-                ensureMemberColumn(connection, "license_number",
-                        "ALTER TABLE member ADD COLUMN license_number VARCHAR(50) NULL");
-                ensureMemberColumn(connection, "department",
-                        "ALTER TABLE member ADD COLUMN department VARCHAR(100) NULL");
-                ensureMemberColumn(connection, "role",
-                        "ALTER TABLE member ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'DOCTOR'");
-                ensureMemberColumn(connection, "created_at",
-                        "ALTER TABLE member ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
-                ensureMemberColumn(connection, "updated_at",
-                        "ALTER TABLE member ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-
-                if (!indexExists(connection, "member", "uk_member_login_id")) {
-                    jdbcTemplate.execute("ALTER TABLE member ADD UNIQUE KEY uk_member_login_id (login_id)");
-                    log.info("member.login_id unique index를 추가했습니다.");
-                }
-
-                if (!indexExists(connection, "member", "uk_member_license_number")) {
-                    jdbcTemplate.execute("ALTER TABLE member ADD UNIQUE KEY uk_member_license_number (license_number)");
-                    log.info("member.license_number unique index를 추가했습니다.");
-                }
-            }
-
-            bootstrapAdminAccount();
-        } catch (Exception e) {
-            log.warn("member 테이블 확인/보정 중 오류: {}", e.getMessage());
-        }
     }
 
     /**
@@ -138,9 +103,12 @@ public class DataInitializer implements CommandLineRunner {
             return;
         }
 
+        // created_at/updated_at 을 SQL 이 직접 채운다. 이 INSERT 는 JdbcTemplate 원시 SQL 이라
+        // Member 엔티티의 @CreationTimestamp 를 거치지 않고, DB 기본값(DEFAULT CURRENT_TIMESTAMP)은
+        // MySQL 마이그레이션에만 있다 — H2 로 도는 테스트에서는 NOT NULL 위반으로 실패한다.
         int inserted = jdbcTemplate.update("""
-                INSERT INTO member (login_id, password, name, department, role)
-                SELECT ?, ?, ?, ?, 'ADMIN'
+                INSERT INTO member (login_id, password, name, department, role, created_at, updated_at)
+                SELECT ?, ?, ?, ?, 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 WHERE NOT EXISTS (SELECT 1 FROM member WHERE login_id = ?)
                 """,
                 adminLoginId,
@@ -154,145 +122,6 @@ public class DataInitializer implements CommandLineRunner {
         } else {
             log.info("초기 관리자 계정: 이미 존재함({}), 스킵", adminLoginId);
         }
-    }
-
-    private void ensureMemberColumn(Connection connection, String columnName, String alterSql) {
-        try {
-            if (columnExists(connection, "member", columnName)) {
-                return;
-            }
-
-            jdbcTemplate.execute(alterSql);
-            log.info("member.{} 컬럼을 추가했습니다.", columnName);
-        } catch (Exception e) {
-            log.warn("member.{} 컬럼 확인/추가 중 오류: {}", columnName, e.getMessage());
-        }
-    }
-
-    private void ensurePreliminaryAnalysisTable() {
-        try (Connection connection = dataSource.getConnection()) {
-            if (!tableExists(connection, "preliminary_analysis")) {
-                jdbcTemplate.execute("""
-                        CREATE TABLE preliminary_analysis (
-                            preliminary_analysis_id BIGINT       NOT NULL AUTO_INCREMENT COMMENT '예비분석 PK',
-                            visit_id                BIGINT       NOT NULL                COMMENT '접수ID (FK, 1:1)',
-                            top_k_json              JSON         NULL                    COMMENT 'Top-K 후보 [{code, confidence}, ...]',
-                            gradcam_url             VARCHAR(500) NULL                    COMMENT 'GradCAM 히트맵 오버레이 이미지 스토리지 키',
-                            ai_comment              TEXT         NULL                    COMMENT 'LLM 생성 참고 소견',
-                            source                  VARCHAR(20)  NOT NULL DEFAULT 'clinic' COMMENT '분석에 사용된 모델 소스',
-                            analyzed_at             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                            PRIMARY KEY (preliminary_analysis_id),
-                            UNIQUE KEY uk_preliminary_visit (visit_id),
-                            CONSTRAINT fk_preliminary_visit FOREIGN KEY (visit_id) REFERENCES visit(visit_id)
-                        ) ENGINE=InnoDB COMMENT='대기실 키오스크 예비분석 결과 (Visit 1:1, FSM과 분리된 사이드 채널)'
-                        """);
-                log.info("preliminary_analysis 테이블을 생성했습니다.");
-            } else {
-                ensurePreliminaryAnalysisColumn(connection, "top_k_json",
-                        "ALTER TABLE preliminary_analysis ADD COLUMN top_k_json JSON NULL");
-                ensurePreliminaryAnalysisColumn(connection, "gradcam_url",
-                        "ALTER TABLE preliminary_analysis ADD COLUMN gradcam_url VARCHAR(500) NULL");
-                ensurePreliminaryAnalysisColumn(connection, "ai_comment",
-                        "ALTER TABLE preliminary_analysis ADD COLUMN ai_comment TEXT NULL");
-                ensurePreliminaryAnalysisColumn(connection, "source",
-                        "ALTER TABLE preliminary_analysis ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'clinic'");
-                ensurePreliminaryAnalysisColumn(connection, "analyzed_at",
-                        "ALTER TABLE preliminary_analysis ADD COLUMN analyzed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
-
-                if (!indexExists(connection, "preliminary_analysis", "uk_preliminary_visit")) {
-                    jdbcTemplate.execute("ALTER TABLE preliminary_analysis ADD UNIQUE KEY uk_preliminary_visit (visit_id)");
-                    log.info("preliminary_analysis.visit_id unique index를 추가했습니다.");
-                }
-            }
-        } catch (Exception e) {
-            log.warn("preliminary_analysis 테이블 확인/보정 중 오류: {}", e.getMessage());
-        }
-    }
-
-    private void ensurePreliminaryAnalysisColumn(Connection connection, String columnName, String alterSql) {
-        try {
-            if (columnExists(connection, "preliminary_analysis", columnName)) {
-                return;
-            }
-
-            jdbcTemplate.execute(alterSql);
-            log.info("preliminary_analysis.{} 컬럼을 추가했습니다.", columnName);
-        } catch (Exception e) {
-            log.warn("preliminary_analysis.{} 컬럼 확인/추가 중 오류: {}", columnName, e.getMessage());
-        }
-    }
-
-    private void ensureVisitReceptionMemoColumn() {
-        try (Connection connection = dataSource.getConnection();
-             ResultSet columns = connection.getMetaData().getColumns(
-                     connection.getCatalog(), null, "visit", "reception_memo")) {
-            if (columns.next()) {
-                return;
-            }
-
-            jdbcTemplate.execute("ALTER TABLE visit ADD COLUMN reception_memo TEXT NULL");
-            log.info("visit.reception_memo 컬럼을 추가했습니다.");
-        } catch (Exception e) {
-            log.warn("visit.reception_memo 컬럼 확인/추가 중 오류: {}", e.getMessage());
-        }
-    }
-
-    /** 키오스크 QR 진입용 토큰 컬럼. 기존 볼륨에서도 재기동만으로 추가되도록 런타임에 보정한다. */
-    private void ensureVisitKioskTokenColumn() {
-        try (Connection connection = dataSource.getConnection()) {
-            if (!columnExists(connection, "visit", "kiosk_token")) {
-                jdbcTemplate.execute("ALTER TABLE visit ADD COLUMN kiosk_token CHAR(12) NULL");
-                log.info("visit.kiosk_token 컬럼을 추가했습니다.");
-            }
-
-            if (!indexExists(connection, "visit", "uk_visit_kiosk_token")) {
-                jdbcTemplate.execute("ALTER TABLE visit ADD UNIQUE KEY uk_visit_kiosk_token (kiosk_token)");
-                log.info("visit.kiosk_token unique index를 추가했습니다.");
-            }
-        } catch (Exception e) {
-            log.warn("visit.kiosk_token 컬럼 확인/추가 중 오류: {}", e.getMessage());
-        }
-    }
-
-    private void ensureAnalysisResultHeatmapColumn() {
-        try (Connection connection = dataSource.getConnection();
-             ResultSet columns = connection.getMetaData().getColumns(
-                     connection.getCatalog(), null, "analysis_result", "heatmap_image_url")) {
-            if (columns.next()) {
-                return;
-            }
-
-            jdbcTemplate.execute("ALTER TABLE analysis_result ADD COLUMN heatmap_image_url VARCHAR(500) NULL");
-            log.info("analysis_result.heatmap_image_url 컬럼을 추가했습니다.");
-        } catch (Exception e) {
-            log.warn("analysis_result.heatmap_image_url 컬럼 확인/추가 중 오류: {}", e.getMessage());
-        }
-    }
-
-    private boolean tableExists(Connection connection, String tableName) throws Exception {
-        try (ResultSet tables = connection.getMetaData().getTables(
-                connection.getCatalog(), null, tableName, new String[]{"TABLE"})) {
-            return tables.next();
-        }
-    }
-
-    private boolean columnExists(Connection connection, String tableName, String columnName) throws Exception {
-        try (ResultSet columns = connection.getMetaData().getColumns(
-                connection.getCatalog(), null, tableName, columnName)) {
-            return columns.next();
-        }
-    }
-
-    private boolean indexExists(Connection connection, String tableName, String indexName) throws Exception {
-        try (ResultSet indexes = connection.getMetaData().getIndexInfo(
-                connection.getCatalog(), null, tableName, false, false)) {
-            while (indexes.next()) {
-                if (indexName.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     /** KCD 상병코드 — 1.8MB, XSSFWorkbook으로 충분 */
