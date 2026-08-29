@@ -26,12 +26,6 @@
 --      기록하므로 이 주석이 아니라 그쪽을 진실로 삼는다.
 -- =====================================================================
 
-CREATE DATABASE IF NOT EXISTS artifact_db
-  DEFAULT CHARACTER SET utf8mb4
-  DEFAULT COLLATE utf8mb4_unicode_ci;
-
-USE artifact_db;
-
 -- 클라이언트 연결 charset을 utf8mb4로 명시 (한글 이중인코딩 방지)
 SET NAMES utf8mb4;
 

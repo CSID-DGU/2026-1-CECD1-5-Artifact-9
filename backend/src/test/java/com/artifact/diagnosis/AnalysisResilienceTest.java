@@ -88,6 +88,9 @@ class AnalysisResilienceTest {
         registry.add("spring.datasource.username", () -> "sa");
         registry.add("spring.datasource.password", () -> "");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        // db/migration 의 SQL 은 MySQL 방언이라 H2 에서 문법 오류로 죽는다.
+        // 테스트 스키마는 바로 위 create-drop 이 엔티티에서 만들어 준다.
+        registry.add("spring.flyway.enabled", () -> "false");
         registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.H2Dialect");
         registry.add("cloud.aws.credentials.access-key", () -> "test-access-key");
         registry.add("cloud.aws.credentials.secret-key", () -> "test-secret-key");
