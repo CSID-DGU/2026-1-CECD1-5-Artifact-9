@@ -42,11 +42,17 @@ public class PrescriptionController {
         return prescriptionService.get(visitId);
     }
 
+    @Operation(summary = "AI 처방 코멘트 생성",
+               description = "확정한 상병코드를 바탕으로 처방 방향 2줄을 생성합니다. "
+                           + "접수 메모는 요청 body가 아니라 서버가 visitId로 DB에서 직접 읽고, "
+                           + "외부 모델로 나가기 전에 환자 이름·연락처·주민번호·이메일을 지웁니다.")
     @DoctorAccess // 외부 LLM(Gemini) 호출 비용이 붙는 경로 — 처방 작성자만 쓴다.
     @PostMapping("/comment")
     public PrescriptionCommentResponse comment(
             @PathVariable Long visitId,
             @RequestBody PrescriptionCommentRequest request) {
-        return geminiService.generateComment(request);
+        // 메모를 클라이언트에게 받지 않는다 — PrescriptionService 의 해당 메서드 주석 참고.
+        String maskedMemo = prescriptionService.maskedReceptionMemo(visitId);
+        return geminiService.generateComment(request, maskedMemo);
     }
 }

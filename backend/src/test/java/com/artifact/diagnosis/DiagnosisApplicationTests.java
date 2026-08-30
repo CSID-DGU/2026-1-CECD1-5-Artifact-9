@@ -370,4 +370,96 @@ class DiagnosisApplicationTests {
 		assertThat(patientService.searchByName("김환자")).hasSize(1);
 	}
 
+	/**
+	 * 접수 메모가 외부 모델(Gemini)로 나가기 전에 식별정보가 지워지는지 확인한다.
+	 *
+	 * 예전에는 이 메모를 화면이 요청 body 에 실어 보냈고, 서버는 그것을 그대로 프롬프트에
+	 * 넣었다. 즉 "김○○ 님 010-…" 같은 메모가 통째로 구글 서버에 남았다. 지금은 서버가
+	 * visitId 로 직접 읽고 PiiMasker 를 거치므로, 여기서는 DB 조회와 마스킹이 실제로
+	 * 이어져 있는지를 본다 — PiiMaskerTest 는 마스킹 함수만 보고 그 연결은 보지 못한다.
+	 */
+	@Test
+	void receptionMemoIsMaskedBeforeLeavingForExternalModel() {
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("최유출").birthDate(LocalDate.of(1993, 5, 5))
+				.gender(Gender.F).phone("010-5555-6666").build());
+		Visit visit = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 10, 11, 0))
+				.receptionMemo("최유출 님 010-5555-6666 으로 연락, 851231-2345678, x@y.com")
+				.status(VisitStatus.DIAGNOSED)
+				.build());
+
+		String masked = prescriptionService.maskedReceptionMemo(visit.getId());
+
+		// 메모의 임상 정보는 살아 있어야 한다 — 지우기만 하면 코멘트 품질이 떨어진다.
+		assertThat(masked).contains("연락");
+		// 신원을 되짚을 수 있는 조각은 하나도 남지 않아야 한다.
+		assertThat(masked).doesNotContain("최유출", "5555", "851231", "x@y.com");
+	}
+
+	/** 메모가 비어 있으면 null — 프롬프트에서 그 줄이 통째로 빠진다. */
+	@Test
+	void maskedReceptionMemoIsNullWhenMemoIsAbsent() {
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("무메모").birthDate(LocalDate.of(1995, 8, 8))
+				.gender(Gender.M).build());
+		Visit visit = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 11, 9, 30))
+				.status(VisitStatus.DIAGNOSED)
+				.build());
+
+		assertThat(prescriptionService.maskedReceptionMemo(visit.getId())).isNull();
+	}
+
+	/** 없는 접수를 물으면 조용히 null 을 돌려주지 않고 예외로 알린다. */
+	@Test
+	void maskedReceptionMemoRejectsUnknownVisit() {
+		assertThatThrownBy(() -> prescriptionService.maskedReceptionMemo(999_999L))
+				.isInstanceOf(java.util.NoSuchElementException.class);
+	}
+
+	/**
+	 * 배포가 갈리는 순간을 견디는지 본다.
+	 *
+	 * 백엔드가 먼저 올라가고 브라우저에 옛 화면이 아직 떠 있으면, 그 화면은 예전 형식대로
+	 * receptionMemo 를 body 에 담아 보낸다. 서버가 그걸 400 으로 튕기면 배포 직후 몇 분 동안
+	 * AI 코멘트 버튼이 죽는다. 모르는 필드는 조용히 버리고 정상 응답해야 한다 —
+	 * 그리고 버려지는 것이 핵심이다. 그 값은 더 이상 프롬프트로 가지 않는다.
+	 *
+	 * 이 테스트 환경에는 gemini.api.key 가 없어 실제 외부 호출은 일어나지 않는다.
+	 * 검증 대상은 요청 파싱과 인가이지 모델 응답이 아니다.
+	 */
+	@Test
+	void commentEndpointIgnoresLegacyReceptionMemoInBody() throws Exception {
+		MemberResponse doctor = memberService.signup(new MemberSignupRequest(
+				"derm-comment", "1234", "코멘트의사", "LIC-3001", "피부과", null));
+
+		Patient patient = patientRepository.save(Patient.builder()
+				.name("정레거시").birthDate(LocalDate.of(1991, 4, 4))
+				.gender(Gender.M).build());
+		Visit visit = visitRepository.save(Visit.builder()
+				.patientId(patient.getId())
+				.visitDate(LocalDateTime.of(2026, 6, 12, 14, 0))
+				.receptionMemo("정레거시 님 010-7777-8888")
+				.status(VisitStatus.DIAGNOSED)
+				.build());
+
+		String token = jwtUtil.generate(doctor.memberId(), "derm-comment", MemberRole.DOCTOR.name());
+
+		String legacyBody = """
+				{
+				  "diseases": [{"kcdCode": "L20", "kcdNameKr": "아토피피부염", "isPrimary": true}],
+				  "receptionMemo": "이 값은 더 이상 쓰이지 않는다 010-0000-0000"
+				}
+				""";
+
+		mockMvc.perform(post("/api/v1/visits/{visitId}/prescription/comment", visit.getId())
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(legacyBody))
+				.andExpect(status().isOk());
+	}
+
 }

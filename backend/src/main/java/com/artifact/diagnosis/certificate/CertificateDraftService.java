@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.certificate;
 
+import com.artifact.diagnosis.common.util.PiiMasker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

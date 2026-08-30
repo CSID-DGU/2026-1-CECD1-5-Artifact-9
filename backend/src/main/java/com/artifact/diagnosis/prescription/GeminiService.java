@@ -47,7 +47,15 @@ public class GeminiService {
 
     private static final int MAX_RETRY = 3;
 
-    public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req) {
+    /**
+     * 처방 코멘트 생성.
+     *
+     * @param maskedMemo 식별정보를 지운 접수 메모. 없으면 null.
+     *                   <b>원문 메모를 그대로 넘기지 않는다</b> — 이 문자열은 그대로 외부(Google)
+     *                   서버로 나가고 그쪽 로그에 남는다. 마스킹은 호출 전에 끝나 있어야 하며,
+     *                   그 책임은 {@code PrescriptionService#maskedReceptionMemo} 에 있다.
+     */
+    public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req, String maskedMemo) {
         if (apiKey == null || apiKey.isBlank()) {
             return new PrescriptionCommentResponse("Gemini API 키가 설정되지 않았습니다.", "");
         }
@@ -73,8 +81,8 @@ public class GeminiService {
                 .map(d -> d.kcdNameKr() + "(" + d.kcdCode() + ")")
                 .reduce("", (a, b) -> a.isEmpty() ? b : a + ", " + b);
 
-        String memo = (req.receptionMemo() != null && !req.receptionMemo().isBlank())
-                ? "\n- 접수 메모: " + req.receptionMemo() : "";
+        String memo = (maskedMemo != null && !maskedMemo.isBlank())
+                ? "\n- 접수 메모: " + maskedMemo : "";
 
         String prompt = String.format("""
                 당신은 피부과 진료 보조 시스템입니다. 아래 진단 정보를 바탕으로 처방 방향을 정확히 2줄로 작성하세요.

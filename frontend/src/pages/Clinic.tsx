@@ -894,8 +894,7 @@ export default function Clinic() {
                           try {
                             const result = await getAiPrescriptionComment(
                               selectedVisit.id,
-                              selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary })),
-                              selectedVisit.receptionMemo
+                              selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary }))
                             );
                             setAiComment({
                               ...result,

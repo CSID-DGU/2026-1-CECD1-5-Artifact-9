@@ -1,0 +1,18 @@
+# 이미지 안으로 들어가면 안 되는 것들.
+#
+# node_modules 가 특히 중요하다. Dockerfile 은 npm ci 로 리눅스용 의존성을 먼저 설치한 뒤
+# COPY . . 를 하는데, 이 파일이 없으면 개발자 맥에서 만들어진 node_modules 가 그 위를 덮어쓴다.
+# rolldown·esbuild 같은 도구는 플랫폼별 네이티브 바이너리(@rolldown/binding-darwin-arm64 등)를
+# 함께 두기 때문에, 덮어쓰고 나면 alpine 컨테이너 안에 맥용 바이너리가 놓인다.
+# 게다가 package-lock 이 갱신돼도 개발자가 npm install 을 안 했다면 옛 버전이 그대로 실린다 —
+# 실제로 vite 를 8.0.8 → 8.2.2 로 올린 뒤 프론트 이미지 빌드가 이 이유로 깨졌다.
+node_modules
+dist
+
+.git
+.gitignore
+.env
+.env.*
+*.log
+npm-debug.log*
+.DS_Store

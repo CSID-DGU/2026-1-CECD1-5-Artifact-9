@@ -70,16 +70,19 @@ export type PrescriptionCommentResponse = {
   line2: string;
 };
 
+/**
+ * 접수 메모는 보내지 않는다. 서버가 visitId 로 DB 에서 직접 읽고, 외부 모델로 나가기 전에
+ * 환자 이름·연락처를 지운다. 예전에는 화면이 메모 원문을 실어 보냈고 그대로 Gemini 에 들어갔다.
+ */
 export function getAiPrescriptionComment(
   visitId: number,
-  diseases: Array<{ kcdCode: string; kcdNameKr: string; isPrimary: boolean }>,
-  receptionMemo?: string | null
+  diseases: Array<{ kcdCode: string; kcdNameKr: string; isPrimary: boolean }>
 ) {
   return apiRequest<PrescriptionCommentResponse>(
     `/api/v1/visits/${visitId}/prescription/comment`,
     {
       method: "POST",
-      body: JSON.stringify({ diseases, receptionMemo: receptionMemo ?? null }),
+      body: JSON.stringify({ diseases }),
     }
   );
 }

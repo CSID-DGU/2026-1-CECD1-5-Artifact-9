@@ -1,9 +1,12 @@
 package com.artifact.diagnosis.prescription;
 
+import com.artifact.diagnosis.common.util.PiiMasker;
 import com.artifact.diagnosis.disease.KcdDisease;
 import com.artifact.diagnosis.disease.KcdDiseaseRepository;
 import com.artifact.diagnosis.member.Member;
 import com.artifact.diagnosis.member.MemberRepository;
+import com.artifact.diagnosis.patient.Patient;
+import com.artifact.diagnosis.patient.PatientRepository;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,32 @@ public class PrescriptionService {
     private final KcdDiseaseRepository kcdDiseaseRepository;
     private final VisitRepository visitRepository;
     private final MemberRepository memberRepository;
+    private final PatientRepository patientRepository;
+
+    /**
+     * AI 처방 코멘트 프롬프트에 넣을 접수 메모를 만든다. 식별정보는 지운다.
+     *
+     * 메모를 요청 body 로 받지 않고 여기서 다시 읽는 이유가 두 가지다.
+     *   - 이름을 지우려면 그 환자의 이름을 알아야 하는데, 그건 DB 에만 있다.
+     *   - 클라이언트가 보낸 문자열을 그대로 프롬프트에 넣으면 내용도 대상도 검증되지 않는다.
+     *     visitId 는 이미 경로에 있으니 서버가 직접 읽는 편이 짧고 확실하다.
+     *
+     * 메모가 없거나 마스킹 후 빈 문자열이면 null 을 돌려준다 — 프롬프트에서 줄째로 빠진다.
+     */
+    @Transactional(readOnly = true)
+    public String maskedReceptionMemo(Long visitId) {
+        Visit visit = visitRepository.findById(visitId)
+                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
+
+        // 환자를 못 찾아도 코멘트 생성 자체를 막지는 않는다. 이름만 못 지울 뿐
+        // 연락처·주민번호·이메일은 이름 없이도 지워진다.
+        String patientName = patientRepository.findById(visit.getPatientId())
+                .map(Patient::getName)
+                .orElse(null);
+
+        String masked = PiiMasker.mask(visit.getReceptionMemo(), patientName);
+        return (masked == null || masked.isBlank()) ? null : masked;
+    }
 
     /**
      * 처방 저장. 저장 후 Visit 상태를 PRESCRIBED 로 전이한다.
