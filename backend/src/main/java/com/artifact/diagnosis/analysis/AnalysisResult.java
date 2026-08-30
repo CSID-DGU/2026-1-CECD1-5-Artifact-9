@@ -48,9 +48,14 @@ public class AnalysisResult {
      * confidence 로 매번 다시 계산하지 않고 저장해 두는 이유: 경고선은 앞으로 조정될 수 있고,
      * 그러면 과거 진료 기록의 경고 여부까지 소급해서 바뀐다. 모델 버전을 상수로 두지 않고
      * 저장하는 것과 같은 이유다. 근거는 V6__confidence_level.sql 주석에.
+     *
+     * 기본값은 DB 컬럼의 DEFAULT('normal')와 맞춰 둔다. Hibernate 는 값이 없으면 NULL 을
+     * 명시적으로 넣어서 DB DEFAULT 가 발동하지 않고 NOT NULL 위반이 난다.
+     * ({@code @Builder.Default} 가 없으면 Lombok 이 이 초기값을 무시한다 — 빼지 말 것.)
      */
+    @Builder.Default
     @Column(name = "confidence_level", nullable = false, length = 10)
-    private String confidenceLevel;
+    private String confidenceLevel = LowConfidenceCaution.LEVEL_NORMAL;
 
     /** Top-3 후보 — Hibernate 6의 JSON 매핑으로 자동 직렬화 */
     @JdbcTypeCode(SqlTypes.JSON)

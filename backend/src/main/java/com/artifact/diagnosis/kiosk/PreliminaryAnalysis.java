@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.TopKItem;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,9 +35,16 @@ public class PreliminaryAnalysis {
     @Column(name = "top_k_json", columnDefinition = "json")
     private List<TopKItem> topKJson;
 
-    /** AI 신뢰도 등급 — analysis_result 와 같은 값 체계다. AnalysisResult.confidenceLevel 주석 참고. */
+    /**
+     * AI 신뢰도 등급 — analysis_result 와 같은 값 체계다. AnalysisResult.confidenceLevel 주석 참고.
+     *
+     * 기본값이 DB 컬럼의 DEFAULT('normal')와 같아야 한다. Hibernate 는 값이 없으면 NULL 을
+     * 명시적으로 넣기 때문에 DB DEFAULT 가 발동하지 않고 NOT NULL 위반으로 터진다.
+     * ({@code @Builder.Default} 가 없으면 Lombok 이 이 초기값을 무시한다 — 빼지 말 것.)
+     */
+    @Builder.Default
     @Column(name = "confidence_level", nullable = false, length = 10)
-    private String confidenceLevel;
+    private String confidenceLevel = LowConfidenceCaution.LEVEL_NORMAL;
 
     @Column(name = "gradcam_url", length = 500)
     private String gradcamUrl;

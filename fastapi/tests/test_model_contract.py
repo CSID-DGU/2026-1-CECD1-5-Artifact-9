@@ -36,6 +36,7 @@ import os
 import re
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 FASTAPI_DIR = Path(__file__).resolve().parent.parent
@@ -76,6 +77,24 @@ def skip(name: str, why: str) -> None:
     skipped.append(name)
 
 
+def response_keys(func) -> set[str]:
+    """함수 안에 있는 dict 리터럴의 문자열 키를 전부 모은다.
+
+    소스를 문자열로 훑지 않는 이유가 있다. 처음엔 `"is_valid" in getsource(...)` 로
+    썼는데, 정작 그 필드를 **없앴다고 설명하는 주석**이 함수 안에 있어서 검사가
+    자기 주석을 보고 실패했다. 검사가 봐야 하는 것은 문서가 아니라 응답의 모양이다.
+    AST 로 키만 뽑으면 주석·문서화가 뭐라고 쓰여 있든 영향을 받지 않는다.
+    """
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    return {
+        key.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        for key in node.keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+
+
 # =============================================
 print("\n[1] main.py 내부 정합성")
 
@@ -104,9 +123,17 @@ check("LOW_CONFIDENCE_THRESHOLD 가 0~1 범위다",
 # 신뢰도로 결과를 **막지 않는다**는 것이 2026-08-30 의 설계 결정이다(main.py 주석 참고).
 # 차단이 되살아나면 홀드아웃에서 흑색종 재현율이 89.3% → 86.3% 로 떨어지므로,
 # is_valid 가 다시 생기는 것을 여기서 막는다.
+inference_keys = response_keys(serving.run_inference)
+
 check("run_inference 응답에 차단 필드(is_valid)가 없다",
-      "is_valid" not in inspect.getsource(serving.run_inference),
+      "is_valid" not in inference_keys,
       "신뢰도 차단이 되살아났습니다. 경고(confidence_level)로 대체되어야 합니다.")
+
+# 위가 "없어야 할 것"이라면 이쪽은 "있어야 할 것"이다. 백엔드가 이 키를 읽어
+# analysis_result.confidence_level 에 넣으므로, 사라지면 경고가 조용히 꺼진다.
+check("run_inference 응답에 confidence_level 이 있다",
+      "confidence_level" in inference_keys,
+      f"현재 키: {sorted(inference_keys)}")
 
 check("등급 문자열이 백엔드/마이그레이션과 약속한 값이다",
       (serving.CONFIDENCE_LOW, serving.CONFIDENCE_NORMAL) == ("low", "normal"),
