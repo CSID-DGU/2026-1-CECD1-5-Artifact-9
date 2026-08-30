@@ -24,6 +24,10 @@ export type PreliminaryTopK = {
 
 export type PreliminaryAnalysis = {
   topK: PreliminaryTopK[];
+  /** AI 신뢰도 등급. "low"면 caution 문구를 띄운다 — 자세한 배경은 api/analysis.ts 주석 참고. */
+  confidenceLevel: "low" | "normal";
+  /** 확신도가 낮을 때 띄울 문구. 경고할 것이 없으면 null. */
+  caution: string | null;
   /**
    * 서버가 호출자에 맞는 경로를 내려준다 — 태블릿은 /api/kiosk/session/{token}/heatmap(무인증),
    * 의사 화면은 /api/v1/visits/{visitId}/preliminary/heatmap(JWT 필요). 직접 조립하지 말 것.

@@ -35,6 +35,7 @@ public class AnalysisService {
     private final AnalysisImageRepository analysisImageRepository;
     private final DiseaseRepository diseaseRepository;
     private final ImageStorageService imageStorageService;
+    private final LowConfidenceCaution lowConfidenceCaution;
     private final ObjectMapper objectMapper;
 
     /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
@@ -112,9 +113,10 @@ public class AnalysisService {
             prediction = callFastApi(target.primaryImageUrl());
             int inferenceMs = (int) (System.currentTimeMillis() - startMs);
 
-            if (!prediction.isValidOrDefault()) {
-                throw new InvalidAnalysisImageException(prediction.messageOrDefault());
-            }
+            // 신뢰도가 낮아도 여기서 막지 않는다. 결과는 그대로 내보내고 "확신 낮음" 등급만 붙인다.
+            // 차단하던 시절에는 홀드아웃 2,857장 중 4.5% 가 답을 못 받았고, 하필 그 안에
+            // 흑색종이 몰려 있어 재현율이 89.3% → 88.8% 로 깎였다. 근거: LowConfidenceCaution.
+            String confidenceLevel = lowConfidenceCaution.normalizeLevel(prediction.confidenceLevel());
 
             List<TopKItem> topK = prediction.top5().stream()
                     .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
@@ -126,7 +128,7 @@ public class AnalysisService {
             result = analysisTransactionService.saveResult(
                     visitId, targetImageIds,
                     prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
-                    prediction.top1().confidence(), topK, inferenceMs, heatmapKey);
+                    prediction.top1().confidence(), confidenceLevel, topK, inferenceMs, heatmapKey);
         } catch (RuntimeException e) {
             analysisTransactionService.abortAnalysis(visitId, target.previousStatus());
             throw e;
@@ -214,6 +216,8 @@ public class AnalysisService {
                         result.getConfidence()
                 ),
                 top5,
+                result.getConfidenceLevel(),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), disease.getDiseaseCode()),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
                 heatmapApiUrl(result)
@@ -293,6 +297,8 @@ public class AnalysisService {
                         result.getConfidence()
                 ),
                 top5,
+                result.getConfidenceLevel(),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), prediction.top1().diseaseCode()),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
                 heatmapApiUrl(result)
@@ -306,24 +312,14 @@ public class AnalysisService {
 
     // FastAPI 응답 구조 (snake_case → camelCase 매핑)
     private record FastApiPredictResponse(
-            @JsonProperty("is_valid") Boolean isValid,
-            String message,
-            Double threshold,
+            /** "low" / "normal". 구버전 FastAPI 는 이 필드를 안 보내므로 null 일 수 있다. */
+            @JsonProperty("confidence_level") String confidenceLevel,
+            @JsonProperty("low_confidence_threshold") Double lowConfidenceThreshold,
             FastApiTop1 top1,
             List<FastApiTop5Item> top5,
             @JsonProperty("heatmap_base64") String heatmapBase64,
             @JsonProperty("model_version") String modelVersion
     ) {
-        private boolean isValidOrDefault() {
-            return isValid == null || isValid;
-        }
-
-        private String messageOrDefault() {
-            return message != null && !message.isBlank()
-                    ? message
-                    : "AI 분석에 적합하지 않은 이미지입니다.";
-        }
-
         /** model_version 컬럼은 NOT NULL 이라, 구버전 FastAPI가 필드를 안 보내는 과도기에도 저장이 깨지면 안 된다. */
         private String modelVersionOrDefault() {
             return modelVersion != null && !modelVersion.isBlank()

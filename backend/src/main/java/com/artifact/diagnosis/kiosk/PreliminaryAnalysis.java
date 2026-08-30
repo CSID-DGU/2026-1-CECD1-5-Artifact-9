@@ -34,6 +34,10 @@ public class PreliminaryAnalysis {
     @Column(name = "top_k_json", columnDefinition = "json")
     private List<TopKItem> topKJson;
 
+    /** AI 신뢰도 등급 — analysis_result 와 같은 값 체계다. AnalysisResult.confidenceLevel 주석 참고. */
+    @Column(name = "confidence_level", nullable = false, length = 10)
+    private String confidenceLevel;
+
     @Column(name = "gradcam_url", length = 500)
     private String gradcamUrl;
 

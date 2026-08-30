@@ -26,11 +26,16 @@
 """
 
 import ast
+import contextlib
 import csv
+import importlib.util
+import inspect
+import io
 import json
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 FASTAPI_DIR = Path(__file__).resolve().parent.parent
@@ -92,9 +97,21 @@ check(f"모델 출력 차원({out_features}) == len(CLASSES)({len(classes)})",
       "model.pth 가 다른 클래스 수로 학습됐습니다. "
       "가중치를 다시 만들거나 CLASSES 를 맞추세요.")
 
-check("MIN_TOP1_CONFIDENCE 가 0~1 범위다",
-      0.0 < serving.MIN_TOP1_CONFIDENCE < 1.0,
-      f"현재 값: {serving.MIN_TOP1_CONFIDENCE}")
+check("LOW_CONFIDENCE_THRESHOLD 가 0~1 범위다",
+      0.0 < serving.LOW_CONFIDENCE_THRESHOLD < 1.0,
+      f"현재 값: {serving.LOW_CONFIDENCE_THRESHOLD}")
+
+# 신뢰도로 결과를 **막지 않는다**는 것이 2026-08-30 의 설계 결정이다(main.py 주석 참고).
+# 차단이 되살아나면 홀드아웃에서 흑색종 재현율이 89.3% → 86.3% 로 떨어지므로,
+# is_valid 가 다시 생기는 것을 여기서 막는다.
+check("run_inference 응답에 차단 필드(is_valid)가 없다",
+      "is_valid" not in inspect.getsource(serving.run_inference),
+      "신뢰도 차단이 되살아났습니다. 경고(confidence_level)로 대체되어야 합니다.")
+
+check("등급 문자열이 백엔드/마이그레이션과 약속한 값이다",
+      (serving.CONFIDENCE_LOW, serving.CONFIDENCE_NORMAL) == ("low", "normal"),
+      f"현재 값: {serving.CONFIDENCE_LOW!r} / {serving.CONFIDENCE_NORMAL!r} — "
+      "V6 마이그레이션의 confidence_level CHECK 제약과 어긋납니다.")
 
 # =============================================
 print("\n[2] 평가 하네스와의 정합성")
@@ -227,7 +244,116 @@ for notebook in notebooks:
           "이대로 학습하면 '이 모델이 안 본 사진'을 아무도 말할 수 없게 됩니다")
 
 # =============================================
-print("\n[5] 백엔드 disease 시드")
+print("\n[5] OOD 평가 세트")
+
+# OOD 세트의 이미지는 커밋하지 않는다 — make_ood.py 가 결정적이라 언제든 다시 만들 수
+# 있기 때문이다. 그 전제가 깨지는 두 가지를 여기서 잡는다.
+MAKE_OOD = FASTAPI_DIR / "tests/make_ood.py"
+ood_baselines = sorted((FASTAPI_DIR / "tests/baselines").glob("ood-*.json"))
+
+if not MAKE_OOD.exists():
+    if ood_baselines:
+        check("OOD 생성기가 있다", False,
+              f"{[b.name for b in ood_baselines]} 는 있는데 make_ood.py 가 없습니다 — "
+              "그 기준값은 다시 만들 수 없습니다")
+    else:
+        skip("OOD 평가 세트", "make_ood.py 도 기준값도 없음")
+else:
+    ood_source = MAKE_OOD.read_text(encoding="utf-8")
+
+    # normal_skin 은 '모델이 본 적 없는 정상 피부'여야 의미가 있다. 홀드아웃 목록에서
+    # 뽑는 것이 그 보장이다 — 학습 사진의 모서리를 쓰면 재는 대상이 달라진다.
+    check("make_ood.py 가 정상 피부를 홀드아웃 목록에서 뽑는다",
+          "holdout.csv" in ood_source,
+          "PAD 전체에서 뽑으면 학습에 쓴 피부가 섞여 '처음 보는 정상 피부'가 아니게 됩니다")
+
+    # 기준값에 기록된 갈래를 생성기가 여전히 만들 수 있어야 --compare 가 성립한다.
+    #
+    # 소스에서 갈래 이름을 문자열로 찾는 방식은 쓰지 않는다. 실제로 그렇게 짰다가
+    # surface -> texture 로 바꾼 것을 놓쳤다 — 파일을 쓰는 쪽 이름은 바뀌었는데
+    # `args.out / "surface"` 라는 경로 리터럴이 소스에 남아 검사를 통과시켰다.
+    # 그래서 여기서는 생성기를 **실제로 돌린다**. 합성 갈래 152장에 1초면 되고,
+    # 덤으로 생성기가 아예 터지지는 않는지도 같이 잡힌다.
+    def run_generator() -> tuple[set[str], str | None]:
+        """합성 갈래 + 가짜 PAD 로 normal_skin 까지 만들어 본다. (만든 갈래, 오류)"""
+        import numpy
+        from PIL import Image
+
+        spec = importlib.util.spec_from_file_location("make_ood", MAKE_OOD)
+        make_ood = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(make_ood)
+
+        # 생성기가 찍는 진행 출력은 이 보고서에 섞이면 읽기만 나빠진다.
+        with tempfile.TemporaryDirectory() as tmp_name, \
+                contextlib.redirect_stdout(io.StringIO()):
+            tmp = Path(tmp_name)
+            rng = numpy.random.default_rng(0)
+            rows = []
+            for builder in (make_ood.build_degenerate, make_ood.build_pattern,
+                            make_ood.build_surface):
+                rows += builder(tmp / builder.__name__.removeprefix("build_"), rng)
+
+            # normal_skin 은 PAD 원본이 있어야 하니, 홀드아웃 목록의 첫 몇 장 이름으로
+            # 가짜 피부색 사진을 만들어 넣는다. _corner_score 의 세 관문까지 함께 돈다.
+            if HOLDOUT_CSV.exists():
+                with HOLDOUT_CSV.open(encoding="utf-8", newline="") as fh:
+                    pad_ids = [r["image_id"] for r in csv.DictReader(fh)
+                               if r.get("src") == "pad"][:3]
+                if pad_ids:
+                    fake = tmp / "pad"
+                    fake.mkdir()
+                    for image_id in pad_ids:
+                        arr = (numpy.array([198.0, 152.0, 128.0])
+                               + rng.normal(0, 3, (256, 256, 3))).clip(0, 255)
+                        Image.fromarray(arr.astype("uint8")).save(fake / image_id)
+                    made = make_ood.build_normal_skin(fake, HOLDOUT_CSV,
+                                                      tmp / "normal_skin")
+                    if len(made) != len(pad_ids):
+                        return set(), ("깨끗한 피부색 사진마저 정상 피부로 안 뽑힙니다 "
+                                       f"({len(made)}/{len(pad_ids)}) — 선별 기준이 "
+                                       "너무 조입니다")
+                    rows += made
+
+            produced = {r["category"] for r in rows}
+            absent = [r["file"] for r in rows if not (tmp / r["file"]).is_file()]
+            if absent:
+                return produced, f"목록에 있는데 실제로 없는 파일: {absent[:3]}"
+            return produced, None
+
+    try:
+        import numpy  # noqa: F401
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        skip("make_ood.py 실행", "numpy/Pillow 가 없습니다 (컨테이너 안에서는 돕니다)")
+        skip("기준값의 갈래 대조", "생성기를 돌리지 못했습니다")
+    else:
+        try:
+            produced, build_error = run_generator()
+        except Exception as exc:            # noqa: BLE001 — 무엇이든 실패로 본다
+            produced, build_error = set(), f"{type(exc).__name__}: {exc}"
+
+        check("make_ood.py 를 실제로 돌려 이미지가 나온다",
+              build_error is None, build_error or "")
+
+        # 생성 자체가 실패했으면 갈래 대조는 의미가 없다. 그대로 돌리면 "이름을 바꿨다"는
+        # 엉뚱한 진단이 함께 뜨고, 진짜 원인이 두 줄 중 어느 쪽인지 헷갈린다.
+        if build_error is not None:
+            for baseline in ood_baselines:
+                skip(f"{baseline.name} 의 갈래 대조", "생성기가 실패했습니다")
+            ood_baselines = []
+
+        # photo 는 로컬 파일이 있어야만 나오는 갈래라 여기서는 만들 수 없다. 애초에
+        # 커밋된 기준값에는 넣지 않기로 했으니, 기준값에 있으면 그것이 잘못이다.
+        for baseline in ood_baselines:
+            recorded = json.loads(baseline.read_text(encoding="utf-8"))
+            missing = set(recorded.get("ood", {}).get("per_category", {})) - produced
+            check(f"{baseline.name} 의 갈래를 make_ood.py 가 아직 만든다",
+                  not missing,
+                  f"생성기가 만들지 못하는 갈래: {sorted(missing)} — 이름을 바꿨거나, "
+                  "재현되지 않는 갈래(photo 등)가 기준값에 섞여 있습니다")
+
+# =============================================
+print("\n[6] 백엔드 disease 시드")
 
 if not SCHEMA_SQL.is_file():
     skip("V1__baseline_schema.sql 대조",

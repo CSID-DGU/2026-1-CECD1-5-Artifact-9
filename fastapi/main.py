@@ -35,25 +35,49 @@ CLASS_NAMES_KO = {
     "inflammatory": "염증성 피부질환",
 }
 
-# Top-1 신뢰도가 이 값에 못 미치면 결과 대신 INVALID_IMAGE_MESSAGE 를 돌려준다.
+# ─────────────────────────────────────────────────────────────────────────────
+# 신뢰도 경고선 — 이 값 아래면 결과에 "확신 낮음" 등급이 붙는다. **막지는 않는다.**
 #
-# 이 값의 목적은 정확도를 올리는 게 아니라 "피부 병변 사진이 아닌 것"을 걸러내는 것이다.
-# 그래서 정상적인 병변 사진에서 걸리는 것은 전부 오거절이고, 그 비율이 이 값의 비용이다.
+# 2026-08-30 까지 이 값은 차단선(MIN_TOP1_CONFIDENCE)이었다. 그 설계를 버린 이유 셋:
 #
-# 0.45 -> 0.35. HAM10000 10,015장으로 실측한 결과(tests/baselines/) 0.45 에서는
-# 정상적인 병변 사진의 17.8% 가 "병변 사진이 아닌 것 같다"며 거절당했다. 0.35 로 내리면
-#   거절률   17.8% -> 5.4%
-#   mel 재현율 87.0% -> 90.4%
-#   위험군 재현율 87.8% -> 92.3%
-# 로, 놓치는 쪽이 함께 좋아진다. 통과분 정확도만 87.7% -> 84.7% 로 내려가는데
-# 그 3%p 는 애초에 답을 안 해서 얻은 값이라 진료에는 보탬이 되지 않는다.
+# 1) 차단은 원래 목적을 어느 값에서도 달성하지 못했다.
+#    이 값의 목적은 정확도가 아니라 "피부 병변 사진이 아닌 것"을 걸러내는 것이었다.
+#    병변이 아닌 사진 543장(tests/make_ood.py)으로 재보니 0.35 에서 79.6%,
+#    0.45 로 올려도 61.9% 가 그대로 통과해 병명을 받았다. 아무것도 없는 정상 피부
+#    391장 중 137장(35.0%)이 악성·전암으로 통과했고, 단색 회색 사각형이 89.6%,
+#    체크무늬가 100.0% 확신도로 inflammatory 를 받는다. OOD 필터로 작동하지 않는다.
 #
-# 다시 조정하려면 느낌으로 고치지 말고 tests/evaluate.py 의 임계값 표를 다시 뽑을 것.
-MIN_TOP1_CONFIDENCE = float(os.getenv("MIN_TOP1_CONFIDENCE", "0.35"))
-INVALID_IMAGE_MESSAGE = (
-    "피부 병변 이미지로 판단하기 어렵습니다. "
-    "의료 이미지 또는 피부 병변이 명확히 보이는 사진을 업로드해 주세요."
-)
+# 2) 차단의 비용은 하필 "암을 놓치는" 쪽으로 나타났다.
+#    홀드아웃 2,857장(tests/baselines/holdout.csv) 실측 —
+#      차단 0.45 : 14.4% 가 답을 못 받음,  mel 재현율 86.3%,  위험군 89.9%
+#      차단 0.35 :  4.5% 가 답을 못 받음,  mel 재현율 88.8%,  위험군 94.7%
+#      차단 없음 :  전부 답을 받음,        mel 재현율 89.3%,  위험군 95.6%
+#    차단을 걷어낼수록 놓치는 암이 줄어든다. 차단은 애매한 것부터 걷어내는데
+#    애매한 쪽에 악성이 몰려 있기 때문이다. "거절하면 의사가 대신 본다"는 전제는
+#    거절이 난이도를 따라갈 때만 성립하는데, 위 숫자가 그렇지 않다고 말한다.
+#    (통과분 정확도만 차단할수록 올라가지만, 그건 어려운 문제를 안 풀고 얻은 점수다.
+#     같은 100장에서 실제로 맞힌 장수는 차단하지 않는 쪽이 더 많다.)
+#
+# 3) 그런데 "확신이 낮다"는 신호 자체는 버리기 아까웠다.
+#    0.45 미만 구간은 전체의 14.4% 인데 그 안의 정확도가 57.3% 다 (나머지는 88.3%).
+#    전체 오답 461건 중 175건(38.0%)이 이 14.4% 안에 몰려 있다 — 오답 농축 2.6배.
+#    이 선은 "답을 주지 말아야 할 경계"가 아니라 "답을 의심해야 할 경계"였다.
+#
+# 그래서 차단을 없애고 같은 자리에 경고를 세웠다. 재현율은 오히려 오르고(2번),
+# 오답의 38.0% 와 엉뚱한 사진의 38.1% 에 표시가 붙는다 — 차단이 잡던 20.4% 보다 낫다.
+#
+# 조정하려면 느낌으로 고치지 말고 tests/evaluate.py 를 --ood-dir 과 함께 돌려
+# 「임계값의 양쪽 비용」 표를 다시 뽑을 것. 근거 수치는 tests/baselines/README.md.
+#
+# 경고 **문구**는 여기서 만들지 않고 등급만 내려보낸다. 문구는 심각도(악성/양성)에
+# 따라 갈려야 하는데 심각도의 원본은 disease 테이블이고, 그건 백엔드가 소유한다.
+# 여기에 사본을 두면 언젠가 한쪽만 바뀐다.
+LOW_CONFIDENCE_THRESHOLD = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.45"))
+
+# 경고 등급 문자열. DB(analysis_result.confidence_level)에 그대로 저장되므로
+# 값을 바꾸면 백엔드 매핑과 마이그레이션(V6)도 함께 바꿔야 한다.
+CONFIDENCE_LOW = "low"
+CONFIDENCE_NORMAL = "normal"
 
 # =============================================
 # 내부 호출 인증 — 백엔드만 추론을 부를 수 있게 한다
@@ -190,7 +214,7 @@ def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str |
 
 
 def run_inference(image_bytes: bytes) -> dict:
-    """EfficientNet-B0 추론. is_valid / top1 / top5 / heatmap_base64 포함 결과 반환."""
+    """EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 포함 결과 반환."""
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
@@ -215,15 +239,19 @@ def run_inference(image_bytes: bytes) -> dict:
         for i, (prob, idx) in enumerate(zip(top5.values, top5.indices))
     ]
     top1_confidence = results[0]["confidence"]
-    is_valid = top1_confidence >= MIN_TOP1_CONFIDENCE
+    confidence_level = (
+        CONFIDENCE_NORMAL if top1_confidence >= LOW_CONFIDENCE_THRESHOLD else CONFIDENCE_LOW
+    )
 
     # ── GradCAM 렌더링 (모델과 무관한 후처리 → 락 밖에서 병렬로 돈다) ──
     heatmap_base64 = _render_gradcam_overlay(cam, image) if cam is not None else None
 
     return {
-        "is_valid": is_valid,
-        "message": None if is_valid else INVALID_IMAGE_MESSAGE,
-        "threshold": MIN_TOP1_CONFIDENCE,
+        # is_valid / message 를 더 이상 보내지 않는다. 신뢰도로 결과를 막지 않기 때문이다.
+        # 백엔드의 구버전 매핑은 is_valid 가 없으면 "유효"로 해석하므로(널 기본값),
+        # 배포가 엇갈려 구버전 백엔드 + 신버전 여기가 되어도 차단이 되살아나지 않는다.
+        "confidence_level": confidence_level,
+        "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
         "top1": results[0],
         "top5": results,
         "heatmap_base64": heatmap_base64,
@@ -238,7 +266,7 @@ def health():
     return {
         "status": "ok",
         "device": str(device),
-        "min_top1_confidence": MIN_TOP1_CONFIDENCE,
+        "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
         "model_version": MODEL_VERSION,
         "classes": CLASSES,
     }

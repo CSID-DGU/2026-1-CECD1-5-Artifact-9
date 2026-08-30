@@ -13,6 +13,7 @@ import { completeVisit, getVisit, listVisits, startVisit, type Visit, type Visit
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
+import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 import { formatConfidence } from "../utils/confidence";
@@ -505,6 +506,8 @@ export default function Clinic() {
                   ⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.
                 </p>
 
+                <LowConfidenceBanner caution={preliminaryAnalysis.caution} />
+
                 {preliminaryAnalysis.topK[0] && (
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
                     <p className="text-xs text-gray-300">Top 1 (키오스크 예비분석)</p>
@@ -684,6 +687,8 @@ export default function Clinic() {
                 <p className="text-xs text-gray-300">이미지를 선택하고 AI 분석을 요청하면 결과가 표시됩니다.</p>
               ) : (
                 <>
+                  <LowConfidenceBanner caution={analysis.caution} />
+
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
                     <p className="text-xs text-gray-300">Top 1</p>
                     <p className="mt-0.5 text-sm font-semibold text-white">

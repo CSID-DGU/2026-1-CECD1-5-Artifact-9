@@ -1,0 +1,293 @@
+{
+  "model_version": "efficientnet_b0-03061a31e63f",
+  "serving_threshold": 0.35,
+  "ood": {
+    "sample_count": 543,
+    "serving_threshold": 0.35,
+    "rejected": 111,
+    "reject_rate": 0.20441988950276244,
+    "per_category": {
+      "degenerate": {
+        "total": 70,
+        "passed": 59,
+        "rejected": 11,
+        "reject_rate": 0.15714285714285714,
+        "passed_as": [
+          [
+            "inflammatory",
+            44
+          ],
+          [
+            "vasc",
+            13
+          ],
+          [
+            "nv",
+            2
+          ]
+        ],
+        "passed_as_dangerous": 0
+      },
+      "normal_skin": {
+        "total": 391,
+        "passed": 309,
+        "rejected": 82,
+        "reject_rate": 0.20971867007672634,
+        "passed_as": [
+          [
+            "akiec",
+            125
+          ],
+          [
+            "bkl",
+            90
+          ],
+          [
+            "inflammatory",
+            76
+          ],
+          [
+            "bcc",
+            12
+          ],
+          [
+            "vasc",
+            4
+          ],
+          [
+            "df",
+            1
+          ],
+          [
+            "nv",
+            1
+          ]
+        ],
+        "passed_as_dangerous": 137
+      },
+      "pattern": {
+        "total": 46,
+        "passed": 34,
+        "rejected": 12,
+        "reject_rate": 0.2608695652173913,
+        "passed_as": [
+          [
+            "inflammatory",
+            24
+          ],
+          [
+            "nv",
+            5
+          ],
+          [
+            "df",
+            3
+          ],
+          [
+            "vasc",
+            2
+          ]
+        ],
+        "passed_as_dangerous": 0
+      },
+      "surface": {
+        "total": 36,
+        "passed": 30,
+        "rejected": 6,
+        "reject_rate": 0.16666666666666666,
+        "passed_as": [
+          [
+            "inflammatory",
+            24
+          ],
+          [
+            "vasc",
+            6
+          ]
+        ],
+        "passed_as_dangerous": 0
+      }
+    },
+    "threshold_sweep": [
+      {
+        "threshold": 0.05,
+        "reject_rate": 0.0,
+        "degenerate": 0.0,
+        "normal_skin": 0.0,
+        "pattern": 0.0,
+        "surface": 0.0
+      },
+      {
+        "threshold": 0.1,
+        "reject_rate": 0.0,
+        "degenerate": 0.0,
+        "normal_skin": 0.0,
+        "pattern": 0.0,
+        "surface": 0.0
+      },
+      {
+        "threshold": 0.15,
+        "reject_rate": 0.0,
+        "degenerate": 0.0,
+        "normal_skin": 0.0,
+        "pattern": 0.0,
+        "surface": 0.0
+      },
+      {
+        "threshold": 0.2,
+        "reject_rate": 0.001841620626151013,
+        "degenerate": 0.0,
+        "normal_skin": 0.0025575447570332483,
+        "pattern": 0.0,
+        "surface": 0.0
+      },
+      {
+        "threshold": 0.25,
+        "reject_rate": 0.03130755064456722,
+        "degenerate": 0.0,
+        "normal_skin": 0.03836317135549872,
+        "pattern": 0.021739130434782608,
+        "surface": 0.027777777777777776
+      },
+      {
+        "threshold": 0.3,
+        "reject_rate": 0.10128913443830571,
+        "degenerate": 0.0,
+        "normal_skin": 0.12020460358056266,
+        "pattern": 0.06521739130434782,
+        "surface": 0.1388888888888889
+      },
+      {
+        "threshold": 0.35,
+        "reject_rate": 0.20441988950276244,
+        "degenerate": 0.15714285714285714,
+        "normal_skin": 0.20971867007672634,
+        "pattern": 0.2608695652173913,
+        "surface": 0.16666666666666666
+      },
+      {
+        "threshold": 0.4,
+        "reject_rate": 0.30570902394106814,
+        "degenerate": 0.22857142857142856,
+        "normal_skin": 0.32225063938618925,
+        "pattern": 0.3695652173913043,
+        "surface": 0.19444444444444445
+      },
+      {
+        "threshold": 0.45,
+        "reject_rate": 0.3812154696132597,
+        "degenerate": 0.2714285714285714,
+        "normal_skin": 0.4092071611253197,
+        "pattern": 0.43478260869565216,
+        "surface": 0.2222222222222222
+      },
+      {
+        "threshold": 0.5,
+        "reject_rate": 0.49355432780847147,
+        "degenerate": 0.3142857142857143,
+        "normal_skin": 0.5217391304347826,
+        "pattern": 0.6739130434782609,
+        "surface": 0.3055555555555556
+      },
+      {
+        "threshold": 0.55,
+        "reject_rate": 0.576427255985267,
+        "degenerate": 0.38571428571428573,
+        "normal_skin": 0.5959079283887468,
+        "pattern": 0.782608695652174,
+        "surface": 0.4722222222222222
+      },
+      {
+        "threshold": 0.6,
+        "reject_rate": 0.6648250460405156,
+        "degenerate": 0.4857142857142857,
+        "normal_skin": 0.6828644501278772,
+        "pattern": 0.8260869565217391,
+        "surface": 0.6111111111111112
+      },
+      {
+        "threshold": 0.65,
+        "reject_rate": 0.7366482504604052,
+        "degenerate": 0.5428571428571428,
+        "normal_skin": 0.7544757033248082,
+        "pattern": 0.8695652173913043,
+        "surface": 0.75
+      },
+      {
+        "threshold": 0.7,
+        "reject_rate": 0.8047882136279927,
+        "degenerate": 0.6,
+        "normal_skin": 0.8235294117647058,
+        "pattern": 0.8913043478260869,
+        "surface": 0.8888888888888888
+      },
+      {
+        "threshold": 0.75,
+        "reject_rate": 0.8674033149171271,
+        "degenerate": 0.6714285714285714,
+        "normal_skin": 0.8900255754475703,
+        "pattern": 0.9130434782608695,
+        "surface": 0.9444444444444444
+      },
+      {
+        "threshold": 0.8,
+        "reject_rate": 0.9300184162062615,
+        "degenerate": 0.8428571428571429,
+        "normal_skin": 0.9360613810741688,
+        "pattern": 0.9565217391304348,
+        "surface": 1.0
+      },
+      {
+        "threshold": 0.85,
+        "reject_rate": 0.9650092081031307,
+        "degenerate": 0.9142857142857143,
+        "normal_skin": 0.969309462915601,
+        "pattern": 0.9782608695652174,
+        "surface": 1.0
+      },
+      {
+        "threshold": 0.9,
+        "reject_rate": 0.994475138121547,
+        "degenerate": 1.0,
+        "normal_skin": 0.9948849104859335,
+        "pattern": 0.9782608695652174,
+        "surface": 1.0
+      },
+      {
+        "threshold": 0.95,
+        "reject_rate": 0.998158379373849,
+        "degenerate": 1.0,
+        "normal_skin": 1.0,
+        "pattern": 0.9782608695652174,
+        "surface": 1.0
+      }
+    ],
+    "worst": [
+      {
+        "file": "pattern/fabric_4.jpg",
+        "pred": "inflammatory",
+        "conf": 1.0
+      },
+      {
+        "file": "normal_skin/PAT_403_804_994_tl.jpg",
+        "pred": "bkl",
+        "conf": 0.9429349899291992
+      },
+      {
+        "file": "normal_skin/PAT_478_916_806_tl.jpg",
+        "pred": "akiec",
+        "conf": 0.9314060211181641
+      },
+      {
+        "file": "normal_skin/PAT_1243_837_806_bl.jpg",
+        "pred": "akiec",
+        "conf": 0.8992708325386047
+      },
+      {
+        "file": "degenerate/solid_grey.jpg",
+        "pred": "inflammatory",
+        "conf": 0.8956552743911743
+      }
+    ]
+  }
+}

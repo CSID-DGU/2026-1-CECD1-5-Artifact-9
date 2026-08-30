@@ -80,7 +80,7 @@
 
 ### 3) AI 분석 결과 + GradCAM 설명 히트맵
 
-Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함께 **GradCAM 오버레이 이미지**가 반환된다. 신뢰도가 임계값(`MIN_TOP1_CONFIDENCE`) 미만이면 "피부 병변 이미지로 판단하기 어렵습니다…" 안내를 반환해 오용을 방지한다.
+Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함께 **GradCAM 오버레이 이미지**가 반환된다. Top-1 신뢰도가 임계값(`LOW_CONFIDENCE_THRESHOLD`, 기본 0.45) 미만이면 결과에 **"확신 낮음" 경고**가 함께 붙는다 — 결과를 막지는 않는다. 홀드아웃 2,857장 기준 약 14%에 경고가 붙고, 그 14% 안에 전체 오답의 38%가 들어 있다.
 
 <img width="302" height="418" alt="image" src="https://github.com/user-attachments/assets/47273a55-5133-4dca-a35c-ce2dfa25d6bc" />
 <img width="272" height="452" alt="image" src="https://github.com/user-attachments/assets/585c2fde-9dcf-400a-a17e-b1196d55ef6d" />
@@ -474,7 +474,7 @@ npm run dev
 | 서비스 | 내용 |
 | --- | --- |
 | `mysql` | `mysql:8.0`, port `3306`, database `artifact_db`, healthcheck 적용 |
-| `fastapi` | build `./fastapi`, port `8000`, `MIN_TOP1_CONFIDENCE` 주입 |
+| `fastapi` | build `./fastapi`, port `8000`, `LOW_CONFIDENCE_THRESHOLD` 주입 |
 | `backend` | build `./backend`, port `8080`, `depends_on: mysql(healthy)`, FastAPI URL `http://fastapi:8000`, Gemini API 키 주입 |
 | `frontend` | build `./frontend` (node:20 빌드 → nginx:alpine 서빙), port `3000:80`, `/api/` 요청을 `backend:8080`으로 프록시 |
 
@@ -509,7 +509,7 @@ IMAGE_LOCAL_UPLOAD_DIR=/tmp/artifact-images
 
 # AI inference
 FASTAPI_URL=http://localhost:8000
-MIN_TOP1_CONFIDENCE=0.35
+LOW_CONFIDENCE_THRESHOLD=0.45
 
 # Gemini LLM (처방 코멘트)
 GEMINI_API_KEY=
@@ -561,7 +561,7 @@ GEMINI_API_KEY=
 | **목적** | 피부 병변 이미지 7-class 분류 |
 | **입력 전처리** | Resize 224×224, Normalize (ImageNet mean/std) |
 | **출력** | Top-1 / Top-5 질환 + confidence, **GradCAM 오버레이 (원본 해상도 보존)** |
-| **유효성 게이트** | `top1_confidence < MIN_TOP1_CONFIDENCE`이면 `is_valid=false` + 안내 메시지 |
+| **확신도 경고** | `top1_confidence < LOW_CONFIDENCE_THRESHOLD`이면 `confidence_level="low"` — 결과는 그대로 내보내고 화면에 경고만 붙인다 |
 | **GradCAM 구현** | 순수 PyTorch + Pillow, cv2/grad-cam 라이브러리 불필요 — `model.conv_head`에 forward hook 등록 |
 | **모델 파일** | `fastapi/model.pth` |
 | **학습 노트북** | `fastapi/notebooks/skin_lesion_training_colab.ipynb` |
@@ -584,7 +584,7 @@ GEMINI_API_KEY=
 
 | Method | Endpoint | 설명 |
 | --- | --- | --- |
-| GET | `/health` | 헬스 체크 (device, MIN_TOP1_CONFIDENCE 노출) |
+| GET | `/health` | 헬스 체크 (device, LOW_CONFIDENCE_THRESHOLD, model_version, classes 노출) |
 | POST | `/predict` | 이미지 파일 기반 추론 (Swagger / curl) |
 | POST | `/predict-base64` | base64 이미지 기반 추론 (백엔드 연동용) |
 
@@ -619,7 +619,7 @@ GEMINI_API_KEY=
 | Gemini 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY` 환경변수 설정 후 재기동 |
 | Gemini 503 | 1·2초 자동 재시도 후에도 실패 시 잠시 후 다시 시도 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
-| AI가 "유효하지 않은 이미지"로 실패 | `MIN_TOP1_CONFIDENCE` 값과 입력 이미지 품질 확인 |
+| "확신 낮음" 경고가 너무 자주/드물게 뜸 | `LOW_CONFIDENCE_THRESHOLD` 조정 (올리면 경고가 잦아진다). 근거 수치는 `fastapi/tests/README.md` |
 
 ---
 

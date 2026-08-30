@@ -1,7 +1,6 @@
 package com.artifact.diagnosis.common.exception;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
-import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -52,12 +51,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error(409, e.getMessage(), null));
-    }
-
-    /** AI 분석 대상 이미지가 모델 판별 기준을 통과하지 못함 → 422. */
-    @ExceptionHandler(InvalidAnalysisImageException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidAnalysisImage(InvalidAnalysisImageException e) {
-        return ResponseEntity.unprocessableEntity().body(error(422, e.getMessage(), null));
     }
 
     /**

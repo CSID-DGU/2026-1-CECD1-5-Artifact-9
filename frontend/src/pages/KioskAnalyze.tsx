@@ -4,6 +4,7 @@ import { getErrorMessage, isNotFound } from "../api/errors";
 import { analyzeKioskSession, getKioskSession, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { formatConfidence } from "../utils/confidence";
 
 const DISCLAIMER =
@@ -309,6 +310,8 @@ export default function KioskAnalyze() {
 
           {result && (
             <div className="flex flex-col gap-2">
+              <LowConfidenceBanner caution={result.caution} />
+
               {result.topK[0] && (
                 <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
                   <p className="text-xs text-gray-300">Top 1</p>

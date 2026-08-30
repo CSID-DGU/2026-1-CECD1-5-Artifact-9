@@ -23,6 +23,20 @@ public record AnalysisResponse(
         String modelVersion,
         Top1Result top1,
         List<TopKResult> top5,
+
+        /**
+         * AI 신뢰도 등급 — {@code "low"} 면 화면에 확신도 경고를 띄운다.
+         *
+         * 예전에는 신뢰도가 낮으면 이 응답 대신 422 가 나갔다. 그 차단을 걷어낸 이유는
+         * fastapi/main.py 의 LOW_CONFIDENCE_THRESHOLD 주석에 있다 — 요약하면, 차단은
+         * 애매한 것부터 걷어내는데 애매한 쪽에 악성이 몰려 있었다.
+         */
+        @Schema(description = "AI 신뢰도 등급", example = "normal", allowableValues = {"low", "normal"})
+        String confidenceLevel,
+
+        @Schema(description = "확신도가 낮을 때 화면에 띄울 경고 문구. 경고할 것이 없으면 null")
+        String caution,
+
         Integer inferenceTimeMs,
         LocalDateTime analyzedAt,
         String heatmapImageUrl

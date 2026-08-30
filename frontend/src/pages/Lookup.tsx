@@ -8,6 +8,7 @@ import { listVisitImages, type VisitImage } from "../api/images";
 import { getErrorMessage } from "../api/errors";
 import { AuthedImage } from "../components/AuthedImage";
 import { Card } from "../components/Card";
+import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { formatConfidence } from "../utils/confidence";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -602,6 +603,8 @@ export default function Lookup() {
             {selectedVisit.analysis && (
               <Card title="AI 분석 결과">
                 <div className="flex flex-col gap-2">
+                  <LowConfidenceBanner caution={selectedVisit.analysis.caution} />
+
                   {/* Top 1 하이라이트 */}
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2">
                     <p className="text-[10px] text-gray-400 mb-0.5">Top 1</p>

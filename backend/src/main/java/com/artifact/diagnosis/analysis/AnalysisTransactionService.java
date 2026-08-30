@@ -114,7 +114,8 @@ class AnalysisTransactionService {
     @Transactional
     public AnalysisResult saveResult(Long visitId, List<Long> imageIds,
                                      String modelVersion, String diseaseCode,
-                                     double confidence, List<TopKItem> topK,
+                                     double confidence, String confidenceLevel,
+                                     List<TopKItem> topK,
                                      int inferenceMs, String heatmapKey) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
@@ -126,6 +127,7 @@ class AnalysisTransactionService {
                 .modelVersion(modelVersion)
                 .predictedDiseaseId(disease.getId())
                 .confidence(BigDecimal.valueOf(confidence))
+                .confidenceLevel(confidenceLevel)
                 .topKResults(topK)
                 .inferenceTimeMs(inferenceMs)
                 .heatmapImageUrl(heatmapKey)

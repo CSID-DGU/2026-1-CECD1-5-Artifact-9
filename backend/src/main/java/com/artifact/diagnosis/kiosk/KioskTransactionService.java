@@ -33,11 +33,12 @@ class KioskTransactionService {
      * 재촬영하면 같은 visit 의 기존 행을 덮어쓴다 — Visit 1건당 예비분석은 1건이다.
      */
     @Transactional
-    public PreliminaryAnalysis saveResult(Long visitId, List<TopKItem> topK,
+    public PreliminaryAnalysis saveResult(Long visitId, List<TopKItem> topK, String confidenceLevel,
                                           String gradcamKey, String aiComment) {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .orElseGet(() -> PreliminaryAnalysis.builder().visitId(visitId).source(SOURCE).build());
         entity.setTopKJson(topK);
+        entity.setConfidenceLevel(confidenceLevel);
         entity.setGradcamUrl(gradcamKey);
         entity.setAiComment(aiComment);
         entity.setAnalyzedAt(LocalDateTime.now());

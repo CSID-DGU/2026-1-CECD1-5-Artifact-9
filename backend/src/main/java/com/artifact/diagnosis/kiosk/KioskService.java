@@ -1,7 +1,7 @@
 package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
-import com.artifact.diagnosis.analysis.InvalidAnalysisImageException;
+import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.image.ImageStorageService;
 import com.artifact.diagnosis.patient.Patient;
@@ -54,6 +54,7 @@ public class KioskService {
     private final GeminiService geminiService;
     private final ObjectMapper objectMapper;
     private final KioskTokenGenerator kioskTokenGenerator;
+    private final LowConfidenceCaution lowConfidenceCaution;
 
     /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
     private final HttpClient httpClient;
@@ -162,9 +163,10 @@ public class KioskService {
         }
 
         FastApiPredictResponse prediction = callFastApi(imageBytes);
-        if (!prediction.isValidOrDefault()) {
-            throw new InvalidAnalysisImageException(prediction.messageOrDefault());
-        }
+
+        // 신뢰도가 낮아도 막지 않는다 — 결과를 그대로 주고 "확신 낮음" 등급만 붙인다.
+        // 이유와 실측 근거는 LowConfidenceCaution / fastapi/main.py 주석 참고.
+        String confidenceLevel = lowConfidenceCaution.normalizeLevel(prediction.confidenceLevel());
 
         List<TopKItem> topK = prediction.top5().stream()
                 .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
@@ -180,7 +182,8 @@ public class KioskService {
         String aiComment = geminiService.generatePreliminaryComment(topK);
 
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
-        PreliminaryAnalysis entity = kioskTransactionService.saveResult(visitId, topK, gradcamKey, aiComment);
+        PreliminaryAnalysis entity = kioskTransactionService.saveResult(
+                visitId, topK, confidenceLevel, gradcamKey, aiComment);
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
@@ -202,6 +205,8 @@ public class KioskService {
 
         return new PreliminaryAnalysisResponse(
                 topK,
+                entity.getConfidenceLevel(),
+                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), top1Code(entity)),
                 doctorHeatmapApiUrl(entity),
                 entity.getAiComment(),
                 entity.getAnalyzedAt()
@@ -251,6 +256,8 @@ public class KioskService {
 
         return new PreliminaryAnalysisResponse(
                 topK,
+                entity.getConfidenceLevel(),
+                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), prediction.top1().diseaseCode()),
                 kioskHeatmapApiUrl(token, entity),
                 entity.getAiComment(),
                 entity.getAnalyzedAt()
@@ -309,22 +316,23 @@ public class KioskService {
     }
 
     private record FastApiPredictResponse(
-            @JsonProperty("is_valid") Boolean isValid,
-            String message,
-            Double threshold,
+            /** "low" / "normal". 구버전 FastAPI 는 이 필드를 안 보내므로 null 일 수 있다. */
+            @JsonProperty("confidence_level") String confidenceLevel,
+            @JsonProperty("low_confidence_threshold") Double lowConfidenceThreshold,
             FastApiTop1 top1,
             List<FastApiTop5Item> top5,
             @JsonProperty("heatmap_base64") String heatmapBase64
-    ) {
-        private boolean isValidOrDefault() {
-            return isValid == null || isValid;
-        }
+    ) {}
 
-        private String messageOrDefault() {
-            return message != null && !message.isBlank()
-                    ? message
-                    : "AI 분석에 적합하지 않은 이미지입니다.";
-        }
+    /**
+     * 저장된 예비분석에서 Top-1 병명 코드를 꺼낸다 — 경고 문구의 강도를 여기서 가른다.
+     *
+     * top_k_json 은 신뢰도 내림차순이라 0번이 Top-1 이다. 비어 있으면 null 을 주는데,
+     * 그때 {@link LowConfidenceCaution} 은 "모르면 위험" 쪽으로 판단한다.
+     */
+    private static String top1Code(PreliminaryAnalysis entity) {
+        List<TopKItem> topK = entity.getTopKJson();
+        return (topK == null || topK.isEmpty()) ? null : topK.get(0).code();
     }
 
     private record FastApiTop1(
