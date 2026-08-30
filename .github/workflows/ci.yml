@@ -141,3 +141,18 @@ jobs:
           echo "❌ 60초 안에 기동하지 못했습니다. 컨테이너 로그:"
           docker logs fastapi-ci
           exit 1
+
+      # 병명 코드 목록은 main.py · 학습 노트북 · 백엔드 마이그레이션 세 곳에 흩어져 있다.
+      # 언어가 달라 한 곳으로 모을 수가 없는데, 어긋났을 때의 증상이 최악이다 —
+      # 서버는 정상적으로 뜨고 확률도 그럴듯하게 나오면서 **병명만 조용히 틀린다.**
+      # 흑색종을 모반이라고 말하는 화면과 제대로 동작하는 화면이 겉보기에 완전히 같다.
+      # 사람이 지키기로 한 규칙은 언젠가 안 지켜지므로 기계가 매번 대조하게 한다.
+      #
+      # 이미지에는 fastapi/ 만 들어 있어(build context 가 ./fastapi) 백엔드 SQL 이 없다.
+      # 체크아웃을 통째로 붙여야 마이그레이션까지 대조한다.
+      - name: 병명 목록 정합성 검사
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo:ro" -w /repo/fastapi \
+            -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
+            artifact-fastapi:ci python tests/test_model_contract.py

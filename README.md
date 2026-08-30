@@ -509,7 +509,7 @@ IMAGE_LOCAL_UPLOAD_DIR=/tmp/artifact-images
 
 # AI inference
 FASTAPI_URL=http://localhost:8000
-MIN_TOP1_CONFIDENCE=0.45
+MIN_TOP1_CONFIDENCE=0.35
 
 # Gemini LLM (처방 코멘트)
 GEMINI_API_KEY=

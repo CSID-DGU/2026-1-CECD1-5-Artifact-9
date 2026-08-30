@@ -44,7 +44,8 @@ services:
     container_name: artifact-fastapi
     restart: unless-stopped
     environment:
-      MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.45}
+      # 근거는 fastapi/main.py 의 같은 이름 상수 주석 참고 (HAM10000 실측)
+      MIN_TOP1_CONFIDENCE: ${MIN_TOP1_CONFIDENCE:-0.35}
       # 백엔드와 공유하는 내부 호출 시크릿. 아래 backend 에도 같은 값이 들어간다.
       # 미설정 시 FastAPI 가 기동을 거부한다(main.py 상단) — 무방비로 뜨는 것보다 안 뜨는 게 낫다.
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET이 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}
