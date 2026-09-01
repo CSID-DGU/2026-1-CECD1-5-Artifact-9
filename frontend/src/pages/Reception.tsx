@@ -18,7 +18,13 @@ import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { Table } from "../components/Table";
-import { buildKioskUrl, getKioskBaseUrl, setKioskBaseUrl } from "../utils/kioskUrl";
+import {
+  buildKioskUrl,
+  getCurrentKioskBaseUrl,
+  getKioskBaseUrl,
+  resetKioskBaseUrlToCurrent,
+  setKioskBaseUrl,
+} from "../utils/kioskUrl";
 
 // ─── 상수 ────────────────────────────────────────────────
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -171,6 +177,12 @@ export default function Reception() {
     const resolved = getKioskBaseUrl();
     setKioskBase(resolved);
     setKioskBaseInput(resolved);
+  }
+
+  function handleUseCurrentKioskBase() {
+    const current = resetKioskBaseUrlToCurrent();
+    setKioskBase(current);
+    setKioskBaseInput(current);
   }
 
   /** 진료현황 행의 [QR] — 접수 화면을 새로고침해 QR을 잃었을 때 복구용. 토큰이 없으면 지연 발급한다. */
@@ -676,7 +688,7 @@ export default function Reception() {
                     </span>
                   </p>
                   <p className="mt-1 text-[11px] text-gray-400">
-                    태블릿 카메라로 QR을 촬영하면 이 환자의 예비분석 화면으로 이동합니다.
+                    태블릿 또는 QR 리더기로 스캔하면 이 환자의 예비분석 화면으로 이동합니다.
                   </p>
                 </div>
 
@@ -696,6 +708,12 @@ export default function Reception() {
                       className="min-w-0 flex-1 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-400 focus:outline-none"
                     />
                     <button
+                      onClick={handleUseCurrentKioskBase}
+                      className="shrink-0 rounded border border-gray-500 px-3 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-800 cursor-pointer"
+                    >
+                      현재 주소
+                    </button>
+                    <button
                       onClick={handleSaveKioskBase}
                       className="shrink-0 rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
                     >
@@ -703,7 +721,7 @@ export default function Reception() {
                     </button>
                   </div>
                   <p className="mt-1 text-[11px] text-gray-500">
-                    Wi-Fi LAN이면 맥북 IP(예: http://192.168.0.12:3000), adb reverse면 http://localhost:3000
+                    기본값은 현재 접속 주소({getCurrentKioskBaseUrl()})입니다. 다른 기기에서 접속해야 할 때만 Mac IP 등으로 저장하세요.
                   </p>
                 </div>
 
