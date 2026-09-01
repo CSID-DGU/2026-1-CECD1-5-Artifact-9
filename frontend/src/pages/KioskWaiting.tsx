@@ -5,6 +5,7 @@ import { Card } from "../components/Card";
 
 /** 디코딩용 축소 한계. 태블릿 사진은 4000px급이라 원본 그대로 돌리면 느리다. */
 const MAX_DECODE_DIMENSION = 1600;
+const SCANNER_BUFFER_RESET_MS = 500;
 
 /** 파일 → 디코딩 가능한 이미지. onload 이후엔 픽셀이 메모리에 있으므로 objectURL을 바로 회수해도 된다. */
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -48,19 +49,18 @@ function readQr(jsQR: QrDecoder, img: HTMLImageElement, maxDimension: number): s
  * 전체 URL로 이동하지 않고 토큰만 취해 현재 origin에서 라우팅한다.
  */
 function extractToken(scanned: string): string | null {
-  const fromPath = scanned.match(/\/kiosk\/([A-Za-z0-9]+)/);
+  const normalized = scanned.trim();
+  const fromPath = normalized.match(/\/kiosk\/([A-Za-z0-9]{12})(?:[/?#]|$)/);
   if (fromPath) return fromPath[1];
 
-  const bare = scanned.trim();
-  return /^[A-Za-z0-9]{8,32}$/.test(bare) ? bare : null;
+  return /^[A-Za-z0-9]{12}$/.test(normalized) ? normalized : null;
 }
 
 /**
  * 대기실 태블릿이 상시 띄워두는 화면. 로그인 없이 접근 가능(라우팅에서 인증 가드 제외).
  *
  * 진입 경로 세 가지:
- *   1. 이 화면의 [QR 촬영] — 접수 화면의 QR을 찍으면 앱 안에서 디코딩해 이동. 기본 카메라 앱이
- *      QR을 못 읽는 안드로이드 기종 대비책이자 기본 동선.
+ *   1. 이 화면의 [QR 스캔 시작] — USB QR 리더기를 키보드 입력처럼 받아 토큰 화면으로 이동.
  *   2. 태블릿 기본 카메라/렌즈로 QR을 찍어 /kiosk/{token} 으로 직접 진입.
  *   3. ?auto=1 — 3초 폴링으로 대기 환자를 잡아 자동 이동(QR 없이 시연할 때의 폴백).
  * 어느 쪽이든 목적지가 /kiosk/{token} 이라 이후 흐름은 완전히 동일하다.
@@ -71,8 +71,13 @@ export default function KioskWaiting() {
   const autoMode = searchParams.get("auto") === "1";
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const scannerInputRef = useRef<HTMLInputElement | null>(null);
+  const scannerBufferRef = useRef("");
+  const scannerResetTimerRef = useRef<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scannerReady, setScannerReady] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState("QR 리더기로 접수 QR을 스캔해 주세요.");
 
   useEffect(() => {
     if (!autoMode) return;
@@ -98,6 +103,81 @@ export default function KioskWaiting() {
       clearInterval(interval);
     };
   }, [autoMode, navigate]);
+
+  useEffect(() => {
+    const resetScannerBuffer = () => {
+      scannerBufferRef.current = "";
+      if (scannerResetTimerRef.current) {
+        window.clearTimeout(scannerResetTimerRef.current);
+        scannerResetTimerRef.current = null;
+      }
+    };
+
+    const submitScannedText = (text: string) => {
+      const token = extractToken(text);
+      resetScannerBuffer();
+
+      if (!token) {
+        setScanError("키오스크 QR이 아닙니다. 접수 화면에 표시된 QR을 다시 스캔해 주세요.");
+        setScannerStatus("인식 실패 · 접수 QR을 다시 스캔해 주세요.");
+        window.setTimeout(() => scannerInputRef.current?.focus(), 0);
+        return;
+      }
+
+      setScanError(null);
+      setScannerStatus("QR 인식 완료 · 분석 화면으로 이동합니다.");
+      navigate(`/kiosk/${token}`);
+    };
+
+    const handleScannerKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "Shift" || event.key === "CapsLock" || event.key === "Tab") return;
+
+      if (event.key === "Enter") {
+        const scanned = scannerBufferRef.current.trim();
+        if (scanned) {
+          event.preventDefault();
+          submitScannedText(scanned);
+        }
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+
+      scannerBufferRef.current += event.key;
+      setScannerStatus("QR 입력 감지 중...");
+
+      const token = extractToken(scannerBufferRef.current);
+      if (token) {
+        submitScannedText(scannerBufferRef.current);
+        return;
+      }
+
+      if (scannerResetTimerRef.current) {
+        window.clearTimeout(scannerResetTimerRef.current);
+      }
+      scannerResetTimerRef.current = window.setTimeout(() => {
+        resetScannerBuffer();
+        setScannerStatus(
+          scannerReady ? "QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요." : "QR 리더기로 접수 QR을 스캔해 주세요.",
+        );
+      }, SCANNER_BUFFER_RESET_MS);
+    };
+
+    window.addEventListener("keydown", handleScannerKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleScannerKeyDown);
+      resetScannerBuffer();
+    };
+  }, [navigate, scannerReady]);
+
+  const activateScanner = () => {
+    scannerBufferRef.current = "";
+    setScanError(null);
+    setScannerReady(true);
+    setScannerStatus("QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요.");
+    window.setTimeout(() => scannerInputRef.current?.focus(), 0);
+  };
 
   const openCamera = () => {
     if (!cameraInputRef.current) return;
@@ -155,13 +235,35 @@ export default function KioskWaiting() {
               </div>
             ) : (
               <p className="text-xs leading-relaxed text-gray-400">
-                접수처 화면의 QR 코드를 촬영하면
+                접수처 화면의 QR 코드를 스캔하면
                 <br />
                 본인 확인 후 피부 사진 예비 분석을 진행합니다.
               </p>
             )}
 
-            {/* 앱 안에서 직접 QR을 디코딩한다 — 기본 카메라 앱이 QR을 못 읽는 기종 대비 */}
+            {!autoMode && (
+              <p className="w-full rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] leading-relaxed text-blue-100">
+                {scannerStatus}
+              </p>
+            )}
+
+            {/* QR 리더기는 HID 키보드처럼 입력되므로 포커스 받을 입력창을 열어둔다. */}
+            <input
+              ref={scannerInputRef}
+              type="text"
+              inputMode="none"
+              autoComplete="off"
+              aria-label="QR 리더기 입력"
+              className="h-px w-px opacity-0"
+              onFocus={() => {
+                if (scannerReady) setScannerStatus("QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요.");
+              }}
+              onBlur={() => {
+                if (scannerReady) window.setTimeout(() => scannerInputRef.current?.focus(), 0);
+              }}
+            />
+
+            {/* 앱 안에서 직접 QR을 디코딩한다 — QR 리더기 장애 시 사용할 예비 동선 */}
             <input
               ref={cameraInputRef}
               type="file"
@@ -172,11 +274,18 @@ export default function KioskWaiting() {
             />
             <button
               type="button"
-              onClick={openCamera}
-              disabled={scanning}
+              onClick={activateScanner}
               className="mt-1 w-full rounded bg-blue-500 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {scanning ? "QR 인식 중..." : "QR 촬영"}
+              QR 스캔 시작
+            </button>
+            <button
+              type="button"
+              onClick={openCamera}
+              disabled={scanning}
+              className="w-full rounded border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {scanning ? "QR 인식 중..." : "카메라로 QR 촬영"}
             </button>
 
             {scanError && (
