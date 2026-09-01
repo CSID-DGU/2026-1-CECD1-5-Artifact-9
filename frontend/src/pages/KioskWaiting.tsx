@@ -5,6 +5,7 @@ import { Card } from "../components/Card";
 
 /** 디코딩용 축소 한계. 태블릿 사진은 4000px급이라 원본 그대로 돌리면 느리다. */
 const MAX_DECODE_DIMENSION = 1600;
+const SCANNER_BUFFER_RESET_MS = 500;
 
 /** 파일 → 디코딩 가능한 이미지. onload 이후엔 픽셀이 메모리에 있으므로 objectURL을 바로 회수해도 된다. */
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -71,8 +72,11 @@ export default function KioskWaiting() {
   const autoMode = searchParams.get("auto") === "1";
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const scannerBufferRef = useRef("");
+  const scannerResetTimerRef = useRef<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scannerStatus, setScannerStatus] = useState("QR 리더기로 접수 QR을 스캔해 주세요.");
 
   useEffect(() => {
     if (!autoMode) return;
@@ -98,6 +102,70 @@ export default function KioskWaiting() {
       clearInterval(interval);
     };
   }, [autoMode, navigate]);
+
+  useEffect(() => {
+    const resetScannerBuffer = () => {
+      scannerBufferRef.current = "";
+      if (scannerResetTimerRef.current) {
+        window.clearTimeout(scannerResetTimerRef.current);
+        scannerResetTimerRef.current = null;
+      }
+    };
+
+    const submitScannedText = (text: string) => {
+      const token = extractToken(text);
+      resetScannerBuffer();
+
+      if (!token) {
+        setScanError("키오스크 QR이 아닙니다. 접수 화면에 표시된 QR을 다시 스캔해 주세요.");
+        setScannerStatus("인식 실패 · 접수 QR을 다시 스캔해 주세요.");
+        return;
+      }
+
+      setScanError(null);
+      setScannerStatus("QR 인식 완료 · 분석 화면으로 이동합니다.");
+      navigate(`/kiosk/${token}`);
+    };
+
+    const handleScannerKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "Shift" || event.key === "CapsLock" || event.key === "Tab") return;
+
+      if (event.key === "Enter") {
+        const scanned = scannerBufferRef.current.trim();
+        if (scanned) {
+          event.preventDefault();
+          submitScannedText(scanned);
+        }
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+
+      scannerBufferRef.current += event.key;
+      setScannerStatus("QR 입력 감지 중...");
+
+      const token = extractToken(scannerBufferRef.current);
+      if (token) {
+        submitScannedText(scannerBufferRef.current);
+        return;
+      }
+
+      if (scannerResetTimerRef.current) {
+        window.clearTimeout(scannerResetTimerRef.current);
+      }
+      scannerResetTimerRef.current = window.setTimeout(() => {
+        resetScannerBuffer();
+        setScannerStatus("QR 리더기로 접수 QR을 스캔해 주세요.");
+      }, SCANNER_BUFFER_RESET_MS);
+    };
+
+    window.addEventListener("keydown", handleScannerKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleScannerKeyDown);
+      resetScannerBuffer();
+    };
+  }, [navigate]);
 
   const openCamera = () => {
     if (!cameraInputRef.current) return;
@@ -158,6 +226,12 @@ export default function KioskWaiting() {
                 접수처 화면의 QR 코드를 촬영하면
                 <br />
                 본인 확인 후 피부 사진 예비 분석을 진행합니다.
+              </p>
+            )}
+
+            {!autoMode && (
+              <p className="w-full rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] leading-relaxed text-blue-100">
+                {scannerStatus}
               </p>
             )}
 
