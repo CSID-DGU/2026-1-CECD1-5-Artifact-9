@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { getErrorMessage } from "../api/errors";
+import { printTicket } from "../api/print";
 import {
   createPatient,
   getPatient,
@@ -165,6 +166,27 @@ export default function Reception() {
   const [kioskBaseInput, setKioskBaseInput]   = useState(() => getKioskBaseUrl()); // 입력창
 
   const kioskUrl = receipt ? buildKioskUrl(receipt.kioskToken, kioskBase) : "";
+
+  // 감열지 티켓 수동 재출력. 접수 시점에 백엔드가 이미 자동으로 한 장 뽑지만,
+  // 프린터가 꺼져 있었거나 환자가 종이를 잃어버린 경우를 위해 버튼을 둔다.
+  const [isPrintingTicket, setIsPrintingTicket] = useState(false);
+
+  async function handlePrintTicket() {
+    if (!receipt) return;
+    setMessage(null);
+    setErrorMessage(null);
+    setIsPrintingTicket(true);
+    try {
+      const outcome = await printTicket(receipt.visitId);
+      // 프린터가 꺼져 있어도 서버는 200 을 준다 — ok 플래그로 갈라서 안내한다.
+      if (outcome.ok) setMessage(`티켓을 출력했습니다 — ${receipt.visitNo}`);
+      else setErrorMessage(`티켓 출력 실패 — ${outcome.detail}`);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsPrintingTicket(false);
+    }
+  }
 
   function handleSaveKioskBase() {
     setKioskBaseUrl(kioskBaseInput);
@@ -707,7 +729,14 @@ export default function Reception() {
                   </p>
                 </div>
 
-                <div className="mt-auto flex justify-end">
+                <div className="mt-auto flex justify-end gap-2">
+                  <button
+                    onClick={handlePrintTicket}
+                    disabled={isPrintingTicket}
+                    className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isPrintingTicket ? "출력 중…" : "티켓 인쇄"}
+                  </button>
                   <button
                     onClick={() => setReceipt(null)}
                     className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"

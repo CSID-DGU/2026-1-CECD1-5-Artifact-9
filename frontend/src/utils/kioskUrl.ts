@@ -1,14 +1,27 @@
 import { STORAGE_KEYS } from "../constants";
 
 /**
+ * 키오스크 기본 주소. 배포 도메인을 그대로 쓴다.
+ *
+ * 아이패드는 접수 데스크 맥북과 USB로 묶여 있지 않고 Wi-Fi로 배포본에 붙는다.
+ * 또한 아이패드 기본 카메라는 QR 내용이 완전한 URL일 때만 사파리로 이동시켜 주므로,
+ * 감열지 접수증에 찍히는 QR도 이 주소를 앞에 붙인 전체 URL이어야 한다
+ * (print-agent 의 KIOSK_BASE_URL 과 같은 값이어야 한다).
+ */
+const DEFAULT_KIOSK_BASE_URL = "https://artifact-prod.duckdns.org";
+
+/**
  * 태블릿이 QR을 찍고 열게 될 주소를 만든다.
  *
  * 접수 화면(맥북)의 origin과 태블릿이 접속해야 하는 origin이 다를 수 있어서 별도 설정이 필요하다.
+ *   - 배포본(기본)     → https://artifact-prod.duckdns.org
  *   - Wi-Fi LAN        → http://192.168.0.12:3000  (맥북의 LAN IP)
  *   - adb reverse(USB) → http://localhost:3000     (태블릿 localhost가 맥북으로 포워딩됨)
- *   - 맥북에서 직접 테스트 → 미설정 시 현재 origin
  *
- * 우선순위: localStorage(현장에서 즉시 변경) → VITE_KIOSK_BASE_URL → window.location.origin
+ * 우선순위: localStorage(현장에서 즉시 변경) → VITE_KIOSK_BASE_URL → 배포 도메인
+ *
+ * 로컬 개발에서 내 맥북을 가리키게 하려면 접수 화면의 '키오스크 접속 주소' 칸에
+ * 직접 입력하면 된다 — 그 값이 localStorage에 남아 최우선으로 쓰인다.
  */
 export function getKioskBaseUrl(): string {
   const stored = localStorage.getItem(STORAGE_KEYS.KIOSK_BASE_URL)?.trim();
@@ -17,7 +30,7 @@ export function getKioskBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_KIOSK_BASE_URL?.trim();
   if (fromEnv) return normalize(fromEnv);
 
-  return window.location.origin;
+  return DEFAULT_KIOSK_BASE_URL;
 }
 
 export function setKioskBaseUrl(baseUrl: string) {

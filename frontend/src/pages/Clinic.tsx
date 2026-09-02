@@ -4,6 +4,7 @@ import { getErrorMessage } from "../api/errors";
 import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
 import { getPatient, type Patient } from "../api/patients";
+import { printVisitSummary } from "../api/print";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { AuthedImage } from "../components/AuthedImage";
 import { useAuth } from "../auth/AuthContext";
@@ -342,6 +343,25 @@ export default function Clinic() {
       setSelectedVisit(v);
       await loadVisitLists();
       setMessage("진료가 완료되었습니다.");
+    } catch (e) { setErrorMessage(getErrorMessage(e)); }
+    finally { setIsActionLoading(false); }
+  }
+
+  /**
+   * 진료요약서 감열지 출력. 진료 완료 시점에 백엔드가 자동으로 한 장 뽑지만,
+   * 처방만 저장한 상태에서 환자에게 바로 건네거나 재출력할 때를 위해 버튼을 둔다.
+   *
+   * 감열지는 열·직사광선에 닿으면 수개월 안에 글자가 사라지는 종이다. 이 출력물은
+   * 환자 안내용이며 보존용 서류가 아니다 — 진료 기록의 원본은 DB 와 증명서(A4)다.
+   */
+  async function handlePrintVisitSummary() {
+    if (!selectedVisit) return;
+    setIsActionLoading(true); setErrorMessage(null); setMessage(null);
+    try {
+      const outcome = await printVisitSummary(selectedVisit.id);
+      // 프린터가 꺼져 있어도 서버는 200 을 준다 — ok 플래그로 갈라서 안내한다.
+      if (outcome.ok) setMessage("진료 요약서를 출력했습니다.");
+      else setErrorMessage(`진료요약 출력 실패 — ${outcome.detail}`);
     } catch (e) { setErrorMessage(getErrorMessage(e)); }
     finally { setIsActionLoading(false); }
   }
@@ -1024,6 +1044,14 @@ export default function Clinic() {
                         진료 완료
                       </Button>
                     )}
+                    <Button
+                      type="secondary"
+                      onClick={handlePrintVisitSummary}
+                      disabled={isActionLoading}
+                      className="py-1.5 text-xs w-full"
+                    >
+                      진료요약 인쇄
+                    </Button>
                   </div>
                 )}
 
@@ -1032,6 +1060,14 @@ export default function Clinic() {
                   <div className="flex flex-col gap-3">
                     <p className="text-[10px] text-gray-400 font-medium">진료 완료</p>
                     <PrescriptionSummary prescription={prescription} />
+                    <Button
+                      type="secondary"
+                      onClick={handlePrintVisitSummary}
+                      disabled={isActionLoading}
+                      className="py-1.5 text-xs w-full"
+                    >
+                      진료요약 인쇄
+                    </Button>
                   </div>
                 )}
               </div>

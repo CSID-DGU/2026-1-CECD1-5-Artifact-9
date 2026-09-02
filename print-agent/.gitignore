@@ -1,0 +1,6 @@
+# 실제 설정값(프린터 VID/PID, 확정된 QR_SIZE 등)은 기기마다 다르다.
+# .env.example 만 저장소에 두고 .env 는 각자 로컬에서 만든다.
+.env
+.venv/
+__pycache__/
+*.pyc

@@ -50,6 +50,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 		"cloud.aws.s3.bucket=test-bucket",
 		"image.storage.type=local",
 		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
+		// 테스트에서는 감열지 프린터를 부르지 않는다 — CI 에는 프린터도 print-agent 도 없다.
+		"print.agent.enabled=false",
 		"fastapi.internal-secret=test-only-internal-secret",
 		// docker-compose.yml 이 실제로 넣어주는 값에 해당한다.
 		"cors.allowed-origins=https://artifact-prod.duckdns.org"

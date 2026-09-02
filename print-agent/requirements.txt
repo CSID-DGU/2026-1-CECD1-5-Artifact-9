@@ -1,0 +1,32 @@
+# print-agent 실행에 필요한 것들. 맥 호스트에서 직접 돌린다(도커 아님).
+#
+# 사전 준비: brew install libusb   ← pyusb 가 붙을 USB 백엔드
+#            brew install cairo    ← cairosvg 가 SVG 를 래스터화할 때 필요
+#
+# 버전을 정확히 고정(==)하지 않고 하한(>=)만 두는 이유:
+#   pydantic 은 pydantic-core(Rust) 휠에 의존하는데, 파이썬 마이너 버전이
+#   올라가면 한동안 그 버전용 휠이 없어서 pip 가 소스 빌드로 넘어간다. 그러면
+#   PyO3 가 "configured Python interpreter version is newer than PyO3's maximum
+#   supported version" 으로 죽는다. 하한만 두면 pip 가 현재 인터프리터용 휠이
+#   있는 최신 버전을 골라준다.
+#
+# 검증 환경: Python 3.14.6 / fastapi 0.141.1 / pydantic 2.13.5 /
+#            uvicorn 0.52.4 / CairoSVG 2.9.0 / pillow 12.3.0 / qrcode 8.2
+fastapi>=0.115
+uvicorn>=0.34
+pydantic>=2.10
+python-dotenv>=1.0
+
+# ESC/POS 출력. CUPS raw 대기열이 macOS 14 부터 폐기돼서 pyusb 직접 접근만 쓴다.
+#
+# escpos 만 정확히 고정한다: printer.py 의 _profile() 이 capabilities.Profile
+# 내부 구조(profile_data / features)에 의존해서, 상위 버전에서 조용히 깨질 수 있다.
+python-escpos==3.1
+pyusb>=1.2
+
+# 도장(hospital-seal.svg) → PNG → 1비트 흑백
+cairosvg>=2.7
+Pillow>=11.0
+
+# python-escpos 가 QR 비트맵 폴백에 쓴다
+qrcode>=8.0

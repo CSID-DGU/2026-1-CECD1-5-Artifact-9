@@ -16,6 +16,7 @@ import {
   type CertificateType,
 } from "../api/certificates";
 import { getErrorMessage, isNotFound } from "../api/errors";
+import { printCertificateSlip } from "../api/print";
 import { useAuth } from "../auth/AuthContext";
 import { hasAtLeast } from "../auth/roles";
 import { Button } from "../components/Button";
@@ -308,6 +309,31 @@ export default function Certificate() {
   /** 종이 출력과 PDF 저장 모두 브라우저 인쇄 대화상자로 처리한다(index.css의 @media print). */
   function handlePrint() {
     window.print();
+  }
+
+  /**
+   * 감열지 발급확인증 출력. 위의 handlePrint()(A4 법정 서식)와는 완전히 별개다.
+   *
+   * 감열지는 감열층의 발색 반응으로 글자를 만드는 종이라 열·직사광선·가소제
+   * (비닐 파일, 영수증 지갑)에 닿으면 수개월 안에 글자가 사라진다. 그래서 이
+   * 출력물은 법정 서식을 대체하지 못하고, 발급 사실 확인 및 환자 안내용
+   * 보조 출력물로만 쓴다. 보존용 원본은 언제나 A4 쪽이다.
+   */
+  async function handlePrintSlip() {
+    if (!viewed) return;
+    setError(null);
+    setNotice(null);
+    setBusy("slip");
+    try {
+      const outcome = await printCertificateSlip(viewed.id);
+      // 프린터가 꺼져 있어도 서버는 200 을 준다 — ok 플래그로 갈라서 안내한다.
+      if (outcome.ok) setNotice(`발급확인증을 출력했습니다 (발급번호 ${viewed.serialNo ?? "-"})`);
+      else setError(`발급확인증 출력 실패 — ${outcome.detail}`);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setBusy(null);
+    }
   }
 
   const canIssueSelectedType =
@@ -646,6 +672,13 @@ export default function Certificate() {
             </Button>
             <Button
               type="secondary"
+              onClick={handlePrintSlip}
+              disabled={!viewed || viewed.status === "VOID" || busy === "slip"}
+            >
+              {busy === "slip" ? "출력중..." : "발급확인증 인쇄"}
+            </Button>
+            <Button
+              type="secondary"
               onClick={handleReissue}
               disabled={!viewed || viewed.status === "VOID" || busy === "reissue"}
             >
@@ -664,6 +697,9 @@ export default function Certificate() {
           </div>
           <p className="text-[10px] text-gray-500 mt-3 leading-relaxed">
             PDF 저장은 인쇄 대화상자에서 대상을 &lsquo;PDF로 저장&rsquo;으로 선택하세요.
+            <br />
+            발급확인증은 영수증 프린터로 나가는 안내용 출력물이며, 감열지 특성상
+            보존용으로 쓸 수 없습니다. 원본은 A4 인쇄본입니다.
           </p>
           {viewed && (
             <div className="mt-3 pt-3 border-t border-gray-700 flex flex-col gap-1">

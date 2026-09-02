@@ -50,6 +50,9 @@ services:
       SWAGGER_ENABLED: "false"
       # DEBUG 로그에는 요청 본문(환자 이름·연락처)이 섞인다. 운영에서는 INFO.
       LOG_LEVEL: "INFO"
+      # 감열지 프린터는 접수 데스크 맥북에 물려 있다. EC2 에는 print-agent 가 없으므로
+      # 매 접수마다 연결 실패 로그가 쌓이지 않도록 꺼둔다.
+      PRINT_AGENT_ENABLED: "false"
 
   frontend:
     # 로컬은 3000 이지만 운영은 80 이어야 한다 — 사용자에게 주소창에 포트를 치게 할 수는 없다.
