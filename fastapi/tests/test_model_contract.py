@@ -9,6 +9,7 @@
     fastapi/notebooks/*.ipynb      label_names               ← 학습할 때의 인덱스
     backend/.../V1__baseline_schema.sql   disease 시드
     backend/.../AnalysisService.java      DISEASE_NAME_KO
+    backend/.../KioskService.java         DISEASE_NAME_KO
     frontend/src/pages/Clinic.tsx         KCD 매핑
 
 언어가 달라 한 곳으로 모을 수가 없다. 그런데 이 목록이 어긋났을 때의 증상이 최악이다 —
@@ -408,6 +409,65 @@ else:
               not mismatched,
               "; ".join(f"{c}: main='{a}' vs db='{b}'"
                         for c, (a, b) in mismatched.items()))
+
+# =============================================
+print("\n[7] 백엔드 Java 병명 매핑")
+
+ANALYSIS_SERVICE_JAVA = REPO_ROOT / "backend/src/main/java/com/artifact/diagnosis/analysis/AnalysisService.java"
+KIOSK_SERVICE_JAVA = REPO_ROOT / "backend/src/main/java/com/artifact/diagnosis/kiosk/KioskService.java"
+
+
+def parse_disease_name_ko(path: Path) -> dict[str, str] | None:
+    """DISEASE_NAME_KO = Map.of("code", "이름", ...); 의 키-값 쌍을 순서대로 읽는다."""
+    source = path.read_text(encoding="utf-8")
+    match = re.search(r"DISEASE_NAME_KO\s*=\s*Map\.of\((.*?)\)\s*;", source, re.DOTALL)
+    if match is None:
+        return None
+    return dict(re.findall(r'"([^"]+)"\s*,\s*"([^"]*)"', match.group(1)))
+
+
+if not ANALYSIS_SERVICE_JAVA.is_file() or not KIOSK_SERVICE_JAVA.is_file():
+    skip("Java DISEASE_NAME_KO 대조",
+         "컨테이너 안에는 백엔드 소스가 없습니다 (체크아웃에서 실행하면 돕니다)")
+else:
+    analysis_map = parse_disease_name_ko(ANALYSIS_SERVICE_JAVA)
+    kiosk_map = parse_disease_name_ko(KIOSK_SERVICE_JAVA)
+
+    if analysis_map is None:
+        check("AnalysisService.java 의 DISEASE_NAME_KO 를 찾았다", False, "Map.of(...) 구조가 바뀌었습니다.")
+    elif kiosk_map is None:
+        check("KioskService.java 의 DISEASE_NAME_KO 를 찾았다", False, "Map.of(...) 구조가 바뀌었습니다.")
+    else:
+        # B1(DiseaseCatalog 통합)을 하지 않기로 한 대신, 두 사본이 어긋나면 여기서 잡는다 —
+        # 서버는 잘 뜨고 병명만 조용히 틀리는 것이 이 프로젝트가 가장 두려워하는 증상이다.
+        check("AnalysisService/KioskService의 DISEASE_NAME_KO 코드 집합이 서로 같다",
+              set(analysis_map) == set(kiosk_map),
+              f"AnalysisService 에만: {set(analysis_map) - set(kiosk_map)} / "
+              f"KioskService 에만: {set(kiosk_map) - set(analysis_map)}")
+
+        mismatched_java = {
+            code: (analysis_map[code], kiosk_map[code])
+            for code in set(analysis_map) & set(kiosk_map)
+            if analysis_map[code] != kiosk_map[code]
+        }
+        check("두 Java 맵의 한글 병명이 서로 같다",
+              not mismatched_java,
+              "; ".join(f"{c}: analysis='{a}' vs kiosk='{b}'"
+                        for c, (a, b) in mismatched_java.items()))
+
+        check("Java DISEASE_NAME_KO 코드 집합이 CLASSES 와 같다",
+              set(analysis_map) == set(classes),
+              f"Java 에만: {set(analysis_map) - set(classes)} / 모델에만: {set(classes) - set(analysis_map)}")
+
+        mismatched_main = {
+            code: (serving.CLASS_NAMES_KO[code], analysis_map[code])
+            for code in set(analysis_map) & set(classes)
+            if serving.CLASS_NAMES_KO[code] != analysis_map[code]
+        }
+        check("한글 병명이 main.py 와 Java 매핑에서 같다",
+              not mismatched_main,
+              "; ".join(f"{c}: main='{a}' vs java='{b}'"
+                        for c, (a, b) in mismatched_main.items()))
 
 # =============================================
 print()
