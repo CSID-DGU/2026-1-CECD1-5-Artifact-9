@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatDateTime } from "../utils/datetime";
 
 /**
  * 감열지 QR 로 들어온 환자가 보는 화면의 공통 틀.
@@ -47,17 +48,4 @@ export function PublicDocumentNotice({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
-}
-
-export function formatDateTime(raw: string | null): string {
-  if (!raw) return "-";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
