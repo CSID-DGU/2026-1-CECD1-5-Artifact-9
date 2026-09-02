@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -43,8 +44,12 @@ public class PrintController {
     @StaffAccess
     @PostMapping("/visits/{visitId}/print/ticket")
     public PrintOutcome printTicket(
-            @Parameter(description = "접수 ID", example = "1") @PathVariable Long visitId) {
-        return printService.printTicket(visitId);
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long visitId,
+            // 자동 출력(VisitController.create)과 같은 주소가 찍혀야 한다.
+            // 재출력한 종이만 다른 곳을 가리키면 그게 더 나쁘다.
+            @RequestHeader(value = PrintService.KIOSK_BASE_URL_HEADER, required = false)
+            String kioskBaseUrl) {
+        return printService.printTicket(visitId, kioskBaseUrl);
     }
 
     @Operation(summary = "진료 요약서 재출력",

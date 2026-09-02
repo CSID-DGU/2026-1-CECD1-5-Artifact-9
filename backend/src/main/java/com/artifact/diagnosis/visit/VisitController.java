@@ -45,10 +45,15 @@ public class VisitController {
     @ApiResponse(responseCode = "404", description = "환자 없음")
     @StaffAccess
     @PostMapping
-    public ResponseEntity<VisitResponse> create(@Valid @RequestBody VisitCreateRequest request) {
+    public ResponseEntity<VisitResponse> create(
+            @Valid @RequestBody VisitCreateRequest request,
+            // 접수 화면이 지금 쓰고 있는 키오스크 주소. 이 값이 그대로 종이 QR 이 된다.
+            // 없으면(구버전 프론트, curl) print-agent 의 기본 주소가 쓰인다.
+            @RequestHeader(value = PrintService.KIOSK_BASE_URL_HEADER, required = false)
+            String kioskBaseUrl) {
         VisitResponse created = visitService.create(request);
         // 접수증 자동 출력. 프린터가 꺼져 있어도 접수는 이미 끝났으므로 실패는 로그만 남는다.
-        printService.printTicketAsync(created);
+        printService.printTicketAsync(created, kioskBaseUrl);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

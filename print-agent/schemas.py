@@ -20,6 +20,14 @@ class TicketPayload(BaseModel):
     patientNo: str
     kioskToken: str
 
+    # 접수 화면이 실제로 보고 있는 키오스크 주소. 화면에 뜬 QR 과 종이에 찍힌 QR 이
+    # 같은 곳을 가리키게 하려고 백엔드가 그대로 넘겨준다(백엔드 KioskBaseUrlPolicy
+    # 에서 형식·허용목록 검사를 통과한 값만 온다).
+    #
+    # 없으면 config.KIOSK_BASE_URL 을 쓴다 — 이 필드가 없던 시절의 백엔드나
+    # curl 스모크 테스트도 그대로 동작해야 하기 때문이다.
+    kioskBaseUrl: Optional[str] = None
+
 
 class DiseaseItem(BaseModel):
     code: str

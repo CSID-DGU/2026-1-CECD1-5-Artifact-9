@@ -38,6 +38,19 @@ def _bool(name: str, default: bool) -> bool:
 # 이 /kiosk/{token} 경로를 파싱하므로 같은 QR 하나로 둘 다 커버된다.
 KIOSK_BASE_URL = os.getenv("KIOSK_BASE_URL", "https://artifact-prod.duckdns.org").rstrip("/")
 
+# 접수 화면이 요청 본문으로 base URL 을 보내오면 그 값을 우선한다(build_ticket 참고).
+# 화면에 뜬 QR 과 종이에 찍힌 QR 이 서로 다른 주소를 가리키면 환자가 엉뚱한 곳으로
+# 이동하기 때문이다. 여기 값은 그 값이 없을 때 쓰는 기본값이다.
+
+# ── 인증 ───────────────────────────────────────────────────────────────────
+# 비워두면 인증을 걸지 않는다 — 맥북 안에서만 도는 기본 운영 형태다.
+#
+# Cloudflare Tunnel 등으로 이 에이전트를 공개 HTTPS 주소에 노출하는 순간
+# 반드시 채워야 한다. 노출된 상태에서 토큰이 없으면 주소를 아는 누구나 병원
+# 프린터로 종이를 뽑을 수 있다. 백엔드는 이 값을 PRINT_AGENT_TOKEN 으로 받아
+# Authorization: Bearer 헤더에 실어 보낸다(README "터널로 공개하기" 참고).
+AGENT_TOKEN = os.getenv("AGENT_TOKEN", "").strip()
+
 # ── QR ─────────────────────────────────────────────────────────────────────
 # QR_SIZE 는 아직 실측 전 잠정값이다. 지금까지 검증된 조합은 8자리 토큰 + size=6
 # 뿐이고, 지금은 48자 안팎의 URL 을 넣기 때문에 모듈 수가 늘어난다.

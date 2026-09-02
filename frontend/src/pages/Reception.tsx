@@ -177,7 +177,9 @@ export default function Reception() {
     setErrorMessage(null);
     setIsPrintingTicket(true);
     try {
-      const outcome = await printTicket(receipt.visitId);
+      // kioskBase 를 같이 넘긴다. 담당자가 아래 '키오스크 접속 주소' 를 바꿨다면
+      // 화면 QR 은 이미 그 주소인데, 안 넘기면 종이만 기본 주소로 나간다.
+      const outcome = await printTicket(receipt.visitId, kioskBase);
       // 프린터가 꺼져 있어도 서버는 200 을 준다 — ok 플래그로 갈라서 안내한다.
       if (outcome.ok) setMessage(`티켓을 출력했습니다 — ${receipt.visitNo}`);
       else setErrorMessage(`티켓 출력 실패 — ${outcome.detail}`);
@@ -341,7 +343,8 @@ export default function Reception() {
         patientName = patient.name;
       }
 
-      const visit = await createVisit(patientId, memo.trim() || null);
+      // 세 번째 인자가 접수증 QR 에 찍힐 주소가 된다 — 화면에 뜨는 QR 과 같은 값이어야 한다.
+      const visit = await createVisit(patientId, memo.trim() || null, kioskBase);
 
       const patientNo = `P${String(patientId).padStart(5, "0")}`;
       const visitNo   = `V${String(visit.id).padStart(5, "0")}`;

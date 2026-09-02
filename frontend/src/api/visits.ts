@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { kioskBaseHeader } from "./kioskHeader";
 
 export type VisitStatus =
   | "RECEIVED"
@@ -37,9 +38,21 @@ export function listVisitsByDate(date: string) {
   return apiRequest<Visit[]>(`/api/v1/visits?date=${encodeURIComponent(date)}`);
 }
 
-export function createVisit(patientId: number, receptionMemo?: string | null) {
+/**
+ * 접수 생성. 백엔드가 곧바로 접수증(대기번호표)을 감열지로 뽑는다.
+ *
+ * @param kioskBaseUrl 접수 화면이 지금 쓰는 키오스크 주소. 이 값이 종이 QR이 된다 —
+ *                     넘기지 않으면 화면 QR과 종이 QR이 다른 곳을 가리킬 수 있다.
+ *                     자세한 내용은 api/kioskHeader.ts 참고.
+ */
+export function createVisit(
+  patientId: number,
+  receptionMemo?: string | null,
+  kioskBaseUrl?: string
+) {
   return apiRequest<Visit>(`/api/v1/visits`, {
     method: "POST",
+    headers: kioskBaseHeader(kioskBaseUrl),
     body: JSON.stringify({ patientId, receptionMemo: receptionMemo ?? null }),
   });
 }

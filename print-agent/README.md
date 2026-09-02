@@ -142,7 +142,7 @@ PY
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `KIOSK_BASE_URL` | `https://artifact-prod.duckdns.org` | 접수증 QR 주소의 앞부분. QR 내용은 `{base}/kiosk/{token}` |
+| `KIOSK_BASE_URL` | `https://artifact-prod.duckdns.org` | 접수증 QR 주소의 앞부분. QR 내용은 `{base}/kiosk/{token}`. **요청 본문의 `kioskBaseUrl` 이 오면 그쪽이 우선**이고 이 값은 폴백이다 |
 | `QR_SIZE` | `8` | QR 모듈 배율. **아이패드 실측 전 잠정값** — 아래 캘리브레이션 참고 |
 | `QR_NATIVE` | `true` | 프린터 펌웨어로 QR 을 그린다. 실패하면 비트맵으로 자동 폴백 |
 | `QR_EC_LEVEL` | `0` | 오류정정 L(0)/M(1)/Q(2)/H(3). 올리면 잘 읽히지만 QR 이 커진다 |
@@ -153,6 +153,7 @@ PY
 | `PRINTER_TIMEOUT` | `0` | pyusb 쓰기 타임아웃(ms). 0 = 무제한 |
 | `LINE_WIDTH` | `42` | Font A 한 줄 칸 수. 한글은 2칸이므로 한글만이면 21자 |
 | `PAPER_WIDTH_DOTS` | `576` | 인쇄 가능 폭(도트). QR·도장 가운데 정렬에 쓴다 |
+| `AGENT_TOKEN` | (빈 값) | 비우면 인증 없음(맥북 안에서만 도는 기본 형태). **터널로 공개하면 반드시 채운다** — 아래 9장 참고 |
 | `AGENT_HOST` | `0.0.0.0` | 도커 컨테이너가 접근해야 하므로 루프백만 열면 안 된다 |
 | `AGENT_PORT` | `5051` | 백엔드의 `PRINT_AGENT_URL` 과 맞춰야 한다 |
 | `HOSPITAL_NAME` | `아티팩트 피부과의원` | 문서 머리글 |
@@ -165,6 +166,7 @@ PY
 
 | 메서드 | 경로 | 용도 |
 |---|---|---|
+| GET | `/ping` | 살아있는지만 본다. **인증 없이 열려 있다**(터널 헬스체크용, 설정값을 노출하지 않는다) |
 | GET | `/health` | 에이전트 상태 + **실제 프린터 연결 확인**(`printerReady`) + 현재 설정값 |
 | POST | `/print/ticket` | 접수증(대기번호 + 키오스크 QR) |
 | POST | `/print/visit-summary` | 진료 요약서 |
@@ -179,6 +181,10 @@ HTTP 코드는 본문 스키마 오류 422, 잘못된 문서 타입 400, **프�
 `/health` 는 DRY_RUN 이 아닐 때 실제로 USB 장치를 열어보고 `printerReady` 를
 판정한다. 프린터를 뽑아 두면 `printerReady: false` 로 바뀐다.
 
+`AGENT_TOKEN` 이 설정돼 있으면 `/ping` 을 뺀 **모든 경로가 401** 을 낸다.
+호출 쪽은 `Authorization: Bearer <토큰>` 헤더를 실어야 한다. 토큰이 비어 있으면
+검사 자체를 하지 않으므로, 맥북 안에서만 쓰는 지금 구성은 아무것도 바뀌지 않는다.
+
 ### 스모크 테스트
 
 여러 줄 `curl` 을 터미널에 붙여넣으면 줄이 잘려 `URL string malformed` 가 나기
@@ -189,6 +195,8 @@ HTTP 코드는 본문 스키마 오류 422, 잘못된 문서 타입 400, **프�
 ./test-endpoints.sh ticket       # 접수증만  (health|ticket|summary|slip|qr)
 AGENT=http://localhost:5099 ./test-endpoints.sh     # 다른 포트로
 QR_SIZES='[5, 6, 7]' ./test-endpoints.sh qr         # 캘리브레이션 크기 바꿔서
+AGENT_TOKEN=xxxxx ./test-endpoints.sh               # 인증을 켠 에이전트에
+KIOSK_BASE_URL=http://192.168.0.12:5173 ./test-endpoints.sh ticket   # QR 주소 바꿔서
 ```
 
 프린터가 물려 있으면 실제로 종이가 나온다. 종이 없이 확인만 하려면 에이전트를
@@ -284,10 +292,146 @@ tail -f /tmp/artifact-print-agent.err                                   # 로그
 진료 화면 "진료요약 인쇄", 증명서 화면 "발급확인증 인쇄")은 동기 호출이라
 실패 사유가 화면에 뜬다.
 
-EC2 운영 환경에는 프린터가 없으므로 `docker-compose.prod.yml` 에서
-`PRINT_AGENT_ENABLED=false` 로 꺼져 있다.
+### 접수증 QR 주소는 누가 정하나
 
-## 9. 감열지에 대한 경고
+화면에 뜬 QR 과 종이에 찍힌 QR 이 서로 다른 주소를 가리키면 환자가 엉뚱한 곳으로
+간다. 그래서 **접수 화면이 보고 있는 주소를 그대로 종이까지 흘려보낸다.**
+
+```
+접수 화면(getKioskBaseUrl)
+  → X-Kiosk-Base-Url 헤더
+  → KioskBaseUrlPolicy.sanitize()   ← 여기서 검증·정규화
+  → 요청 본문의 kioskBaseUrl
+  → QR 내용 "{base}/kiosk/{token}"
+```
+
+가운데의 `KioskBaseUrlPolicy` 가 핵심이다. QR 은 눈으로 내용을 읽을 수 없으므로,
+검증 없이 통과시키면 계정이 탈취됐을 때 **병원이 발행한 종이**로 환자를 피싱
+사이트에 보낼 수 있다. 정책은 http/https 스킴과 호스트를 요구하고, 길이를 200자로
+자르고, 쿼리·프래그먼트를 버린다. `PRINT_KIOSK_ALLOWED_BASE_URLS` 에 주소를
+콤마로 나열하면 **그 목록에 있는 것만** 통과한다(비워 두면 스킴 검사만 한다).
+
+검증에 걸린 값은 예외가 아니라 `null` 이 되고, 에이전트는 자기 `KIOSK_BASE_URL`
+기본값을 쓴다. **주소가 이상하다고 접수가 막히는 일은 없다.**
+
+EC2 운영 환경에는 프린터가 없으므로 `docker-compose.prod.yml` 의
+`PRINT_AGENT_ENABLED` 는 기본이 `false` 다. 배포된 화면에서 병원 프린터를
+쓰려면 다음 장의 터널 구성이 필요하다.
+
+## 9. 터널로 공개하기
+
+기본 구성은 **맥북 안에서만** 돈다. 백엔드 컨테이너가 `host.docker.internal:5051`
+로 부르고, 그 트래픽은 맥북 밖으로 나가지 않는다. 노트북에서 `docker compose up`
+으로 띄워 쓰는 한 이 장은 읽을 필요가 없다.
+
+문제는 **EC2에 배포된 화면**에서 병원 프린터를 쓰고 싶을 때다. EC2의 백엔드
+컨테이너에게 `host.docker.internal` 은 EC2 자기 자신이라 프린터가 없다. 그렇다고
+프론트에서 직접 부를 수도 없다 — HTTPS 페이지가 `http://localhost:5051` 을 부르면
+브라우저가 mixed content 로 막는다. 남는 길은 **맥북의 5051 포트를 공개 HTTPS
+주소로 내보내고, EC2 백엔드가 그 주소를 부르게** 하는 것이다.
+
+> 공개하는 순간 **인터넷의 아무나 병원 프린터로 종이를 뽑을 수 있게 된다.**
+> `AGENT_TOKEN` 은 선택이 아니라 필수다. 아래 순서를 건너뛰지 말 것.
+
+### 9-1. 토큰 만들기
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+# → 예: 7Qx2_9mVtK... (43자)
+```
+
+이 값을 **두 군데**에 같게 넣는다.
+
+```bash
+# 맥북: print-agent/.env
+AGENT_TOKEN=7Qx2_9mVtK...
+
+# EC2: docker-compose 가 읽는 .env
+PRINT_AGENT_TOKEN=7Qx2_9mVtK...
+```
+
+백엔드는 `PRINT_AGENT_TOKEN` 을 읽어 모든 인쇄 요청에 `Authorization: Bearer`
+헤더로 실어 보낸다(`PrintAgentClient`). 두 값이 어긋나면 인쇄가 401 로 떨어지고,
+화면에는 "프린터 서비스 인증에 실패했습니다 — 백엔드의 `PRINT_AGENT_TOKEN` 과
+print-agent 의 `AGENT_TOKEN` 이 같은 값인지 확인하세요" 가 뜬다.
+
+토큰을 바꾸면 **양쪽 모두** 재시작해야 한다.
+
+### 9-2. 터널 띄우기 (Cloudflare Tunnel)
+
+계정 없이 임시 주소를 받는 방식이다. 데모·시연에는 이걸로 충분하다.
+
+```bash
+brew install cloudflared
+
+# 터미널 1 — 에이전트
+cd print-agent && ./run.sh
+
+# 터미널 2 — 터널
+cloudflared tunnel --url http://localhost:5051
+# → https://random-words-1234.trycloudflare.com 같은 주소가 찍힌다
+```
+
+살아있는지는 인증 없이 확인할 수 있다.
+
+```bash
+curl -s https://random-words-1234.trycloudflare.com/ping
+# {"ok":true}
+```
+
+토큰 없이 실제 엔드포인트를 부르면 막혀야 정상이다.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://random-words-1234.trycloudflare.com/health
+# 401
+```
+
+`--url` 방식의 주소는 **터널을 다시 띄울 때마다 바뀐다.** 주소가 바뀌면 EC2의
+`PRINT_AGENT_URL` 도 같이 고치고 백엔드를 재시작해야 한다. 시연 날 아침에 한 번
+띄우고 그대로 두는 운용이 가장 편하다. 주소를 고정하려면 Cloudflare 계정을 붙여
+named tunnel(`cloudflared tunnel create`)을 쓴다.
+
+### 9-3. EC2 쪽 설정
+
+EC2의 `.env` 에 세 줄을 넣고 백엔드를 재시작한다.
+
+```bash
+PRINT_AGENT_ENABLED=true
+PRINT_AGENT_URL=https://random-words-1234.trycloudflare.com
+PRINT_AGENT_TOKEN=7Qx2_9mVtK...
+PRINT_KIOSK_ALLOWED_BASE_URLS=https://artifact-prod.duckdns.org
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend
+```
+
+`PRINT_KIOSK_ALLOWED_BASE_URLS` 는 접수증 QR 이 가리켜도 되는 주소의 허용 목록이다
+(8장 참고). 공개 배포에서는 비워 두지 말고 실제 도메인을 적는다. 로컬 개발 화면도
+같은 프린터를 써야 하면 콤마로 덧붙인다:
+`https://artifact-prod.duckdns.org,http://localhost:5173`.
+
+### 9-4. 확인
+
+```bash
+# 1) 터널 살아있나 (인증 불필요)
+curl -s https://<터널주소>/ping
+
+# 2) 토큰으로 프린터 상태 (printerReady, authRequired 확인)
+curl -s -H "Authorization: Bearer $AGENT_TOKEN" https://<터널주소>/health | jq
+
+# 3) EC2 백엔드가 실제로 부르는지 — 배포 화면에서 접수 1건
+docker logs artifact-backend --tail 30 | grep -i print
+```
+
+### 9-5. 끝나면 닫는다
+
+시연이 끝나면 `cloudflared` 를 끄는 것으로 충분하다. 주소가 사라지므로 외부에서
+접근할 길이 없어진다. EC2의 `PRINT_AGENT_ENABLED` 도 `false` 로 되돌려 두면
+백엔드가 죽은 주소를 계속 두드리지 않는다.
+
+## 10. 감열지에 대한 경고
 
 감열지는 감열층의 발색 반응으로 글자를 만드는 종이다. 열·직사광선·가소제
 (비닐 파일, 영수증 지갑)에 닿으면 **수개월 안에 글자가 사라진다.**
@@ -296,7 +440,7 @@ EC2 운영 환경에는 프린터가 없으므로 `docker-compose.prod.yml` 에�
 법정 서식을 대체하지 않는다. 보존이 필요한 증명서 원본은 언제나 프론트엔드의
 A4 인쇄 흐름(`Certificate.tsx` 의 `window.print()`)에서 나오는 쪽이다.
 
-## 10. 한글 출력 주의
+## 11. 한글 출력 주의
 
 python-escpos 의 `p.text()` 는 한글을 전부 `?` 로 찍는다. 반드시 `printer.py` 의
 `kr()` 헬퍼를 쓴다 — `FS &`(2바이트 문자 모드 ON) → EUC-KR 바이트 → `FS .`(OFF)
@@ -313,7 +457,7 @@ def kr(p, s: str) -> None:
 안 하면 직전 문서가 통째로 다시 찍힌다. `documents.print_document()` 가 이미
 `pr.reset(p)` 로 처리한다.
 
-## 11. 새 문서 타입 추가하기
+## 12. 새 문서 타입 추가하기
 
 1. `schemas.py` 에 payload 모델을 만든다.
 2. `documents.py` 에 `build_xxx(p, data)` 를 쓰고 `BUILDERS` 딕셔너리에 등록한다.

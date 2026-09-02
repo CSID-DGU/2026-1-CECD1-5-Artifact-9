@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import { kioskBaseHeader } from "./kioskHeader";
 
 /**
  * 감열지(영수증) 프린터 수동 재출력.
@@ -16,9 +17,17 @@ export type PrintOutcome = {
   detail: string;
 };
 
-/** 접수증(대기번호표) — 키오스크 QR 포함. */
-export function printTicket(visitId: number) {
-  return apiRequest<PrintOutcome>(`/api/v1/visits/${visitId}/print/ticket`, { method: "POST" });
+/**
+ * 접수증(대기번호표) — 키오스크 QR 포함.
+ *
+ * @param kioskBaseUrl 접수 시 자동 출력된 종이와 같은 주소가 찍혀야 한다.
+ *                     재출력한 종이만 다른 곳을 가리키면 그게 더 나쁘다.
+ */
+export function printTicket(visitId: number, kioskBaseUrl?: string) {
+  return apiRequest<PrintOutcome>(`/api/v1/visits/${visitId}/print/ticket`, {
+    method: "POST",
+    headers: kioskBaseHeader(kioskBaseUrl),
+  });
 }
 
 /** 진료 요약서 — 진단·처방·AI 코멘트. 처방이 저장돼 있어야 한다. */

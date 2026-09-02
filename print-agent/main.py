@@ -13,10 +13,12 @@
 """
 
 import logging
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 
+import auth
 import config
 import documents
 import printer as pr
@@ -28,11 +30,46 @@ logging.basicConfig(
 )
 log = logging.getLogger("print-agent")
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """기동 시 인증 상태를 로그에 남긴다.
+
+    AGENT_HOST 기본값이 0.0.0.0 이라 같은 와이파이의 다른 기기도 닿을 수 있고,
+    터널을 열면 인터넷 전체가 닿는다. 토큰 없이 그렇게 떠 있는 상태는 조용히
+    지나가면 아무도 모르므로 여기서 알린다.
+    """
+    if config.AGENT_TOKEN:
+        log.info("인증 활성화 — Authorization: Bearer 헤더가 있는 요청만 받는다")
+    elif config.AGENT_HOST not in ("127.0.0.1", "localhost"):
+        log.warning(
+            "AGENT_TOKEN 이 비어 있는데 %s 에 바인딩했다. 같은 네트워크의 다른 기기가 "
+            "출력을 요청할 수 있다. 터널로 공개할 예정이라면 반드시 AGENT_TOKEN 을 설정할 것.",
+            config.AGENT_HOST,
+        )
+    yield
+
+
 app = FastAPI(
     title="Artifact print-agent",
     description="감열지 POS 프린터(SEWOO SLK-TS100) 출력 에이전트",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
+# 인증이 필요한 엔드포인트에 공통으로 건다. AGENT_TOKEN 이 비어 있으면
+# require_token 이 그냥 통과시키므로, 맥북 로컬 전용 운영은 지금까지와 똑같다.
+PROTECTED = [Depends(auth.require_token)]
+
+
+@app.get("/ping")
+def ping():
+    """터널·프로세스 생존 확인 전용. 인증 없이 열려 있지만 아무 정보도 내지 않는다.
+
+    /health 는 프린터 상태와 설정값(키오스크 주소, VID/PID)을 담고 있어서 인증을
+    건다. 터널 상태만 확인하고 싶을 때 쓸 창구가 따로 필요해 이 엔드포인트를 둔다.
+    """
+    return {"ok": True}
 
 
 def _fail(doc_type: str, exc: Exception, status: int) -> JSONResponse:
@@ -61,7 +98,7 @@ def _print(doc_type: str, payload) -> JSONResponse:
     return JSONResponse(content={"ok": True, "docType": doc_type, **meta})
 
 
-@app.get("/health")
+@app.get("/health", dependencies=PROTECTED)
 def health():
     """백엔드/운영자가 프린터 연결 상태를 확인하는 용도."""
     printer_ready, detail = True, "ok"
@@ -87,24 +124,26 @@ def health():
             "printerPid": f"{config.PRINTER_PID:#06x}",
             "lineWidth": config.LINE_WIDTH,
             "dryRun": config.DRY_RUN,
+            # 터널로 공개했는데 이 값이 false 면 즉시 토큰을 설정해야 한다.
+            "authRequired": bool(config.AGENT_TOKEN),
         },
         "docTypes": list(documents.BUILDERS),
     }
 
 
-@app.post("/print/ticket", response_model=schemas.PrintResult)
+@app.post("/print/ticket", response_model=schemas.PrintResult, dependencies=PROTECTED)
 def print_ticket(payload: schemas.TicketPayload):
     """접수증(대기번호표). 접수 직후 자동 출력 + 화면에서 수동 재출력."""
     return _print("ticket", payload)
 
 
-@app.post("/print/visit-summary", response_model=schemas.PrintResult)
+@app.post("/print/visit-summary", response_model=schemas.PrintResult, dependencies=PROTECTED)
 def print_visit_summary(payload: schemas.VisitSummaryPayload):
     """진료 요약서. 진료 완료 시 자동 출력 + 화면에서 수동 재출력."""
     return _print("visit-summary", payload)
 
 
-@app.post("/print/certificate-slip", response_model=schemas.PrintResult)
+@app.post("/print/certificate-slip", response_model=schemas.PrintResult, dependencies=PROTECTED)
 def print_certificate_slip(payload: schemas.CertificateSlipPayload):
     """증명서 발급 확인증.
 
@@ -115,7 +154,7 @@ def print_certificate_slip(payload: schemas.CertificateSlipPayload):
     return _print("certificate-slip", payload)
 
 
-@app.post("/debug/qr-calibration")
+@app.post("/debug/qr-calibration", dependencies=PROTECTED)
 def qr_calibration(body: schemas.QrCalibrationRequest | None = None):
     """QR 크기 실측용. 같은 URL 을 여러 크기로 연속 출력하고 끝에 한 번만 자른다.
 

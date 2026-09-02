@@ -122,6 +122,12 @@ services:
       # 프린터가 없는 환경에서는 PRINT_AGENT_ENABLED=false 로 꺼둔다.
       PRINT_AGENT_URL: ${PRINT_AGENT_URL:-http://host.docker.internal:5051}
       PRINT_AGENT_ENABLED: ${PRINT_AGENT_ENABLED:-true}
+      # 맥북 안에서만 도는 구성이라 기본은 인증 없음. print-agent 의 AGENT_TOKEN 을
+      # 설정했다면 같은 값을 .env 의 PRINT_AGENT_TOKEN 에 넣어야 401 이 안 난다.
+      PRINT_AGENT_TOKEN: ${PRINT_AGENT_TOKEN:-}
+      # 로컬은 접속 주소가 매번 달라서(localhost / 맥북 LAN IP) 목록을 고정하지 않는다.
+      # 비어 있으면 형식 검사만 한다 — 운영에서는 prod 파일이 실제 도메인으로 잠근다.
+      PRINT_KIOSK_ALLOWED_BASE_URLS: ${PRINT_KIOSK_ALLOWED_BASE_URLS:-}
 
       # JWT 서명키 — 기본값 없음. 미설정 시 compose가 즉시 중단된다.
       # 값 생성: openssl rand -base64 48

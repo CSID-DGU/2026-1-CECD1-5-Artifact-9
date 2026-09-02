@@ -32,6 +32,26 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
+def _kiosk_base(requested: str | None) -> str:
+    """접수증 QR 에 쓸 base URL 을 고른다.
+
+    접수 화면이 보내온 값을 우선한다. 접수 담당자가 화면에서 키오스크 주소를
+    바꿀 수 있는데(Reception.tsx 의 '키오스크 접속 주소'), 그때 화면 QR 만 바뀌고
+    종이 QR 이 기본값에 머물면 환자가 엉뚱한 주소로 이동한다.
+
+    백엔드(KioskBaseUrlPolicy)에서 이미 형식·허용목록 검사를 마친 값이지만,
+    스킴만은 여기서도 확인한다. 이 에이전트가 터널로 공개돼 있으면 백엔드를
+    거치지 않은 요청이 직접 들어올 수 있고, QR 은 사람이 내용을 읽을 수 없는
+    출력물이라 이상한 값이 섞여도 종이만 봐서는 알아챌 수 없기 때문이다.
+    """
+    if requested:
+        cleaned = requested.strip().rstrip("/")
+        if cleaned.startswith(("http://", "https://")):
+            return cleaned
+        log.warning("스킴이 없는 kioskBaseUrl 을 무시하고 기본값을 쓴다: %r", requested)
+    return config.KIOSK_BASE_URL
+
+
 # ── 접수증 ─────────────────────────────────────────────────────────────────
 def build_ticket(p, data: schemas.TicketPayload) -> dict:
     pr.style(p, align_mode="center")
@@ -49,7 +69,7 @@ def build_ticket(p, data: schemas.TicketPayload) -> dict:
 
     # QR 에는 토큰이 아니라 완전한 URL 을 넣는다. 아이패드 기본 카메라가
     # URL 일 때만 사파리로 이동시켜 주기 때문이다.
-    meta = pr.render_qr(p, f"{config.KIOSK_BASE_URL}/kiosk/{data.kioskToken}")
+    meta = pr.render_qr(p, f"{_kiosk_base(data.kioskBaseUrl)}/kiosk/{data.kioskToken}")
 
     pr.align(p, "center")
     pr.kr_line(p, "카메라로 QR을 촬영해 주세요")

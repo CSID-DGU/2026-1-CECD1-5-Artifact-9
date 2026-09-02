@@ -12,12 +12,20 @@ public final class PrintPayloads {
 
     private PrintPayloads() {}
 
-    /** 접수증(대기번호표). */
+    /**
+     * 접수증(대기번호표).
+     *
+     * {@code kioskBaseUrl} 은 접수 화면이 실제로 보고 있는 키오스크 주소다
+     * ({@code X-Kiosk-Base-Url} 헤더 → {@link KioskBaseUrlPolicy} 검사를 통과한 값).
+     * 화면에 뜬 QR 과 종이에 찍힌 QR 이 같은 곳을 가리키게 하려고 넘긴다.
+     * null 이면 print-agent 가 자기 {@code KIOSK_BASE_URL} 기본값을 쓴다.
+     */
     public record Ticket(
             String visitNo,
             String patientName,
             String patientNo,
-            String kioskToken
+            String kioskToken,
+            String kioskBaseUrl
     ) {}
 
     /**

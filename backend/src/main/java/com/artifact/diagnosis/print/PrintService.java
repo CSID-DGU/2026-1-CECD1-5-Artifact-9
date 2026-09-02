@@ -31,9 +31,19 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PrintService {
 
+    /**
+     * 접수 화면이 자기가 쓰는 키오스크 주소를 실어 보내는 헤더.
+     *
+     * 접수 담당자는 화면에서 키오스크 접속 주소를 바꿀 수 있다(Reception.tsx).
+     * 그 값이 여기까지 와야 화면 QR 과 종이 QR 이 같은 곳을 가리킨다.
+     * 헤더가 없으면(구버전 프론트, curl 테스트) print-agent 기본값이 쓰인다.
+     */
+    public static final String KIOSK_BASE_URL_HEADER = "X-Kiosk-Base-Url";
+
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     private final PrintAgentClient printAgentClient;
+    private final KioskBaseUrlPolicy kioskBaseUrlPolicy;
     private final VisitService visitService;
     private final PatientService patientService;
     private final PrescriptionService prescriptionService;
@@ -41,9 +51,13 @@ public class PrintService {
 
     // ── 접수증 ──────────────────────────────────────────────────────────────
 
-    /** 접수 직후 자동 출력. 결과를 기다리지 않는다. */
-    public void printTicketAsync(VisitResponse visit) {
-        PrintPayloads.Ticket payload = buildTicket(visit);
+    /**
+     * 접수 직후 자동 출력. 결과를 기다리지 않는다.
+     *
+     * @param kioskBaseUrl 접수 화면이 헤더로 보낸 키오스크 주소. null 이면 에이전트 기본값.
+     */
+    public void printTicketAsync(VisitResponse visit, String kioskBaseUrl) {
+        PrintPayloads.Ticket payload = buildTicket(visit, kioskBaseUrl);
         if (payload == null) {
             return;
         }
@@ -51,15 +65,15 @@ public class PrintService {
     }
 
     /** 접수 화면의 '티켓 인쇄' 버튼. 결과를 화면에 알려줘야 하므로 기다린다. */
-    public PrintOutcome printTicket(Long visitId) {
-        PrintPayloads.Ticket payload = buildTicket(visitService.findById(visitId));
+    public PrintOutcome printTicket(Long visitId, String kioskBaseUrl) {
+        PrintPayloads.Ticket payload = buildTicket(visitService.findById(visitId), kioskBaseUrl);
         if (payload == null) {
             return PrintOutcome.failure("키오스크 토큰이 없어 티켓을 만들 수 없습니다.");
         }
         return printAgentClient.send("/print/ticket", payload);
     }
 
-    private PrintPayloads.Ticket buildTicket(VisitResponse visit) {
+    private PrintPayloads.Ticket buildTicket(VisitResponse visit, String kioskBaseUrl) {
         if (visit.kioskToken() == null || visit.kioskToken().isBlank()) {
             log.warn("키오스크 토큰이 없어 접수증을 출력하지 않는다 (visitId={})", visit.id());
             return null;
@@ -69,7 +83,10 @@ public class PrintService {
                 visitNo(visit.id()),
                 patientName,
                 patientNo(visit.patientId()),
-                visit.kioskToken()
+                visit.kioskToken(),
+                // 검사에 걸리면 null 이 되고, 그러면 에이전트가 자기 기본값을 쓴다.
+                // 접수를 실패시키지 않는다 — 종이가 기본 주소로 나가는 편이 낫다.
+                kioskBaseUrlPolicy.sanitize(kioskBaseUrl)
         );
     }
 
