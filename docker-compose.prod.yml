@@ -51,23 +51,34 @@ services:
       # DEBUG 로그에는 요청 본문(환자 이름·연락처)이 섞인다. 운영에서는 INFO.
       LOG_LEVEL: "INFO"
       # 감열지 프린터는 접수 데스크 맥북 USB 에 물려 있고, EC2 에는 프린터가 없다.
-      # 두 방식 중 하나를 고른다.
       #
-      #  (기본) 끈다 — 인쇄 버튼을 누르면 "출력이 꺼져 있습니다" 안내가 뜬다.
-      #         매 접수마다 연결 실패 로그가 쌓이지 않는다.
+      # 그래도 여기에 넣을 설정은 없다. queue 방식에서는 맥북의 print-agent 가
+      # 이 서버에 접속해 인쇄 작업을 가져가기 때문이다 — 서버는 작업을 큐에 넣어
+      # 둘 뿐이고, 맥북 주소도 터널도 토큰도 필요 없다.
       #
-      #  (터널) 접수 데스크 맥북의 print-agent 를 Cloudflare Tunnel 로 공개 HTTPS 에
-      #         올리고, EC2 의 .env 에 아래 세 값을 넣어 켠다:
+      #   [EC2 백엔드] <--HTTPS-- [맥북 print-agent] --USB--> [프린터]
       #
-      #           PRINT_AGENT_ENABLED=true
-      #           PRINT_AGENT_URL=https://print.example.com
-      #           PRINT_AGENT_TOKEN=<print-agent 의 AGENT_TOKEN 과 같은 값>
+      # 맥북이 꺼져 있으면 작업은 2분 뒤 조용히 버려지고, 인쇄 버튼은 "프린터가
+      # 연결되어 있지 않습니다" 를 즉시 돌려준다. 접수·발급은 어느 경우에도 막히지 않는다.
       #
-      #         터널을 열면 에이전트가 인터넷 전체에 노출되므로 토큰은 선택이 아니다.
-      #         절차는 print-agent/README.md "터널로 공개하기" 참고.
-      PRINT_AGENT_ENABLED: ${PRINT_AGENT_ENABLED:-false}
-      PRINT_AGENT_URL: ${PRINT_AGENT_URL:-http://host.docker.internal:5051}
-      PRINT_AGENT_TOKEN: ${PRINT_AGENT_TOKEN:-}
+      # 이전에는 반대 방향(EC2 가 터널 너머 맥북을 호출)이었고, 그러려면 터널 주소가
+      # 바뀔 때마다 이 파일이 아니라 EC2 안의 .env 를 사람이 고쳐야 했다. 배포는
+      # self-hosted 러너가 고정된 단계만 실행하므로 그 파일에 손댈 방법이 사실상 없어,
+      # 방향을 뒤집었다. 판단 근거는 backend PrintTransport.java 주석 참고.
+      #
+      # 운영 기본값을 꺼짐에서 켜짐으로 뒤집는다. 예전에 false 였던 이유는 터널
+      # 방식에서 맥북 주소가 없으면 백엔드가 매번 타임아웃을 기다렸기 때문이다.
+      # 폴링에서는 그 위험이 없다 — 맥북이 없으면 작업이 큐에 잠깐 있다 버려질 뿐,
+      # 접수·발급 요청은 즉시 돌아온다.
+      #
+      # 그리고 ${...:-기본값} 이 아니라 고정값으로 둔다. 기본값 문법은 EC2 안의
+      # .env 가 이기는데, 배포는 self-hosted 러너가 정해진 단계만 실행하고 22번
+      # 포트도 닫혀 있어 그 파일을 확인할 방법도 고칠 방법도 없다. 운영에서 이 두
+      # 값이 다른 값일 이유가 없으므로, 배포에 실려 가는 이 파일에서 못박아 서버에
+      # 무엇이 남아 있든 항상 큐 모드로 뜨게 한다.
+      # direct 로 돌아갈 일이 생기면 이 줄을 고쳐 배포한다 — 서버에 들어가지 않는다.
+      PRINT_MODE: queue
+      PRINT_AGENT_ENABLED: "true"
 
       # 운영에서는 접수증 QR 에 찍힐 주소를 배포 도메인으로 잠근다.
       # 접수 계정이 탈취돼도 종이 QR 로 환자를 외부 사이트에 보낼 수 없게 하는 장치다.

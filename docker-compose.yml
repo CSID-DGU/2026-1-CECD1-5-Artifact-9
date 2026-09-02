@@ -118,12 +118,17 @@ services:
 
       # 감열지 프린터(print-agent). Docker Desktop for Mac 은 USB 패스스루가 없어서
       # 컨테이너가 프린터에 직접 붙을 수 없다. 프린터가 물린 맥 호스트에서 print-agent 를
-      # 따로 띄우고(README: print-agent/README.md) 여기로 HTTP 호출한다.
-      # 프린터가 없는 환경에서는 PRINT_AGENT_ENABLED=false 로 꺼둔다.
-      PRINT_AGENT_URL: ${PRINT_AGENT_URL:-http://host.docker.internal:5051}
+      # 따로 띄운다(README: print-agent/README.md).
+      #
+      # 기본은 queue — 맥북의 print-agent 가 이 백엔드에 접속해 인쇄 작업을 가져간다.
+      # 운영(EC2)과 같은 방식을 로컬에서도 그대로 쓰면 "로컬에서만 되는" 상태가 안 생긴다.
+      #
+      # 로컬에서 백엔드와 프린터가 같은 기계에 있으니 반대 방향이 한 단계 짧기는 하다.
+      # 그쪽을 쓰려면 .env 에 PRINT_MODE=direct 를 넣는다 — 그러면 아래 URL/TOKEN 이 쓰인다.
+      PRINT_MODE: ${PRINT_MODE:-queue}
       PRINT_AGENT_ENABLED: ${PRINT_AGENT_ENABLED:-true}
-      # 맥북 안에서만 도는 구성이라 기본은 인증 없음. print-agent 의 AGENT_TOKEN 을
-      # 설정했다면 같은 값을 .env 의 PRINT_AGENT_TOKEN 에 넣어야 401 이 안 난다.
+      # 아래 두 값은 PRINT_MODE=direct 일 때만 쓰인다.
+      PRINT_AGENT_URL: ${PRINT_AGENT_URL:-http://host.docker.internal:5051}
       PRINT_AGENT_TOKEN: ${PRINT_AGENT_TOKEN:-}
       # 로컬은 접속 주소가 매번 달라서(localhost / 맥북 LAN IP) 목록을 고정하지 않는다.
       # 비어 있으면 형식 검사만 한다 — 운영에서는 prod 파일이 실제 도메인으로 잠근다.

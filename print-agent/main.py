@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 import auth
 import config
 import documents
+import poller
 import printer as pr
 import schemas
 
@@ -33,21 +34,35 @@ log = logging.getLogger("print-agent")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """기동 시 인증 상태를 로그에 남긴다.
+    """폴링 루프를 띄우고, 인증 상태를 로그에 남긴다.
 
-    AGENT_HOST 기본값이 0.0.0.0 이라 같은 와이파이의 다른 기기도 닿을 수 있고,
-    터널을 열면 인터넷 전체가 닿는다. 토큰 없이 그렇게 떠 있는 상태는 조용히
-    지나가면 아무도 모르므로 여기서 알린다.
+    이 서비스가 실제로 인쇄를 받는 경로는 두 가지다.
+
+      1. 폴링 (주 경로) — poller.py 가 백엔드에 접속해 작업을 가져온다.
+         원격 배포본의 접수증이 이 프린터로 나오는 것은 전부 이 경로다.
+      2. HTTP (보조)   — 아래 /print/* 엔드포인트. 백엔드와 프린터가 같은 기계에
+         있는 개발 환경이나 curl 스모크 테스트에서 쓴다.
+
+    2번은 AGENT_HOST 기본값이 0.0.0.0 이라 같은 와이파이의 다른 기기도 닿을 수
+    있다. 토큰 없이 그렇게 떠 있는 상태는 조용히 지나가면 아무도 모르므로 알린다.
     """
     if config.AGENT_TOKEN:
         log.info("인증 활성화 — Authorization: Bearer 헤더가 있는 요청만 받는다")
     elif config.AGENT_HOST not in ("127.0.0.1", "localhost"):
         log.warning(
             "AGENT_TOKEN 이 비어 있는데 %s 에 바인딩했다. 같은 네트워크의 다른 기기가 "
-            "출력을 요청할 수 있다. 터널로 공개할 예정이라면 반드시 AGENT_TOKEN 을 설정할 것.",
+            "이 에이전트의 /print/* 를 직접 부를 수 있다. 공용 와이파이라면 "
+            "AGENT_HOST=127.0.0.1 로 묶거나 AGENT_TOKEN 을 설정할 것.",
             config.AGENT_HOST,
         )
-    yield
+
+    poller.start()
+    try:
+        yield
+    finally:
+        # 데몬 스레드라 안 멈춰도 프로세스는 죽지만, 롱 폴링 소켓을 붙든 채로
+        # 죽으면 서버 쪽 대기자 정리가 타임아웃까지 늦어진다. 명시적으로 알린다.
+        poller.stop()
 
 
 app = FastAPI(

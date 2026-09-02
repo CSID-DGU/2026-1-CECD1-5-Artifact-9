@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -17,7 +18,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 맥 호스트에서 도는 print-agent 호출기.
+ * 맥 호스트에서 도는 print-agent 호출기 — <b>기본값이 아닌 쪽</b>이다.
+ *
+ * <h2>지금은 언제 쓰나</h2>
+ * {@code print.mode=direct} 로 명시했을 때만 만들어진다. 기본은 반대 방향인
+ * {@link PrintJobQueue}(에이전트가 가지러 온다)이고, 그 이유는 {@link PrintTransport}
+ * 에 적어 뒀다 — 요약하면 이쪽은 맥북에 인터넷에서 닿는 고정 주소가 있어야 하는데
+ * 접수 데스크에는 그런 것이 없어서, 터널을 열고 주소가 바뀔 때마다 서버 설정을
+ * 고쳐야 하기 때문이다.
+ *
+ * 백엔드와 프린터가 같은 기계에 있는 개발 환경에서는 이쪽이 한 단계 짧아 여전히
+ * 쓸모가 있다({@code PRINT_MODE=direct}).
  *
  * <h2>왜 별도 프로세스인가</h2>
  * Docker Desktop for Mac 은 USB 패스스루를 지원하지 않는다. 컨테이너 안의 이
@@ -41,7 +52,8 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class PrintAgentClient {
+@ConditionalOnProperty(name = "print.mode", havingValue = "direct")
+public class PrintAgentClient implements PrintTransport {
 
     /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
     private final HttpClient httpClient;
@@ -93,6 +105,7 @@ public class PrintAgentClient {
     /**
      * 사람이 '인쇄' 버튼을 눌렀을 때. 결과를 알려줘야 하므로 끝날 때까지 기다린다.
      */
+    @Override
     public PrintOutcome send(String path, Object payload) {
         if (!enabled) {
             return PrintOutcome.failure("감열지 출력이 꺼져 있습니다 (print.agent.enabled=false).");
@@ -134,6 +147,7 @@ public class PrintAgentClient {
      * 접수·진료완료·증명서 발급처럼 자동으로 딸려 나가는 출력.
      * 결과를 기다리지 않는다 — 프린터가 느려도 화면이 멈추지 않도록.
      */
+    @Override
     public void sendAsync(String path, Object payload) {
         if (!enabled) {
             return;
