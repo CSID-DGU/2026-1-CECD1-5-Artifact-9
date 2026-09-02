@@ -25,6 +25,11 @@ public class LocalImageStorageService implements ImageStorageService {
             "image/jpeg", "image/png", "image/gif", "image/webp"
     );
 
+    // ALLOWED_CONTENT_TYPES 와 짝을 맞춘 확장자 화이트리스트. validate() 가 이미 Content-Type 을
+    // 이 넷으로 제한하고 있는데 정작 저장 파일명의 확장자는 원본 파일명에서 그대로 잘라 쓰고
+    // 있었다 — 목록 밖 값이면 확장자를 붙이지 않는다(경로 조작 방지의 심층 방어 목적).
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(".jpg", ".jpeg", ".png", ".gif", ".webp");
+
     private final Path uploadRoot;
 
     public LocalImageStorageService(
@@ -37,6 +42,11 @@ public class LocalImageStorageService implements ImageStorageService {
         validate(file);
         String storedFilename = createStoredFilename(file.getOriginalFilename());
         Path target = uploadRoot.resolve(storedFilename).normalize();
+        // uploadBytes()/download() 와 동일한 가드. storedFilename 은 지금은 UUID 기반이라
+        // 이 조건에 걸릴 일이 없지만, 그 전제가 나중에 바뀌어도 조용히 뚫리지 않도록 지킨다.
+        if (!target.startsWith(uploadRoot)) {
+            throw new IllegalArgumentException("잘못된 경로입니다.");
+        }
         try {
             Files.createDirectories(uploadRoot);
             file.transferTo(target);
@@ -95,6 +105,7 @@ public class LocalImageStorageService implements ImageStorageService {
         if (originalFilename == null || originalFilename.isBlank()) return "";
         int dotIndex = originalFilename.lastIndexOf('.');
         if (dotIndex < 0 || dotIndex == originalFilename.length() - 1) return "";
-        return originalFilename.substring(dotIndex).toLowerCase();
+        String extension = originalFilename.substring(dotIndex).toLowerCase();
+        return ALLOWED_EXTENSIONS.contains(extension) ? extension : "";
     }
 }

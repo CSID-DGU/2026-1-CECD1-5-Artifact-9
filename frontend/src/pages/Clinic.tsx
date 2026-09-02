@@ -545,7 +545,9 @@ export default function Clinic() {
                     <span className="text-[11px] text-gray-400">AI 병변 분석 히트맵</span>
                     <div className="rounded border border-gray-700 bg-gray-900 overflow-hidden">
                       <AuthedImage
-                        src={preliminaryAnalysis.gradcamUrl}
+                        // 히트맵 URL은 visitId 기반이라 재분석해도 같은 경로다.
+                        // analyzedAt을 쿼리로 붙여야 브라우저 캐시가 새 결과를 새 URL로 본다.
+                        src={`${preliminaryAnalysis.gradcamUrl}?t=${encodeURIComponent(preliminaryAnalysis.analyzedAt)}`}
                         alt="키오스크 예비분석 GradCAM"
                         className="w-full"
                       />
@@ -744,8 +746,14 @@ export default function Clinic() {
                     };
 
                     // src만 바뀌고 <img> 태그는 유지 → 동일 위치·동일 크기 보장
-                    const displayUrl =
-                      imageViewMode === "heatmap" ? analysis.heatmapImageUrl! : analyzedImageUrl;
+                    // 히트맵 URL도 visitId 기반이라 재분석해도 경로가 같다 — analyzedAt을 붙여
+                    // 브라우저 캐시가 새 결과를 새 URL로 보게 한다. 원본 이미지가 없을 수도
+                    // 있으니(analyzedImageUrl undefined) 붙이기 전에 값부터 확인한다.
+                    const baseDisplayUrl =
+                      imageViewMode === "heatmap" ? analysis.heatmapImageUrl : analyzedImageUrl;
+                    const displayUrl = baseDisplayUrl
+                      ? `${baseDisplayUrl}?t=${encodeURIComponent(analysis.analyzedAt)}`
+                      : undefined;
 
                     return (
                       <div className="flex flex-col gap-1.5">
