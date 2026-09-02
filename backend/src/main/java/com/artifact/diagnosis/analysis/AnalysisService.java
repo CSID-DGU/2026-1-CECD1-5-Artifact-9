@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -224,15 +226,16 @@ public class AnalysisService {
         );
     }
 
-    public org.springframework.http.ResponseEntity<byte[]> getHeatmapContent(Long visitId) {
+    public ResponseEntity<byte[]> getHeatmapContent(Long visitId) {
         AnalysisResult result = analysisResultRepository
                 .findFirstByVisitIdOrderByAnalyzedAtDesc(visitId)
                 .filter(r -> r.getHeatmapImageUrl() != null)
                 .orElseThrow(() -> new NoSuchElementException("히트맵이 없습니다: " + visitId));
         byte[] bytes = imageStorageService.download(result.getHeatmapImageUrl());
-        return org.springframework.http.ResponseEntity.ok()
-                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "image/jpeg")
-                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "max-age=31536000, immutable")
+        // 환자 병변 사진이라 중간 프록시 등 공유 캐시에 담기면 안 된다 — private로 제한.
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=31536000, immutable")
                 .body(bytes);
     }
 
