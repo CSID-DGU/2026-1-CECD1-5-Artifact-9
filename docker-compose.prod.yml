@@ -50,6 +50,29 @@ services:
       SWAGGER_ENABLED: "false"
       # DEBUG 로그에는 요청 본문(환자 이름·연락처)이 섞인다. 운영에서는 INFO.
       LOG_LEVEL: "INFO"
+      # 감열지 프린터는 접수 데스크 맥북 USB 에 물려 있고, EC2 에는 프린터가 없다.
+      # 두 방식 중 하나를 고른다.
+      #
+      #  (기본) 끈다 — 인쇄 버튼을 누르면 "출력이 꺼져 있습니다" 안내가 뜬다.
+      #         매 접수마다 연결 실패 로그가 쌓이지 않는다.
+      #
+      #  (터널) 접수 데스크 맥북의 print-agent 를 Cloudflare Tunnel 로 공개 HTTPS 에
+      #         올리고, EC2 의 .env 에 아래 세 값을 넣어 켠다:
+      #
+      #           PRINT_AGENT_ENABLED=true
+      #           PRINT_AGENT_URL=https://print.example.com
+      #           PRINT_AGENT_TOKEN=<print-agent 의 AGENT_TOKEN 과 같은 값>
+      #
+      #         터널을 열면 에이전트가 인터넷 전체에 노출되므로 토큰은 선택이 아니다.
+      #         절차는 print-agent/README.md "터널로 공개하기" 참고.
+      PRINT_AGENT_ENABLED: ${PRINT_AGENT_ENABLED:-false}
+      PRINT_AGENT_URL: ${PRINT_AGENT_URL:-http://host.docker.internal:5051}
+      PRINT_AGENT_TOKEN: ${PRINT_AGENT_TOKEN:-}
+
+      # 운영에서는 접수증 QR 에 찍힐 주소를 배포 도메인으로 잠근다.
+      # 접수 계정이 탈취돼도 종이 QR 로 환자를 외부 사이트에 보낼 수 없게 하는 장치다.
+      # QR 은 눈으로 내용을 읽을 수 없어서 종이만 봐서는 알아챌 방법이 없다.
+      PRINT_KIOSK_ALLOWED_BASE_URLS: ${PRINT_KIOSK_ALLOWED_BASE_URLS:-https://artifact-prod.duckdns.org}
 
   frontend:
     # 로컬은 3000 이지만 운영은 80 이어야 한다 — 사용자에게 주소창에 포트를 치게 할 수는 없다.

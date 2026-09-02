@@ -3,6 +3,7 @@ package com.artifact.diagnosis.certificate;
 import com.artifact.diagnosis.common.jwt.AuthPrincipal;
 import com.artifact.diagnosis.common.security.DoctorAccess;
 import com.artifact.diagnosis.common.security.StaffAccess;
+import com.artifact.diagnosis.print.PrintService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,6 +20,7 @@ import java.util.List;
 public class CertificateIssueController {
 
     private final CertificateService certificateService;
+    private final PrintService printService;
 
     @Operation(summary = "AI 초안 생성",
                description = "증명서의 서술 항목(소견·향후 치료계획·의뢰 사유) 초안을 LLM으로 생성합니다. "
@@ -47,7 +49,12 @@ public class CertificateIssueController {
             @PathVariable Long visitId,
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CertificateIssueRequest request) {
-        return certificateService.issue(visitId, principal, request);
+        CertificateResponse issued = certificateService.issue(visitId, principal, request);
+        // 감열지 '발급 확인증' 자동 출력. 법정 서식(A4)을 대체하지 않는 안내용 출력물이며,
+        // 원본 증명서 인쇄 흐름(프론트 Certificate.tsx 의 window.print())은 그대로다.
+        // CertificateService 는 클래스 단위 @Transactional 이라, 커밋이 끝난 여기서 부른다.
+        printService.printCertificateSlipAsync(issued);
+        return issued;
     }
 
     @Operation(summary = "내원별 발급이력",

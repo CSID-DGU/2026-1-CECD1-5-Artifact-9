@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.visit;
 
 import com.artifact.diagnosis.common.security.DoctorAccess;
+import com.artifact.diagnosis.print.PrintService;
 import com.artifact.diagnosis.common.security.MedicalAccess;
 import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,11 @@ import java.util.List;
  *   GET    /api/v1/visits/{id}         - 단건 조회
  *   GET    /api/v1/visits?status=      - 상태별 목록 조회 (기본값: RECEIVED)
  *   PATCH  /api/v1/visits/{id}/start   - 진료 시작 (RECEIVED → IN_PROGRESS)
+ *
+ * 접수증·진료요약서 감열지 출력은 <b>서비스가 아니라 여기서</b> 호출한다.
+ * VisitService 는 클래스 단위 {@code @Transactional} 이라, 그 안에서 프린터를
+ * 부르면 프린터가 응답할 때까지 DB 커넥션을 붙들게 된다. 커밋이 끝난 뒤
+ * 컨트롤러에서 부르면 그 문제가 없다.
  */
 @Tag(name = "접수", description = "진료 접수 API")
 @RestController
@@ -31,6 +37,7 @@ import java.util.List;
 public class VisitController {
 
     private final VisitService visitService;
+    private final PrintService printService;
 
     @Operation(summary = "진료 접수 생성", description = "환자 ID를 받아 새 접수를 생성합니다. 초기 상태: RECEIVED.")
     @ApiResponse(responseCode = "201", description = "접수 생성 성공")
@@ -38,8 +45,16 @@ public class VisitController {
     @ApiResponse(responseCode = "404", description = "환자 없음")
     @StaffAccess
     @PostMapping
-    public ResponseEntity<VisitResponse> create(@Valid @RequestBody VisitCreateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(visitService.create(request));
+    public ResponseEntity<VisitResponse> create(
+            @Valid @RequestBody VisitCreateRequest request,
+            // 접수 화면이 지금 쓰고 있는 키오스크 주소. 이 값이 그대로 종이 QR 이 된다.
+            // 없으면(구버전 프론트, curl) print-agent 의 기본 주소가 쓰인다.
+            @RequestHeader(value = PrintService.KIOSK_BASE_URL_HEADER, required = false)
+            String kioskBaseUrl) {
+        VisitResponse created = visitService.create(request);
+        // 접수증 자동 출력. 프린터가 꺼져 있어도 접수는 이미 끝났으므로 실패는 로그만 남는다.
+        printService.printTicketAsync(created, kioskBaseUrl);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @Operation(summary = "접수 단건 조회")
@@ -116,6 +131,11 @@ public class VisitController {
     @PatchMapping("/{id}/complete")
     public VisitResponse markCompleted(
             @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
-        return visitService.markCompleted(id);
+        VisitResponse completed = visitService.markCompleted(id);
+        // 진료 요약서 자동 출력. 처방 저장 시점이 아니라 완료 시점에 한 번만 뽑는다 —
+        // 처방을 고칠 때마다 나오면 같은 종이가 여러 장 쌓인다. 처방만 저장한 상태에서
+        // 미리 보고 싶으면 진료 화면의 '진료요약 인쇄' 버튼을 쓴다.
+        printService.printVisitSummaryAsync(id);
+        return completed;
     }
 }

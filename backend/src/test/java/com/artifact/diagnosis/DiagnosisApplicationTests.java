@@ -67,6 +67,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		// 테스트에서만 쓰는 더미 키 — HS256 요구사항인 256bit 이상을 만족해야 한다.
 		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
 		// fastapi.internal-secret 도 기본값이 없다(같은 이유). 테스트는 FastAPI를 부르지 않으므로 값은 아무거나.
+		// 테스트에서는 감열지 프린터를 부르지 않는다 — CI 에는 프린터도 print-agent 도 없다.
+		"print.agent.enabled=false",
 		"fastapi.internal-secret=test-only-internal-secret"
 })
 class DiagnosisApplicationTests {

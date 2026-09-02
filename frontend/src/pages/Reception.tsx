@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { getErrorMessage } from "../api/errors";
+import { printTicket } from "../api/print";
 import {
   createPatient,
   getPatient,
@@ -172,6 +173,29 @@ export default function Reception() {
 
   const kioskUrl = receipt ? buildKioskUrl(receipt.kioskToken, kioskBase) : "";
 
+  // 감열지 티켓 수동 재출력. 접수 시점에 백엔드가 이미 자동으로 한 장 뽑지만,
+  // 프린터가 꺼져 있었거나 환자가 종이를 잃어버린 경우를 위해 버튼을 둔다.
+  const [isPrintingTicket, setIsPrintingTicket] = useState(false);
+
+  async function handlePrintTicket() {
+    if (!receipt) return;
+    setMessage(null);
+    setErrorMessage(null);
+    setIsPrintingTicket(true);
+    try {
+      // kioskBase 를 같이 넘긴다. 담당자가 아래 '키오스크 접속 주소' 를 바꿨다면
+      // 화면 QR 은 이미 그 주소인데, 안 넘기면 종이만 기본 주소로 나간다.
+      const outcome = await printTicket(receipt.visitId, kioskBase);
+      // 프린터가 꺼져 있어도 서버는 200 을 준다 — ok 플래그로 갈라서 안내한다.
+      if (outcome.ok) setMessage(`티켓을 출력했습니다 — ${receipt.visitNo}`);
+      else setErrorMessage(`티켓 출력 실패 — ${outcome.detail}`);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsPrintingTicket(false);
+    }
+  }
+
   function handleSaveKioskBase() {
     setKioskBaseUrl(kioskBaseInput);
     const resolved = getKioskBaseUrl();
@@ -331,7 +355,8 @@ export default function Reception() {
         patientName = patient.name;
       }
 
-      const visit = await createVisit(patientId, memo.trim() || null);
+      // 세 번째 인자가 접수증 QR 에 찍힐 주소가 된다 — 화면에 뜨는 QR 과 같은 값이어야 한다.
+      const visit = await createVisit(patientId, memo.trim() || null, kioskBase);
 
       const patientNo = `P${String(patientId).padStart(5, "0")}`;
       const visitNo   = `V${String(visit.id).padStart(5, "0")}`;
@@ -725,7 +750,14 @@ export default function Reception() {
                   </p>
                 </div>
 
-                <div className="mt-auto flex justify-end">
+                <div className="mt-auto flex justify-end gap-2">
+                  <button
+                    onClick={handlePrintTicket}
+                    disabled={isPrintingTicket}
+                    className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isPrintingTicket ? "출력 중…" : "티켓 인쇄"}
+                  </button>
                   <button
                     onClick={() => setReceipt(null)}
                     className="rounded border border-gray-400 px-3 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-800 cursor-pointer"
