@@ -5,6 +5,25 @@ import type {
 } from "../api/certificates";
 
 /**
+ * 이 컴포넌트가 실제로 쓰는 필드만 추린 것.
+ *
+ * 발급 화면(Certificate.tsx)은 `CertificateResponse` 를 그대로 넘기고, 감열지 QR 로
+ * 들어오는 공개 열람 페이지는 내부 ID 가 빠진 축소 응답을 넘긴다. 둘 다 받으려고
+ * 프로퍼티를 넓혀 둔 것이지, 발급 화면 쪽 동작은 아무것도 바뀌지 않는다.
+ *
+ * 재발급 표시만 두 형태를 받는다. 발급 화면은 원본 증명서 ID(`reissueOf`)를 들고
+ * 있지만, 공개 응답에는 다른 증명서의 내부 ID 를 싣지 않아 boolean 만 온다.
+ * 화면이 쓰는 것은 "재발급인가" 하나뿐이라 여기서 흡수한다.
+ */
+export type CertificateDocumentViewData = Pick<
+  CertificateResponse,
+  "type" | "typeLabel" | "status" | "voidReason" | "content"
+> & {
+  reissueOf?: number | null;
+  reissued?: boolean;
+};
+
+/**
  * 발급된 증명서를 A4 한 장으로 그린다.
  *
  * 그리는 재료는 `certificate.content` 스냅샷뿐이다. 지금 DB에 있는 처방이나 환자 정보를
@@ -13,9 +32,15 @@ import type {
  * 인쇄 대상 영역을 `id="certificate-print-area"`로 표시한다. 인쇄 CSS(index.css)가
  * 이 id 하나만 남기고 나머지 화면을 숨기므로, 종이 출력과 PDF 저장이 같은 경로로 처리된다.
  */
-export function CertificateDocumentView({ certificate }: { certificate: CertificateResponse }) {
+export function CertificateDocumentView({
+  certificate,
+}: {
+  certificate: CertificateDocumentViewData;
+}) {
   const doc = certificate.content;
   const voided = certificate.status === "VOID";
+  // reissueOf 가 아예 없는 경우(공개 응답)와 null 인 경우(최초 발급)를 함께 걸러야 한다.
+  const reissued = certificate.reissued ?? certificate.reissueOf != null;
 
   return (
     <div
@@ -35,7 +60,7 @@ export function CertificateDocumentView({ certificate }: { certificate: Certific
         <h1 className="text-2xl font-bold tracking-[0.4em]">{certificate.typeLabel}</h1>
         <div className="mt-2 text-right text-[11px]">
           발급번호: {doc.serialNo ?? "-"}
-          {certificate.reissueOf !== null && <span className="ml-2 font-bold">[재발급]</span>}
+          {reissued && <span className="ml-2 font-bold">[재발급]</span>}
         </div>
       </header>
 

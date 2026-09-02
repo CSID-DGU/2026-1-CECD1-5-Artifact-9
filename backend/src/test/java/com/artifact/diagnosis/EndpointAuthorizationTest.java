@@ -76,8 +76,11 @@ class EndpointAuthorizationTest {
 	 * 반드시 리뷰에서 근거를 확인해야 한다. 그래서 목록을 테스트에 고정해 둔다.
 	 */
 	private static final List<String> EXPECTED_PUBLIC_CONTROLLERS = List.of(
-			"AuthController",    // 로그인/가입 — 토큰을 받기 위한 경로
-			"KioskController"    // 대기실 태블릿 — JWT 대신 접수별 kiosk_token 이 자격
+			"AuthController",         // 로그인/가입 — 토큰을 받기 위한 경로
+			"KioskController",        // 대기실 태블릿 — JWT 대신 접수별 kiosk_token 이 자격
+			// 감열지 QR 로 들어오는 환자 — 병원 계정이 없어 인증을 요구할 수 없다.
+			// 대신 문서별 share_token(base62 12자)이 자격이고, 읽기 전용이며 기한이 있다.
+			"DocumentShareController"
 	);
 
 	@Autowired
@@ -262,6 +265,22 @@ class EndpointAuthorizationTest {
 						.header("Authorization", "Bearer " + staffToken)
 						.param("patientId", "999999"))
 				.andExpect(status().isOk());
+	}
+
+	/**
+	 * 감열지 QR 문서 열람은 토큰만으로 열려야 한다.
+	 *
+	 * 여기서 확인하는 것은 "인증을 요구하지 않는다"이다. 없는 토큰이므로 404 가 정상이고,
+	 * 401 이 나오면 환자가 QR 을 찍었을 때 로그인 화면을 보게 된다 — 이 기능이 생긴 이유가
+	 * 바로 그 문제였다. SecurityConfig 의 permitAll 에서 이 경로가 빠지면 여기서 잡힌다.
+	 */
+	@Test
+	void patientsCanOpenSharedDocumentsWithoutLogin() throws Exception {
+		mockMvc.perform(get("/api/public/documents/certificate/{token}", "notarealtoken"))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(get("/api/public/documents/visit-summary/{token}", "notarealtoken"))
+				.andExpect(status().isNotFound());
 	}
 
 	/** 관리자는 사다리 꼭대기 — 의사 전용 경로까지 인가를 통과한다(대상이 없어 404). */

@@ -26,6 +26,12 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     java.util.Optional<Visit> findByKioskToken(String kioskToken);
 
     /**
+     * 감열지 진료요약서 QR 의 열람 토큰으로 찾는다. kioskToken 과 별개의 값이다
+     * (Visit.summaryToken 주석 참고 — 열람 전용이라 사진 업로드 권한이 딸려가지 않는다).
+     */
+    java.util.Optional<Visit> findBySummaryToken(String summaryToken);
+
+    /**
      * 키오스크 자동 진입(QR 없이)이 잡을 대상 — 예비분석을 아직 하지 않은 접수 중 가장 최근 1건.
      *
      * 왜 최신순인가. 대기실 태블릿은 3초마다 이 API를 폴링하다가 대상이 생기면 곧바로 이동한다

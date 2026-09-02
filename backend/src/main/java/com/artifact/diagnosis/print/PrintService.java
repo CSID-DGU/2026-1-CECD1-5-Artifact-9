@@ -2,6 +2,8 @@ package com.artifact.diagnosis.print;
 
 import com.artifact.diagnosis.certificate.CertificateResponse;
 import com.artifact.diagnosis.certificate.CertificateService;
+import com.artifact.diagnosis.common.util.DisplayNo;
+import com.artifact.diagnosis.docshare.DocumentShareService;
 import com.artifact.diagnosis.patient.PatientService;
 import com.artifact.diagnosis.prescription.PrescriptionResponse;
 import com.artifact.diagnosis.prescription.PrescriptionService;
@@ -53,6 +55,7 @@ public class PrintService {
     private final PatientService patientService;
     private final PrescriptionService prescriptionService;
     private final CertificateService certificateService;
+    private final DocumentShareService documentShareService;
 
     // ── 접수증 ──────────────────────────────────────────────────────────────
 
@@ -85,9 +88,9 @@ public class PrintService {
         }
         String patientName = patientService.findById(visit.patientId()).name();
         return new PrintPayloads.Ticket(
-                visitNo(visit.id()),
+                DisplayNo.visit(visit.id()),
                 patientName,
-                patientNo(visit.patientId()),
+                DisplayNo.patient(visit.patientId()),
                 visit.kioskToken(),
                 // 검사에 걸리면 null 이 되고, 그러면 에이전트가 자기 기본값을 쓴다.
                 // 접수를 실패시키지 않는다 — 종이가 기본 주소로 나가는 편이 낫다.
@@ -128,14 +131,15 @@ public class PrintService {
         return new PrintPayloads.VisitSummary(
                 visitId,
                 patientName,
-                patientNo(visit.patientId()),
+                DisplayNo.patient(visit.patientId()),
                 visit.visitDate() == null ? null : visit.visitDate().format(ISO),
                 prescription.memberName(),
                 diseases,
                 medicines,
                 // AI 코멘트는 의사가 확인/수정한 뒤 저장된 값이다. 종이에는 이 문구와 함께
                 // '※ 의사 확인 완료' 가 반드시 같이 찍힌다 — print-agent 쪽에서 처리한다.
-                prescription.aiComment()
+                prescription.aiComment(),
+                shareToken(() -> documentShareService.issueVisitSummaryToken(visitId), "진료요약", visitId)
         );
     }
 
@@ -168,24 +172,31 @@ public class PrintService {
                 c.id(),
                 c.typeLabel(),
                 patientName,
-                patientNo(c.patientId()),
+                DisplayNo.patient(c.patientId()),
                 c.serialNo(),
                 c.issuedAt() == null ? null : c.issuedAt().format(ISO),
                 c.issuerName(),
-                c.issuerLicense()
+                c.issuerLicense(),
+                shareToken(() -> documentShareService.issueCertificateToken(c.id()), "증명서", c.id())
         );
     }
 
-    // ── 표시용 번호 ──────────────────────────────────────────────────────────
-    // 접수 화면(Reception.tsx)이 쓰는 것과 같은 규칙이다. 별도 컬럼이 아니라
-    // ID 를 자리수 맞춰 찍는 방식이라, 종이와 화면의 번호가 항상 같도록 여기서도
-    // 같은 규칙을 쓴다.
+    // ── QR 열람 토큰 ─────────────────────────────────────────────────────────
 
-    private static String patientNo(Long patientId) {
-        return "P" + String.format("%05d", patientId);
+    /**
+     * 열람 토큰 발급을 감싼다. 실패해도 출력은 그대로 진행한다.
+     *
+     * 토큰은 QR 하나를 위한 부가 정보다. 발급이 실패했다고 종이를 안 뽑아 버리면,
+     * 정작 필요한 발급번호·환자명·발급일자까지 환자 손에 못 들어간다.
+     * 그 경우 에이전트는 토큰이 null 인 것을 보고 QR 만 빼고 인쇄한다.
+     */
+    private String shareToken(java.util.function.Supplier<String> issue, String kind, Long id) {
+        try {
+            return issue.get();
+        } catch (RuntimeException e) {
+            log.warn("{} 열람 토큰을 발급하지 못했다 — QR 없이 출력한다 (id={}): {}", kind, id, e.toString());
+            return null;
+        }
     }
 
-    private static String visitNo(Long visitId) {
-        return "V" + String.format("%05d", visitId);
-    }
 }

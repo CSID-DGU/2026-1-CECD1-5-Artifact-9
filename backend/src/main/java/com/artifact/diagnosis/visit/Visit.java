@@ -48,6 +48,23 @@ public class Visit {
     @Column(name = "kiosk_token", columnDefinition = "CHAR(12)", unique = true)
     private String kioskToken;
 
+    /**
+     * 감열지 진료요약서의 QR 이 가리키는 열람 링크의 토큰.
+     *
+     * 위 kioskToken 을 재사용하지 않는다. 그 토큰은 사진 업로드와 예비분석까지 열어주는
+     * 자격이라, 진료가 끝난 뒤 환자 손에 나가는 종이에 같은 값을 찍으면 종이를 가진
+     * 사람이 그 접수의 키오스크 세션에 계속 접근할 수 있게 된다. 열람 전용 토큰을 따로 둔다.
+     */
+    @Column(name = "summary_token", columnDefinition = "CHAR(12)", unique = true)
+    private String summaryToken;
+
+    /**
+     * 위 토큰의 유효기간 기산점 = 이 접수의 진료요약서를 마지막으로 감열지에 출력한 시각.
+     * 자세한 배경은 {@code Certificate.shareTokenIssuedAt} 주석 참고.
+     */
+    @Column(name = "summary_token_issued_at")
+    private LocalDateTime summaryTokenIssuedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private VisitStatus status;

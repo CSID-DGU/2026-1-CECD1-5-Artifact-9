@@ -62,6 +62,12 @@ public class SecurityConfig {
                 // 기본은 비활성이고 KIOSK_AUTO_PENDING=true 일 때만 동작한다(KioskService 참고).
                 .requestMatchers("/api/kiosk/pending").permitAll()
 
+                // 감열지 QR 로 들어오는 환자용 문서 열람 — 읽기 전용이고, 경로에 든
+                // share token(base62 12자리 SecureRandom)이 문서 한 건만 연다.
+                // 발급번호(2026-000006)처럼 순번인 값은 절대 이 아래에 두지 않는다.
+                .requestMatchers(HttpMethod.GET, "/api/public/documents/certificate/*").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/public/documents/visit-summary/*").permitAll()
+
                 .anyRequest().authenticated()
             )
             // 필터 단계에서 걸린 요청은 @RestControllerAdvice까지 가지 못한다.

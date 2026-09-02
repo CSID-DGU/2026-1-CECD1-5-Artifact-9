@@ -9,6 +9,8 @@ import Certificate from "./pages/Certificate";
 import Login from "./pages/Login";
 import KioskWaiting from "./pages/KioskWaiting";
 import KioskAnalyze from "./pages/KioskAnalyze";
+import SharedCertificate from "./pages/SharedCertificate";
+import SharedVisitSummary from "./pages/SharedVisitSummary";
 import { AuthProvider } from "./components/AuthContext";
 
 export default function App() {
@@ -44,6 +46,13 @@ export default function App() {
               접수 시 발급된 토큰이 담긴 QR을 태블릿으로 찍으면 /kiosk/{token} 으로 진입한다. */}
           <Route path="/kiosk" element={<KioskWaiting />} />
           <Route path="/kiosk/:token" element={<KioskAnalyze />} />
+
+          {/* 감열지 QR 로 들어오는 환자용 문서 열람 — 로그인 없이 접근.
+              주소에 실리는 것은 문서별 열람 토큰뿐이고, 그 토큰은 해당 문서 한 건만 연다.
+              경로가 짧은 것은 의도적이다 — QR 은 담는 글자가 늘수록 모듈이 촘촘해져
+              감열지에서 읽기 어려워진다. */}
+          <Route path="/d/c/:token" element={<SharedCertificate />} />
+          <Route path="/d/v/:token" element={<SharedVisitSummary />} />
 
           {/* 잘못된 경로 → 로그인으로 */}
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -32,6 +32,23 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
+def _share_qr(p, template: str, token: str | None, doc: str) -> dict:
+    """문서 열람 링크 QR 을 찍는다. 토큰이 없으면 QR 만 건너뛴다.
+
+    QR 에 실리는 것은 토큰이 든 URL 하나뿐이다. 환자 이름·생년월일 같은
+    개인정보는 절대 인코딩하지 않는다 — 종이를 주운 사람이 스캐너 없이도
+    QR 내용을 읽어낼 수 있기 때문이다. 링크를 열었을 때 서버가 내용을 준다.
+
+    토큰이 비어 오는 경우(구버전 백엔드, 토큰 발급 실패, curl 테스트)에도
+    출력 자체는 살린다. 발급번호·환자명 같은 본문이 QR 하나 때문에 통째로
+    안 나가는 쪽이 더 나쁘다.
+    """
+    if not token:
+        log.warning("%s: 열람 토큰이 없어 QR 을 생략한다", doc)
+        return {}
+    return pr.render_qr(p, template.format(base=config.PORTAL_BASE_URL, token=token))
+
+
 def _kiosk_base(requested: str | None) -> str:
     """접수증 QR 에 쓸 base URL 을 고른다.
 
@@ -127,9 +144,9 @@ def build_visit_summary(p, data: schemas.VisitSummaryPayload) -> dict:
         pr.kr_line(p, "※ 의사 확인 완료")
 
     pr.divider(p)
-    meta = pr.render_qr(
-        p, config.VISIT_SUMMARY_URL_TEMPLATE.format(base=config.PORTAL_BASE_URL, visitId=data.visitId)
-    )
+    # 이 QR 은 이 진료 1건의 요약만 여는 링크다. 다른 진료나 다른 환자로는
+    # 이동할 수 없고, 유효기간이 지나면 열리지 않는다(백엔드 document.share.ttl-days).
+    meta = _share_qr(p, config.VISIT_SUMMARY_URL_TEMPLATE, data.shareToken, "진료요약서")
 
     pr.align(p, "center")
     pr.kr_line(p, f"발급일시 {_now()}")
@@ -172,14 +189,10 @@ def build_certificate_slip(p, data: schemas.CertificateSlipPayload) -> dict:
     pr.render_seal(p)
     pr.feed(p, 1)
 
-    # QR 에는 발급번호가 들어간 진위확인 URL 만 넣는다. 환자 이름·생년월일 같은
-    # 개인정보는 절대 인코딩하지 않는다 — 종이를 주운 사람이 읽을 수 있게 된다.
-    meta = pr.render_qr(
-        p,
-        config.CERTIFICATE_VERIFY_URL_TEMPLATE.format(
-            base=config.PORTAL_BASE_URL, serialNo=data.serialNo
-        ),
-    )
+    # QR 에는 이 증명서 1건을 여는 열람 토큰 URL 만 넣는다. 발급번호(serialNo)는
+    # 순번이라 URL 에 쓰지 않는다 — 한 장을 받은 사람이 앞뒤 번호로 남의 증명서를
+    # 열어볼 수 있기 때문이다.
+    meta = _share_qr(p, config.CERTIFICATE_VERIFY_URL_TEMPLATE, data.shareToken, "발급확인증")
 
     pr.align(p, "center")
     pr.kr_line(p, "위 서류가 정히 발급되었음을 확인합니다.")

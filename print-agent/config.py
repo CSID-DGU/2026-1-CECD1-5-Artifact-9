@@ -126,12 +126,19 @@ PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", KIOSK_BASE_URL).rstrip("/")
 HOSPITAL_NAME = os.getenv("HOSPITAL_NAME", "아티팩트 피부과의원")
 
 # 진료요약서 / 발급확인증 QR 이 가리킬 주소. 프론트 라우트가 바뀔 수 있어
-# 템플릿째로 환경변수로 뺀다. {base} 는 PORTAL_BASE_URL 로 치환된다.
+# 템플릿째로 환경변수로 뺀다. {base} 는 PORTAL_BASE_URL, {token} 은 백엔드가
+# 발급한 문서별 열람 토큰으로 치환된다.
+#
+# 경로가 /main/... 이 아니라 /d/... 인 이유가 둘 있다.
+#   1. /main/* 은 로그인이 필요한 화면이다. QR 을 찍는 사람은 병원 계정이 없는
+#      환자라 예전 주소로는 로그인 화면만 봤다.
+#   2. QR 은 담는 글자가 늘수록 모듈이 촘촘해져 감열지에서 읽기 어려워진다.
+#      QR_SIZE 실측이 아직 안 끝난 상태라, 주소를 짧게 잡아 여유를 남긴다.
 VISIT_SUMMARY_URL_TEMPLATE = os.getenv(
-    "VISIT_SUMMARY_URL_TEMPLATE", "{base}/main/lookup?visitId={visitId}"
+    "VISIT_SUMMARY_URL_TEMPLATE", "{base}/d/v/{token}"
 )
 CERTIFICATE_VERIFY_URL_TEMPLATE = os.getenv(
-    "CERTIFICATE_VERIFY_URL_TEMPLATE", "{base}/main/certificate?serialNo={serialNo}"
+    "CERTIFICATE_VERIFY_URL_TEMPLATE", "{base}/d/c/{token}"
 )
 
 # QR 오류정정 레벨: L(0) M(1) Q(2) H(3). 레벨을 올리면 조금 긁혀도 읽히지만

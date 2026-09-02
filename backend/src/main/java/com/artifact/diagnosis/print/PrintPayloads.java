@@ -47,7 +47,13 @@ public final class PrintPayloads {
             Integer durationDays
     ) {}
 
-    /** 진료 요약서. */
+    /**
+     * 진료 요약서.
+     *
+     * {@code shareToken} 은 종이 QR 이 가리킬 열람 링크의 토큰이다(DocumentShareService).
+     * 환자 이름·생년월일 같은 개인정보는 QR 에 넣지 않는다 — QR 에 실리는 것은 이 토큰뿐이고,
+     * 내용은 링크를 열었을 때 서버가 준다. null 이면 에이전트가 QR 을 생략한다.
+     */
     public record VisitSummary(
             Long visitId,
             String patientName,
@@ -56,7 +62,8 @@ public final class PrintPayloads {
             String doctorName,
             List<Disease> diseases,
             List<Medicine> prescriptions,
-            String aiSummary
+            String aiSummary,
+            String shareToken
     ) {}
 
     /**
@@ -76,6 +83,12 @@ public final class PrintPayloads {
             String serialNo,
             String issuedAt,
             String issuerName,
-            String issuerLicenseNo
+            String issuerLicenseNo,
+            /**
+             * 종이 QR 이 가리킬 열람 링크의 토큰. 발급번호(serialNo)를 쓰지 않는 이유는
+             * Certificate.shareToken 주석 참고 — 순번이라 남의 증명서를 추측할 수 있다.
+             * null 이면 에이전트가 QR 을 생략한다.
+             */
+            String shareToken
     ) {}
 }

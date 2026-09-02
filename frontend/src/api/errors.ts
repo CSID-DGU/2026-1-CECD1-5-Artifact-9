@@ -32,6 +32,9 @@ const FALLBACK_BY_STATUS: Record<number, string> = {
   // 422 는 일부러 비워 둔다. 예전에는 "확신도가 낮은 이미지"를 서버가 422 로 막아서 이 자리에
   // 재촬영 안내가 있었지만, 이제는 결과를 그대로 주고 경고만 붙인다(LowConfidenceBanner 참고).
   // 남겨 두면 엉뚱한 422 에 "다시 촬영해 주세요"가 붙으므로 GENERIC 으로 떨어뜨린다.
+  // 감열지 QR 열람 링크의 유효기간 만료. 404("주소가 잘못됐다")와 분리해 둔 이유는
+  // 환자가 해야 할 행동이 다르기 때문이다 — 이쪽은 병원에 다시 문의하면 해결된다.
+  410: "열람 기간이 지난 링크입니다. 병원에 문의해 주세요.",
   429: "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
   500: "서버 내부 오류가 발생했습니다. 문제가 계속되면 담당자에게 알려 주세요.",
   502: "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
@@ -72,4 +75,9 @@ export function isForbidden(error: unknown): boolean {
 /** 서버에 자원이 없음 — 호출부가 "없으면 null" 로 넘기는 데 쓴다. */
 export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
+}
+
+/** 만료된 공개 열람 링크인가 (404 '없는 링크' 와 구분된다). */
+export function isGone(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 410;
 }
