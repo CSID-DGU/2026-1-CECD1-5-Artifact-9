@@ -38,6 +38,29 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
 
+    /**
+     * 비동기 재디스패치에서도 인증을 다시 심는다.
+     *
+     * {@link OncePerRequestFilter} 는 기본적으로 ASYNC 디스패치를 건너뛴다. 요청 하나에
+     * 필터를 한 번만 태우자는 취지인데, 응답을 나중에 채우는 요청에서는 그게 문제가 된다.
+     * 응답이 완성되는 순간 서블릿 컨테이너가 <b>다른 스레드에서</b> 같은 요청을 다시
+     * 태우는데, 그 스레드의 {@code SecurityContextHolder} 는 비어 있다. 그런데 스프링
+     * 시큐리티의 인가 필터는 ASYNC 도 그대로 검사하므로, 인증을 심어 줄 이 필터만 빠지면
+     * 이미 통과했던 요청이 마지막 순간에 401 로 뒤집힌다.
+     *
+     * 실제로 그 일이 났다. 감열지 인쇄 큐의 롱 폴링
+     * ({@code GET /api/v1/print/jobs/next}, PrintJobQueue 참고)이 25초를 기다린 뒤
+     * 매번 401 을 받았고, 인쇄 작업을 건네주는 순간에도 401 이 나가 종이가 나오지 않았다.
+     *
+     * 재검증 비용은 헤더의 JWT 를 한 번 더 파싱하는 것뿐이고, 그 헤더는 재디스패치된
+     * 요청에도 그대로 남아 있다. 동기 요청의 동작은 달라지지 않는다 — 그쪽에는 ASYNC
+     * 디스패치가 아예 없다.
+     */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,

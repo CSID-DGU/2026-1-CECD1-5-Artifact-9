@@ -42,7 +42,12 @@ public class PrintService {
 
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    private final PrintAgentClient printAgentClient;
+    /**
+     * 프린터까지 실어 나르는 통로. 기본은 에이전트가 가지러 오는 {@link PrintJobQueue} 이고,
+     * {@code print.mode=direct} 면 백엔드가 직접 부르는 {@link PrintAgentClient} 가 들어온다.
+     * 이 클래스는 어느 쪽인지 알 필요가 없다 — 넘기는 경로와 본문은 양쪽이 같다.
+     */
+    private final PrintTransport printTransport;
     private final KioskBaseUrlPolicy kioskBaseUrlPolicy;
     private final VisitService visitService;
     private final PatientService patientService;
@@ -61,7 +66,7 @@ public class PrintService {
         if (payload == null) {
             return;
         }
-        printAgentClient.sendAsync("/print/ticket", payload);
+        printTransport.sendAsync("/print/ticket", payload);
     }
 
     /** 접수 화면의 '티켓 인쇄' 버튼. 결과를 화면에 알려줘야 하므로 기다린다. */
@@ -70,7 +75,7 @@ public class PrintService {
         if (payload == null) {
             return PrintOutcome.failure("키오스크 토큰이 없어 티켓을 만들 수 없습니다.");
         }
-        return printAgentClient.send("/print/ticket", payload);
+        return printTransport.send("/print/ticket", payload);
     }
 
     private PrintPayloads.Ticket buildTicket(VisitResponse visit, String kioskBaseUrl) {
@@ -95,7 +100,7 @@ public class PrintService {
     /** 진료 완료 시 자동 출력. */
     public void printVisitSummaryAsync(Long visitId) {
         try {
-            printAgentClient.sendAsync("/print/visit-summary", buildVisitSummary(visitId));
+            printTransport.sendAsync("/print/visit-summary", buildVisitSummary(visitId));
         } catch (RuntimeException e) {
             // 처방이 없는 등 조립 자체가 실패해도 진료 완료는 그대로 끝나야 한다.
             log.warn("진료요약서를 만들지 못했다 (visitId={}): {}", visitId, e.toString());
@@ -104,7 +109,7 @@ public class PrintService {
 
     /** 진료 화면의 '진료요약 인쇄' 버튼. */
     public PrintOutcome printVisitSummary(Long visitId) {
-        return printAgentClient.send("/print/visit-summary", buildVisitSummary(visitId));
+        return printTransport.send("/print/visit-summary", buildVisitSummary(visitId));
     }
 
     private PrintPayloads.VisitSummary buildVisitSummary(Long visitId) {
@@ -145,12 +150,12 @@ public class PrintService {
      * 수개월 안에 글자가 사라져 보존용 서류로 쓸 수 없다.
      */
     public void printCertificateSlipAsync(CertificateResponse certificate) {
-        printAgentClient.sendAsync("/print/certificate-slip", buildSlip(certificate));
+        printTransport.sendAsync("/print/certificate-slip", buildSlip(certificate));
     }
 
     /** 증명서 화면의 '발급확인증 인쇄' 버튼. */
     public PrintOutcome printCertificateSlip(Long certificateId) {
-        return printAgentClient.send("/print/certificate-slip",
+        return printTransport.send("/print/certificate-slip",
                 buildSlip(certificateService.get(certificateId)));
     }
 
