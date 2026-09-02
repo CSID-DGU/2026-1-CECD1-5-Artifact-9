@@ -3,7 +3,6 @@ package com.artifact.diagnosis.analysis;
 import com.artifact.diagnosis.disease.Disease;
 import com.artifact.diagnosis.disease.DiseaseRepository;
 import com.artifact.diagnosis.image.ImageStorageService;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -312,36 +311,5 @@ public class AnalysisService {
         if (result.getHeatmapImageUrl() == null) return null;
         return "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap";
     }
-
-    // FastAPI 응답 구조 (snake_case → camelCase 매핑)
-    private record FastApiPredictResponse(
-            /** "low" / "normal". 구버전 FastAPI 는 이 필드를 안 보내므로 null 일 수 있다. */
-            @JsonProperty("confidence_level") String confidenceLevel,
-            @JsonProperty("low_confidence_threshold") Double lowConfidenceThreshold,
-            FastApiTop1 top1,
-            List<FastApiTop5Item> top5,
-            @JsonProperty("heatmap_base64") String heatmapBase64,
-            @JsonProperty("model_version") String modelVersion
-    ) {
-        /** model_version 컬럼은 NOT NULL 이라, 구버전 FastAPI가 필드를 안 보내는 과도기에도 저장이 깨지면 안 된다. */
-        private String modelVersionOrDefault() {
-            return modelVersion != null && !modelVersion.isBlank()
-                    ? modelVersion
-                    : "unknown";
-        }
-    }
-
-    private record FastApiTop1(
-            int rank,
-            @JsonProperty("disease_code")    String diseaseCode,
-            @JsonProperty("disease_name_ko") String diseaseNameKo,
-            double confidence
-    ) {}
-
-    private record FastApiTop5Item(
-            int rank,
-            @JsonProperty("disease_code")    String diseaseCode,
-            @JsonProperty("disease_name_ko") String diseaseNameKo,
-            double confidence
-    ) {}
 }
+

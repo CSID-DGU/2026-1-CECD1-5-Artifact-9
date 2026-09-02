@@ -34,13 +34,14 @@ class KioskTransactionService {
      */
     @Transactional
     public PreliminaryAnalysis saveResult(Long visitId, List<TopKItem> topK, String confidenceLevel,
-                                          String gradcamKey, String aiComment) {
+                                          String gradcamKey, String aiComment, String modelVersion) {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .orElseGet(() -> PreliminaryAnalysis.builder().visitId(visitId).source(SOURCE).build());
         entity.setTopKJson(topK);
         entity.setConfidenceLevel(confidenceLevel);
         entity.setGradcamUrl(gradcamKey);
         entity.setAiComment(aiComment);
+        entity.setModelVersion(modelVersion);
         entity.setAnalyzedAt(LocalDateTime.now());
         return preliminaryAnalysisRepository.save(entity);
     }

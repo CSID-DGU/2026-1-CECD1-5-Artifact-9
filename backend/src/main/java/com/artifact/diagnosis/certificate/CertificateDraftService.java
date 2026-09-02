@@ -1,18 +1,14 @@
 package com.artifact.diagnosis.certificate;
 
 import com.artifact.diagnosis.common.util.PiiMasker;
+import com.artifact.diagnosis.gemini.GeminiClient;
+import com.artifact.diagnosis.gemini.GeminiResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
@@ -40,23 +36,7 @@ import java.util.Map;
 public class CertificateDraftService {
 
     private final ObjectMapper objectMapper;
-
-    /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. */
-    private final HttpClient httpClient;
-
-    @Value("${gemini.api.key:}")
-    private String apiKey;
-
-    @Value("${gemini.timeout-seconds:15}")
-    private long timeoutSeconds;
-
-    @Value("${gemini.model:gemini-3.1-flash-lite}")
-    private String model;
-
-    private static final String GEMINI_URL_FORMAT =
-            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
-
-    private static final int MAX_RETRY = 3;
+    private final GeminiClient geminiClient;
 
     /**
      * 서술 칸 초안 생성.
@@ -70,73 +50,35 @@ public class CertificateDraftService {
             return CertificateDraftResponse.unavailable(
                     type.getLabel() + "은(는) 서술 항목이 없어 AI 초안을 만들지 않습니다.");
         }
-        if (apiKey == null || apiKey.isBlank()) {
+        if (!geminiClient.hasApiKey()) {
             return CertificateDraftResponse.unavailable("Gemini API 키가 설정되지 않았습니다. 직접 작성해 주세요.");
         }
 
         String prompt = buildPrompt(facts, req);
 
+        // 응답 형식을 JSON 스키마로 못 박는다. 모델이 문단을 통째로 뱉거나 사실 항목을 끼워
+        // 넣을 여지를 구조적으로 없애기 위해서다. temperature는 낮게 — 같은 진료면 같은 문장이 낫다.
+        GeminiResult result = geminiClient.generate(prompt, "application/json", responseSchema(type), 0.2);
+        if (!result.success()) {
+            log.error("Gemini API 실패(증명서 초안): {}", result.errorMessage());
+            String message = result.isOverloaded()
+                    ? "AI 서버가 일시적으로 혼잡합니다. 직접 작성하거나 잠시 후 다시 시도해 주세요."
+                    : "AI 초안 생성에 실패했습니다. 직접 작성해 주세요.";
+            return CertificateDraftResponse.unavailable(message);
+        }
+
         try {
-            String body = objectMapper.writeValueAsString(Map.of(
-                    "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
-                    "generationConfig", Map.of(
-                            // 응답 형식을 JSON 스키마로 못 박는다. 모델이 문단을 통째로 뱉거나
-                            // 사실 항목을 끼워 넣을 여지를 구조적으로 없애기 위해서다.
-                            "responseMimeType", "application/json",
-                            "responseSchema", responseSchema(type),
-                            // 진단서 문구를 창의적으로 쓸 이유가 없다. 같은 진료면 같은 문장이 나오는 편이 낫다.
-                            "temperature", 0.2
-                    )
-            ));
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(GEMINI_URL_FORMAT.formatted(model, apiKey)))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-
-            HttpResponse<String> response = null;
-            for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() != 503) break;
-                if (attempt < MAX_RETRY) {
-                    log.warn("Gemini 503 과부하, {}초 후 재시도 ({}/{})", attempt, attempt, MAX_RETRY);
-                    Thread.sleep(attempt * 1000L);
-                }
-            }
-
-            JsonNode root = objectMapper.readTree(response.body());
-            if (root.has("error")) {
-                int code = root.at("/error/code").asInt(0);
-                log.error("Gemini API 에러(증명서 초안): {}", root.at("/error/message").asText("알 수 없는 오류"));
-                return CertificateDraftResponse.unavailable(code == 503
-                        ? "AI 서버가 일시적으로 혼잡합니다. 직접 작성하거나 잠시 후 다시 시도해 주세요."
-                        : "AI 초안 생성에 실패했습니다. 직접 작성해 주세요.");
-            }
-
-            String text = root.at("/candidates/0/content/parts/0/text").asText("").trim();
-            if (text.isEmpty()) {
-                log.warn("Gemini 증명서 초안 응답이 비어있음");
-                return CertificateDraftResponse.unavailable("AI가 빈 응답을 반환했습니다. 직접 작성해 주세요.");
-            }
-
-            JsonNode draft = objectMapper.readTree(text);
+            JsonNode draft = objectMapper.readTree(result.text());
             return new CertificateDraftResponse(
                     textOrNull(draft, "opinion"),
                     textOrNull(draft, "treatmentPlan"),
                     textOrNull(draft, "referralReason"),
-                    model,
+                    result.model(),
                     true,
                     CertificateDraftResponse.DISCLAIMER
             );
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Gemini 호출 중단(증명서 초안)");
-            return CertificateDraftResponse.unavailable("AI 초안 생성이 중단되었습니다. 직접 작성해 주세요.");
         } catch (Exception e) {
-            log.error("Gemini API 호출 실패(증명서 초안): {}", e.getMessage());
+            log.error("Gemini 증명서 초안 응답 파싱 실패: {}", e.getMessage());
             return CertificateDraftResponse.unavailable("AI 초안 생성에 실패했습니다. 직접 작성해 주세요.");
         }
     }
