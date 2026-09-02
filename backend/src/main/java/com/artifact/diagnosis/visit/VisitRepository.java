@@ -22,8 +22,22 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     /** 환자의 가장 최근 Visit (최종진료일 산출용). */
     java.util.Optional<Visit> findTopByPatientIdOrderByVisitDateDesc(Long patientId);
 
-    /** 키오스크 QR 토큰으로 접수 조회. */
-    java.util.Optional<Visit> findByKioskToken(String kioskToken);
+    /**
+     * 키오스크 QR 토큰으로, 아직 유효한 접수만 조회한다.
+     *
+     * kioskToken 은 발급 후 영구히 남는 값이다 — 이 조건이 없으면 진료가 끝나거나 며칠이
+     * 지난 접수도 같은 URL로 사진 업로드·예비분석이 계속 열려 있게 된다. 대기실 태블릿은
+     * 그날 온 환자가 그 자리에서 쓰는 물건이므로, 종료되지 않은 상태 + 당일 접수로 좁힌다.
+     */
+    @Query("""
+            select v from Visit v
+            where v.kioskToken = :token
+              and v.status not in (com.artifact.diagnosis.visit.VisitStatus.COMPLETED,
+                                   com.artifact.diagnosis.visit.VisitStatus.CANCELLED)
+              and v.visitDate >= :validFrom
+            """)
+    java.util.Optional<Visit> findActiveByKioskToken(@Param("token") String token,
+                                                      @Param("validFrom") LocalDateTime validFrom);
 
     /**
      * 감열지 진료요약서 QR 의 열람 토큰으로 찾는다. kioskToken 과 별개의 값이다

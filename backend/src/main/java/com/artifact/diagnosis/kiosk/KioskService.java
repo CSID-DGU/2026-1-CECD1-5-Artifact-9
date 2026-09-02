@@ -31,6 +31,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -240,12 +241,16 @@ public class KioskService {
                 .body(bytes);
     }
 
-    /** QR 토큰 → Visit. 유효하지 않으면 404 — 태블릿에는 "유효하지 않은 QR"로 표시된다. */
+    /**
+     * QR 토큰 → Visit. 유효하지 않으면 404 — 태블릿에는 "유효하지 않은 QR"로 표시된다.
+     * 종료(COMPLETED/CANCELLED)됐거나 당일이 지난 접수는 토큰이 맞아도 여기서 걸린다
+     * (VisitRepository.findActiveByKioskToken 참고).
+     */
     private Visit resolveToken(String token) {
         if (token == null || token.isBlank()) {
             throw new NoSuchElementException("유효하지 않은 키오스크 토큰입니다.");
         }
-        return visitRepository.findByKioskToken(token)
+        return visitRepository.findActiveByKioskToken(token, LocalDate.now().atStartOfDay())
                 .orElseThrow(() -> new NoSuchElementException("유효하지 않은 키오스크 토큰입니다."));
     }
 
