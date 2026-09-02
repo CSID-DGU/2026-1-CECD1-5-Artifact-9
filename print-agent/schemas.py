@@ -54,6 +54,11 @@ class VisitSummaryPayload(BaseModel):
     diseases: list[DiseaseItem] = Field(default_factory=list)
     prescriptions: list[PrescriptionItem] = Field(default_factory=list)
     aiSummary: Optional[str] = None
+    # 종이 QR 이 가리킬 열람 링크의 토큰. 백엔드가 발급한다.
+    # QR 에는 환자 이름·생년월일 같은 개인정보를 절대 싣지 않는다 —
+    # 실리는 것은 이 토큰이 들어간 URL 뿐이고, 내용은 링크를 열었을 때 서버가 준다.
+    # 구버전 백엔드나 curl 테스트에서는 비어 올 수 있고, 그때는 QR 을 생략한다.
+    shareToken: Optional[str] = None
 
 
 class CertificateSlipPayload(BaseModel):
@@ -70,6 +75,9 @@ class CertificateSlipPayload(BaseModel):
     issuedAt: str
     issuerName: str
     issuerLicenseNo: Optional[str] = None
+    # 위 VisitSummaryPayload.shareToken 과 같다. 발급번호(serialNo)는 순번이라
+    # URL 에 쓰지 않는다 — 앞뒤 번호로 남의 증명서를 열어볼 수 있기 때문이다.
+    shareToken: Optional[str] = None
 
 
 class QrCalibrationRequest(BaseModel):

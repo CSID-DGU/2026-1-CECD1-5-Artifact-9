@@ -107,6 +107,29 @@ public class Certificate {
     private Long reissueOf;
 
     /**
+     * 감열지 발급확인증의 QR 이 가리키는 열람 링크의 토큰.
+     *
+     * 발급번호(serialNo)를 URL 에 쓰지 않는 이유가 여기 있다. 발급번호는 PK 를 자리수만
+     * 맞춰 찍은 순번이라 한 장을 받은 사람이 앞뒤 번호로 남의 증명서를 열어볼 수 있다.
+     * 이 토큰은 base62 12자 난수라 그런 추측이 통하지 않는다.
+     *
+     * 타입을 CHAR 로 못박는 이유는 {@code Visit.kioskToken} 과 같다 — length 만 주면
+     * Hibernate 가 VARCHAR 로 추론해 ddl-auto=validate 가 부팅을 막는다.
+     */
+    @Column(name = "share_token", columnDefinition = "CHAR(12)", unique = true)
+    private String shareToken;
+
+    /**
+     * 위 토큰의 유효기간 기산점 = 이 증명서를 마지막으로 감열지에 출력한 시각.
+     *
+     * 로그인 없이 열리는 링크라 기한을 둔다(document.share.ttl-days). 다시 뽑아 준
+     * 환자에게는 기간이 새로 시작되는 편이 자연스러워서, 출력할 때마다 이 값만 갱신하고
+     * 토큰 자체는 바꾸지 않는다. 그래서 먼저 나간 종이의 QR 도 계속 같은 문서를 가리킨다.
+     */
+    @Column(name = "share_token_issued_at")
+    private LocalDateTime shareTokenIssuedAt;
+
+    /**
      * 발급번호 부여. PK가 확정된 뒤 한 번만 호출된다.
      * 채번 테이블이나 {@code MAX()+1} 을 쓰지 않는 이유는 동시 발급 시 번호가 겹치기 때문이다.
      */

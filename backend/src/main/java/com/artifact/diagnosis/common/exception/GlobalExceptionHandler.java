@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.common.exception;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
+import com.artifact.diagnosis.docshare.ShareLinkExpiredException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -45,6 +46,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(NoSuchElementException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error(404, e.getMessage(), null));
+    }
+
+    /**
+     * 감열지 QR 열람 링크의 유효기간 만료 → 410 Gone.
+     *
+     * 404 로 뭉뚱그리지 않는 이유는 화면에 띄울 안내가 다르기 때문이다. "주소가 잘못됐다"와
+     * "기간이 지났으니 병원에 다시 문의하라"는 환자가 해야 할 행동이 서로 다르다.
+     * 토큰이 base62 12자 난수라, 만료됐음을 알려주는 것으로 새어 나가는 정보는 없다 —
+     * 애초에 그 토큰을 아는 사람은 종이를 손에 든 사람뿐이다.
+     */
+    @ExceptionHandler(ShareLinkExpiredException.class)
+    public ResponseEntity<Map<String, Object>> handleShareLinkExpired(ShareLinkExpiredException e) {
+        return ResponseEntity.status(HttpStatus.GONE).body(error(410, e.getMessage(), null));
     }
 
     /** Visit 상태 전이 위반 등 → 409. */

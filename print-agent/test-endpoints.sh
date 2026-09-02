@@ -25,6 +25,13 @@ ONLY="${1:-all}"
 # 캘리브레이션에서 뽑아볼 QR 크기. 필요하면 바꿔서 쓴다.
 QR_SIZES="${QR_SIZES:-[6, 7, 8, 10]}"
 
+# 진료요약서/발급확인증 QR 이 가리킬 문서 열람 토큰.
+# 실제로는 백엔드가 출력 요청을 만들 때 발급해 넣어 준다(DocumentShareService).
+# 여기 있는 값은 형태만 맞춘 더미라 QR 은 찍히지만 링크를 열면 404 다.
+# 진짜 링크까지 확인하려면 백엔드 출력 버튼으로 뽑고, 종이의 QR 을 찍어 본다.
+# 이 변수를 빈 값으로 주면 에이전트가 QR 을 생략하고 본문만 찍는다.
+SHARE_TOKEN="${SHARE_TOKEN-aB3xK9pQ7mZt}"
+
 # 에이전트가 AGENT_TOKEN 을 들고 떠 있으면 같은 값을 줘야 401 이 안 난다.
 # 비어 있으면 헤더 자체를 안 붙인다 — 토큰 없이 뜬 에이전트에는 그게 정상이다.
 AGENT_TOKEN="${AGENT_TOKEN:-}"
@@ -90,7 +97,8 @@ if [ "$ONLY" = "all" ] || [ "$ONLY" = "summary" ]; then
       { "drugName": "몬테루카스트나트륨정 10mg (싱귤레어)", "dosage": "1일 1회 1정", "durationDays": 30 },
       { "drugName": "데스로라타딘정 5mg", "dosage": "1일 1회 1정", "durationDays": 14 }
     ],
-    "aiSummary": "제시된 병변은 양성 각화증 소견에 가깝습니다. 크기 변화나 색조 변화가 관찰되면 재내원을 권장합니다."
+    "aiSummary": "제시된 병변은 양성 각화증 소견에 가깝습니다. 크기 변화나 색조 변화가 관찰되면 재내원을 권장합니다.",
+    "shareToken": "'"$SHARE_TOKEN"'"
   }'
 fi
 
@@ -104,7 +112,8 @@ if [ "$ONLY" = "all" ] || [ "$ONLY" = "slip" ]; then
     "serialNo": "2026-000007",
     "issuedAt": "2026-09-01T15:02:00",
     "issuerName": "김의사",
-    "issuerLicenseNo": "12345"
+    "issuerLicenseNo": "12345",
+    "shareToken": "'"$SHARE_TOKEN"'"
   }'
 fi
 

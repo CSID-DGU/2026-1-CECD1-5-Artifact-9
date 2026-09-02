@@ -163,8 +163,8 @@ PY
 | `AGENT_PORT` | `5051` | 백엔드의 `PRINT_AGENT_URL` 과 맞춰야 한다 |
 | `HOSPITAL_NAME` | `아티팩트 피부과의원` | 문서 머리글 |
 | `PORTAL_BASE_URL` | `KIOSK_BASE_URL` 과 동일 | 조회/진위확인 링크의 기준 주소 |
-| `VISIT_SUMMARY_URL_TEMPLATE` | `{base}/main/lookup?visitId={visitId}` | 진료요약서 QR 목적지 |
-| `CERTIFICATE_VERIFY_URL_TEMPLATE` | `{base}/main/certificate?serialNo={serialNo}` | 발급확인증 QR 목적지 |
+| `VISIT_SUMMARY_URL_TEMPLATE` | `{base}/d/v/{token}` | 진료요약서 QR 목적지 (로그인 없이 그 진료 1건만 열람) |
+| `CERTIFICATE_VERIFY_URL_TEMPLATE` | `{base}/d/c/{token}` | 발급확인증 QR 목적지 (로그인 없이 그 증명서 1건만 열람) |
 | `DRY_RUN` | `false` | true 면 실제 출력 없이 바이트만 생성 |
 
 ## 5. 엔드포인트
