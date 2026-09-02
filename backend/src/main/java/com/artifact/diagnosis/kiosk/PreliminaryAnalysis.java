@@ -55,6 +55,16 @@ public class PreliminaryAnalysis {
     @Column(name = "source", nullable = false, length = 20)
     private String source;
 
+    /**
+     * 이 예측을 낸 FastAPI 모델 버전. AnalysisResult.modelVersion 과 같은 값 체계다.
+     *
+     * confidenceLevel 과 같은 이유로 {@code @Builder.Default} 가 필요하다 — Hibernate 는 값이
+     * 없으면 NULL 을 명시적으로 넣기 때문에 DB DEFAULT('unknown')가 발동하지 않는다.
+     */
+    @Builder.Default
+    @Column(name = "model_version", nullable = false, length = 50)
+    private String modelVersion = "unknown";
+
     /** 재분석 시 갱신되어야 하므로 CreationTimestamp 대신 서비스에서 직접 설정한다. */
     @Column(name = "analyzed_at", nullable = false)
     private LocalDateTime analyzedAt;

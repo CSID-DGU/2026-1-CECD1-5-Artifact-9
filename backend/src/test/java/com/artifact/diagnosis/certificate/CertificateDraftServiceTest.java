@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.certificate;
 
+import com.artifact.diagnosis.gemini.GeminiClient;
 import com.artifact.diagnosis.patient.Gender;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.visit.Visit;
@@ -40,20 +41,23 @@ class CertificateDraftServiceTest {
 
     @Mock HttpClient httpClient;
 
+    GeminiClient geminiClient;
     CertificateDraftService draftService;
 
     @BeforeEach
     void setUp() {
-        draftService = new CertificateDraftService(new ObjectMapper(), httpClient);
-        ReflectionTestUtils.setField(draftService, "apiKey", "test-key");
-        ReflectionTestUtils.setField(draftService, "timeoutSeconds", 15L);
-        ReflectionTestUtils.setField(draftService, "model", "gemini-3.1-flash-lite");
+        geminiClient = new GeminiClient(new ObjectMapper(), httpClient);
+        ReflectionTestUtils.setField(geminiClient, "apiKey", "test-key");
+        ReflectionTestUtils.setField(geminiClient, "timeoutSeconds", 15L);
+        ReflectionTestUtils.setField(geminiClient, "model", "gemini-3.1-flash-lite");
+
+        draftService = new CertificateDraftService(new ObjectMapper(), geminiClient);
     }
 
     @Test
     @DisplayName("Gemini 키가 없으면 예외 대신 수기 작성 안내를 돌려준다")
     void withoutApiKeyFallsBackToManualAuthoring() {
-        ReflectionTestUtils.setField(draftService, "apiKey", "");
+        ReflectionTestUtils.setField(geminiClient, "apiKey", "");
 
         CertificateDraftResponse response = draftService.draft(facts(), request(CertificateType.DIAGNOSIS));
 

@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
+import com.artifact.diagnosis.analysis.FastApiPredictResponse;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.image.ImageStorageService;
@@ -11,7 +12,6 @@ import com.artifact.diagnosis.visit.KioskTokenGenerator;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import com.artifact.diagnosis.visit.VisitStatus;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -183,7 +183,7 @@ public class KioskService {
 
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
         PreliminaryAnalysis entity = kioskTransactionService.saveResult(
-                visitId, topK, confidenceLevel, gradcamKey, aiComment);
+                visitId, topK, confidenceLevel, gradcamKey, aiComment, prediction.modelVersionOrDefault());
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
@@ -315,15 +315,6 @@ public class KioskService {
         }
     }
 
-    private record FastApiPredictResponse(
-            /** "low" / "normal". 구버전 FastAPI 는 이 필드를 안 보내므로 null 일 수 있다. */
-            @JsonProperty("confidence_level") String confidenceLevel,
-            @JsonProperty("low_confidence_threshold") Double lowConfidenceThreshold,
-            FastApiTop1 top1,
-            List<FastApiTop5Item> top5,
-            @JsonProperty("heatmap_base64") String heatmapBase64
-    ) {}
-
     /**
      * 저장된 예비분석에서 Top-1 병명 코드를 꺼낸다 — 경고 문구의 강도를 여기서 가른다.
      *
@@ -334,18 +325,4 @@ public class KioskService {
         List<TopKItem> topK = entity.getTopKJson();
         return (topK == null || topK.isEmpty()) ? null : topK.get(0).code();
     }
-
-    private record FastApiTop1(
-            int rank,
-            @JsonProperty("disease_code")    String diseaseCode,
-            @JsonProperty("disease_name_ko") String diseaseNameKo,
-            double confidence
-    ) {}
-
-    private record FastApiTop5Item(
-            int rank,
-            @JsonProperty("disease_code")    String diseaseCode,
-            @JsonProperty("disease_name_ko") String diseaseNameKo,
-            double confidence
-    ) {}
 }
