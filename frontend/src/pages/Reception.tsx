@@ -161,7 +161,11 @@ export default function Reception() {
   const [completedVisits, setCompletedVisits] = useState<Visit[]>([]);
   const [patientNameMap, setPatientNameMap]   = useState<Map<number, string>>(new Map());
   const [isListLoading, setIsListLoading]     = useState(false);
-  const [cancellingId, setCancellingId]       = useState<number | null>(null);
+
+  // 대기 목록 선택삭제 — [삭제] 로 체크박스 모드 진입, 체크 후 [선택삭제]로 일괄 취소
+  const [isDeleteMode, setIsDeleteMode]       = useState(false);
+  const [selectedVisitIds, setSelectedVisitIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting]   = useState(false);
 
   // 제출 상태
   const [isSubmitting, setIsSubmitting]   = useState(false);
@@ -232,24 +236,48 @@ export default function Reception() {
     }
   }
 
-  /** 진료현황 대기 목록의 [삭제] — 잘못 접수한 건을 취소한다. RECEIVED 상태에서만 가능. */
-  async function handleCancelVisit(visit: Visit) {
-    const patientName = patientNameMap.get(visit.patientId) ?? "-";
-    const visitNo = `V${String(visit.id).padStart(5, "0")}`;
-    if (!window.confirm(`${visitNo} (${patientName}) 접수를 삭제할까요?`)) return;
+  /** 진료현황 대기 목록 상단 [삭제] — 체크박스 선택 모드를 켜고 끈다. */
+  function toggleDeleteMode() {
+    setIsDeleteMode((prev) => !prev);
+    setSelectedVisitIds(new Set());
+  }
+
+  /** 대기 목록 행의 체크박스 토글 */
+  function toggleSelectVisit(visitId: number) {
+    setSelectedVisitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(visitId)) next.delete(visitId);
+      else next.add(visitId);
+      return next;
+    });
+  }
+
+  /** [선택삭제] — 체크된 대기 건을 한꺼번에 취소한다. RECEIVED 상태에서만 가능. */
+  async function handleBulkDeleteVisits() {
+    if (selectedVisitIds.size === 0) return;
+    if (!window.confirm(`선택한 접수 ${selectedVisitIds.size}건을 삭제할까요?`)) return;
 
     setErrorMessage(null);
     setMessage(null);
-    setCancellingId(visit.id);
+    setIsBulkDeleting(true);
     try {
-      await cancelVisit(visit.id);
-      if (receipt?.visitId === visit.id) setReceipt(null);
-      setMessage(`접수를 삭제했습니다 — ${visitNo}`);
+      const ids = [...selectedVisitIds];
+      const results = await Promise.allSettled(ids.map((id) => cancelVisit(id)));
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+
+      if (receipt && ids.includes(receipt.visitId)) setReceipt(null);
+      if (failedCount > 0) {
+        setErrorMessage(`${failedCount}건 삭제에 실패했습니다. (이미 진료가 시작된 접수는 삭제할 수 없습니다)`);
+      }
+      if (failedCount < ids.length) {
+        setMessage(`접수 ${ids.length - failedCount}건을 삭제했습니다.`);
+      }
+
+      setIsDeleteMode(false);
+      setSelectedVisitIds(new Set());
       await loadVisits();
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
     } finally {
-      setCancellingId(null);
+      setIsBulkDeleting(false);
     }
   }
 
@@ -439,13 +467,25 @@ export default function Reception() {
     </button>,
   ]);
 
-  // 진료현황 테이블 데이터 — 대기 탭에만 QR 재발급 버튼을 붙인다
+  // 진료현황 테이블 데이터 — 대기 탭에만 QR 재발급 버튼을 붙인다. 삭제 모드일 땐 맨 앞에 체크박스 컬럼이 붙는다.
   const isWaitingTab = activeTab === "대기";
+  const showCheckboxCol = isWaitingTab && isDeleteMode;
   const visitTableHeaders = isWaitingTab
-    ? ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태", "QR", "삭제"]
+    ? [...(showCheckboxCol ? ["선택"] : []), "순번", "접수번호", "환자번호", "이름", "접수시간", "상태", "QR"]
     : ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태"];
 
   const visitTableData = activeVisits.map((visit, idx) => [
+    ...(showCheckboxCol
+      ? [
+          <input
+            key={`chk-${visit.id}`}
+            type="checkbox"
+            checked={selectedVisitIds.has(visit.id)}
+            onChange={() => toggleSelectVisit(visit.id)}
+            className="h-3.5 w-3.5 cursor-pointer accent-red-600"
+          />,
+        ]
+      : []),
     idx + 1,
     `V${String(visit.id).padStart(5, "0")}`,
     `P${String(visit.patientId).padStart(5, "0")}`,
@@ -462,14 +502,6 @@ export default function Reception() {
             className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-medium transition-colors cursor-pointer"
           >
             QR
-          </button>,
-          <button
-            key={`del-${visit.id}`}
-            onClick={() => handleCancelVisit(visit)}
-            disabled={cancellingId === visit.id}
-            className="px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white text-[11px] font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {cancellingId === visit.id ? "삭제 중..." : "삭제"}
           </button>,
         ]
       : []),
@@ -697,7 +729,10 @@ export default function Reception() {
             {(["대기", "완료"] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab !== "대기") { setIsDeleteMode(false); setSelectedVisitIds(new Set()); }
+                }}
                 className={`px-4 py-1.5 text-xs font-medium rounded transition-colors cursor-pointer ${
                   activeTab === tab
                     ? "bg-blue-600 text-white font-bold"
@@ -707,13 +742,43 @@ export default function Reception() {
                 {tab === "대기" ? "진료대기" : "진료완료"}
               </button>
             ))}
-            <button
-              onClick={loadVisits}
-              disabled={isListLoading}
-              className="ml-auto px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 rounded transition-colors disabled:opacity-50"
-            >
-              새로고침
-            </button>
+
+            <div className="ml-auto flex items-center gap-2">
+              {isWaitingTab && (
+                isDeleteMode ? (
+                  <>
+                    <button
+                      onClick={handleBulkDeleteVisits}
+                      disabled={selectedVisitIds.size === 0 || isBulkDeleting}
+                      className="px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isBulkDeleting ? "삭제 중..." : `선택삭제 (${selectedVisitIds.size})`}
+                    </button>
+                    <button
+                      onClick={toggleDeleteMode}
+                      disabled={isBulkDeleting}
+                      className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      취소
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={toggleDeleteMode}
+                    className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-red-300 rounded transition-colors cursor-pointer"
+                  >
+                    삭제
+                  </button>
+                )
+              )}
+              <button
+                onClick={loadVisits}
+                disabled={isListLoading}
+                className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 rounded transition-colors disabled:opacity-50"
+              >
+                새로고침
+              </button>
+            </div>
           </div>
 
           {isListLoading && (
