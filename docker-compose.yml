@@ -100,8 +100,11 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://artifact-prod.duckdns.org}
 
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      # 비워두면 application.properties 의 기본 모델을 쓴다.
-      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      # 기본값을 여기에 두는 것은 아래 HOSPITAL_SEAL_IMAGE_URL 과 같은 이유다 — compose 가
+      # 빈 문자열을 넘기면 application.properties 의 ${...:기본값} 이 조용히 무시된다.
+      # 모델명이 빈 채로 넘어가면 요청 URL 에서 모델이 통째로 빠져 본문 없는 404 가 돌아오고,
+      # 화면에는 "AI가 빈 응답을 반환했습니다" 로만 보인다.
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
 
       # 제증명(진단서·처방전 등) 문서 머리말에 찍히는 의료기관 정보.
       # 여기 나열하지 않으면 .env 에 적어도 컨테이너 안으로 전달되지 않는다.
