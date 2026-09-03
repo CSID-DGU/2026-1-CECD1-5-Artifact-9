@@ -94,6 +94,18 @@ public class VisitService {
                 .toList();
     }
 
+    /** 접수 취소. 접수 대기(RECEIVED) 상태에서만 가능 — 진료가 이미 시작된 접수는 취소 대상이 아니다. */
+    public VisitResponse cancel(Long id) {
+        Visit visit = visitRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
+        if (visit.getStatus() != VisitStatus.RECEIVED) {
+            throw new IllegalStateException(
+                "접수 대기 상태에서만 취소할 수 있습니다. 현재 상태: " + visit.getStatus());
+        }
+        visit.cancel();
+        return VisitResponse.from(visit);
+    }
+
     /** 진료 시작. RECEIVED → IN_PROGRESS 전이. 이후 이미지 업로드 가능. */
     public VisitResponse startConsultation(Long id) {
         Visit visit = visitRepository.findById(id)

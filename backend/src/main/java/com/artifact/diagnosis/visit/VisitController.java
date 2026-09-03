@@ -23,6 +23,7 @@ import java.util.List;
  *   POST   /api/v1/visits              - 접수 생성
  *   GET    /api/v1/visits/{id}         - 단건 조회
  *   GET    /api/v1/visits?status=      - 상태별 목록 조회 (기본값: RECEIVED)
+ *   DELETE /api/v1/visits/{id}         - 접수 취소 (RECEIVED → CANCELLED)
  *   PATCH  /api/v1/visits/{id}/start   - 진료 시작 (RECEIVED → IN_PROGRESS)
  *
  * 접수증·진료요약서 감열지 출력은 <b>서비스가 아니라 여기서</b> 호출한다.
@@ -85,6 +86,17 @@ public class VisitController {
             return visitService.findByVisitDate(date);
         }
         return visitService.findByStatus(status != null ? status : VisitStatus.RECEIVED);
+    }
+
+    @Operation(summary = "접수 취소", description = "접수 대기(RECEIVED) 상태의 접수를 취소합니다. 상태: RECEIVED → CANCELLED.")
+    @ApiResponse(responseCode = "200", description = "취소 성공")
+    @ApiResponse(responseCode = "404", description = "접수 없음")
+    @ApiResponse(responseCode = "409", description = "RECEIVED 상태가 아님")
+    @StaffAccess
+    @DeleteMapping("/{id}")
+    public VisitResponse cancel(
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
+        return visitService.cancel(id);
     }
 
     @Operation(summary = "진료 시작", description = "접수 상태를 RECEIVED → IN_PROGRESS로 변경합니다. 이후 이미지 업로드 가능.")
