@@ -700,6 +700,8 @@ export default function Certificate() {
             <br />
             발급확인증은 영수증 프린터로 나가는 안내용 출력물이며, 감열지 특성상
             보존용으로 쓸 수 없습니다. 원본은 A4 인쇄본입니다.
+            <br />
+            확인증의 QR 은 환자 생년월일을 입력해야 내용이 열립니다.
           </p>
           {viewed && (
             <div className="mt-3 pt-3 border-t border-gray-700 flex flex-col gap-1">

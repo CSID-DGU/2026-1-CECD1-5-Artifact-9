@@ -2,6 +2,8 @@ package com.artifact.diagnosis.common.exception;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.docshare.ShareLinkExpiredException;
+import com.artifact.diagnosis.docshare.ShareVerificationFailedException;
+import com.artifact.diagnosis.docshare.ShareVerificationLockedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -59,6 +61,33 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ShareLinkExpiredException.class)
     public ResponseEntity<Map<String, Object>> handleShareLinkExpired(ShareLinkExpiredException e) {
         return ResponseEntity.status(HttpStatus.GONE).body(error(410, e.getMessage(), null));
+    }
+
+    /**
+     * 열람 링크의 본인 확인(생년월일) 실패 → 403 Forbidden.
+     *
+     * 401 을 쓰지 않는 이유는 프론트 규약 때문이다. {@code apiRequest} 는 401 을 "세션 만료"로 보고
+     * 로그아웃 절차를 태우는데, 이 화면에는 애초에 로그인 세션이 없다.
+     *
+     * {@link #handleAccessDenied} 와 달리 예외 메시지를 그대로 내보낸다. 저쪽은 직원용 화면의
+     * 권한 거부라 내부 사정을 알릴 이유가 없지만, 이쪽은 환자에게 "몇 번 남았는지"를 알려줘야
+     * 오타를 낸 사람이 다음에 뭘 하면 되는지 안다. 메시지는 서비스가 만든 고정 문구뿐이라
+     * 내부 구조가 새어 나갈 여지가 없다.
+     */
+    @ExceptionHandler(ShareVerificationFailedException.class)
+    public ResponseEntity<Map<String, Object>> handleShareVerificationFailed(ShareVerificationFailedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error(403, e.getMessage(), null));
+    }
+
+    /**
+     * 본인 확인 실패 누적으로 잠김 → 429 Too Many Requests.
+     *
+     * 403 과 분리하는 이유는 환자가 해야 할 행동이 다르기 때문이다 — 이쪽은 다시 입력해도
+     * 소용이 없고 기다려야 한다. 프론트도 429 문구를 따로 갖고 있다(api/errors.ts).
+     */
+    @ExceptionHandler(ShareVerificationLockedException.class)
+    public ResponseEntity<Map<String, Object>> handleShareVerificationLocked(ShareVerificationLockedException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(error(429, e.getMessage(), null));
     }
 
     /** Visit 상태 전이 위반 등 → 409. */
