@@ -9,6 +9,7 @@ import {
   type PatientSearchResult,
 } from "../api/patients";
 import {
+  cancelVisit,
   createVisit,
   issueKioskToken,
   listVisits,
@@ -154,6 +155,7 @@ export default function Reception() {
   const [completedVisits, setCompletedVisits] = useState<Visit[]>([]);
   const [patientNameMap, setPatientNameMap]   = useState<Map<number, string>>(new Map());
   const [isListLoading, setIsListLoading]     = useState(false);
+  const [cancellingId, setCancellingId]       = useState<number | null>(null);
 
   // 제출 상태
   const [isSubmitting, setIsSubmitting]   = useState(false);
@@ -215,6 +217,27 @@ export default function Reception() {
       });
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
+    }
+  }
+
+  /** 진료현황 대기 목록의 [삭제] — 잘못 접수한 건을 취소한다. RECEIVED 상태에서만 가능. */
+  async function handleCancelVisit(visit: Visit) {
+    const patientName = patientNameMap.get(visit.patientId) ?? "-";
+    const visitNo = `V${String(visit.id).padStart(5, "0")}`;
+    if (!window.confirm(`${visitNo} (${patientName}) 접수를 삭제할까요?`)) return;
+
+    setErrorMessage(null);
+    setMessage(null);
+    setCancellingId(visit.id);
+    try {
+      await cancelVisit(visit.id);
+      if (receipt?.visitId === visit.id) setReceipt(null);
+      setMessage(`접수를 삭제했습니다 — ${visitNo}`);
+      await loadVisits();
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -407,7 +430,7 @@ export default function Reception() {
   // 진료현황 테이블 데이터 — 대기 탭에만 QR 재발급 버튼을 붙인다
   const isWaitingTab = activeTab === "대기";
   const visitTableHeaders = isWaitingTab
-    ? ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태", "QR"]
+    ? ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태", "QR", "삭제"]
     : ["순번", "접수번호", "환자번호", "이름", "접수시간", "상태"];
 
   const visitTableData = activeVisits.map((visit, idx) => [
@@ -427,6 +450,14 @@ export default function Reception() {
             className="px-2 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-white text-[11px] font-medium transition-colors cursor-pointer"
           >
             QR
+          </button>,
+          <button
+            key={`del-${visit.id}`}
+            onClick={() => handleCancelVisit(visit)}
+            disabled={cancellingId === visit.id}
+            className="px-2 py-0.5 rounded bg-red-700 hover:bg-red-600 text-white text-[11px] font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancellingId === visit.id ? "삭제 중..." : "삭제"}
           </button>,
         ]
       : []),

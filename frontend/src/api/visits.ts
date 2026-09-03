@@ -57,6 +57,13 @@ export function createVisit(
   });
 }
 
+/** 접수 취소. 접수 대기(RECEIVED) 상태의 건만 취소할 수 있다. */
+export function cancelVisit(visitId: number) {
+  return apiRequest<Visit>(`/api/v1/visits/${visitId}`, {
+    method: "DELETE",
+  });
+}
+
 /** 키오스크 QR 토큰을 발급받는다(이미 있으면 그대로 반환). 접수 화면의 'QR 다시 보기'용. */
 export function issueKioskToken(visitId: number) {
   return apiRequest<Visit>(`/api/v1/visits/${visitId}/kiosk-token`, {
