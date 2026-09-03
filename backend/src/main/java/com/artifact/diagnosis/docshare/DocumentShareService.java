@@ -31,7 +31,15 @@ import java.util.NoSuchElementException;
  *   <li>토큰 하나는 문서 한 건만 연다. 환자의 다른 진료·다른 증명서로는 이동할 수 없다.</li>
  *   <li>{@code document.share.ttl-days} 가 지나면 만료된다. 종이를 잃어버렸을 때
  *       그 QR 이 영구적인 열쇠로 남지 않게 하는 장치다.</li>
+ *   <li><b>증명서는 토큰만으로 열리지 않는다.</b> 환자 생년월일을 한 번 더 맞춰야 내용이 나간다
+ *       ({@link #verifyCertificate}). 종이를 잃어버렸을 때 주운 사람이 QR 만 찍어서
+ *       진단명과 소견까지 읽는 일을 막는 장치다.</li>
  * </ul>
+ *
+ * <p><b>생년월일이 비밀번호는 아니다.</b> 종이에 이미 이름이 인쇄되어 있으니 아는 사람은 안다.
+ * 다만 "주운 사람이 즉시 읽는 것"과 "환자를 알아야 읽는 것" 사이에는 실질적인 차이가 있고,
+ * 환자에게 새 비밀번호를 외우게 하지 않고 얻을 수 있는 유일한 확인 수단이기도 하다.
+ * 경우의 수가 적은 만큼 대입 방어({@link ShareAccessGuard})가 함께 있어야 의미를 갖는다.
  *
  * <p><b>여기서 나가는 것은 열람용이다.</b> 효력 있는 증명서는 지금까지처럼 병원에서
  * A4 로 인쇄한 것뿐이고(프론트 {@code Certificate.tsx}), 이 링크는 그 내용을 화면으로
@@ -48,6 +56,7 @@ public class DocumentShareService {
     private final KioskTokenGenerator tokenGenerator;
     private final PatientService patientService;
     private final PrescriptionService prescriptionService;
+    private final ShareAccessGuard accessGuard;
 
     /** 링크 유효기간(일). 감열지에 마지막으로 출력한 시각부터 센다. */
     @Value("${document.share.ttl-days:7}")
@@ -92,17 +101,80 @@ public class DocumentShareService {
     // ── 열람 ────────────────────────────────────────────────────────────────
 
     /**
-     * 무효(VOID) 처리된 증명서도 그대로 보여준다. 링크를 막아버리면 환자는 자기 손의
-     * 종이가 왜 안 열리는지 알 수 없다. 무효 사유까지 함께 내려보내 화면에서 "무효"임을
-     * 분명히 알리는 편이 낫다 — {@code CertificateDocumentView} 가 이미 무효 배너를 그린다.
+     * 본인 확인 화면을 열기 전 점검. 링크가 실재하고 기간이 남았는지만 본다.
+     *
+     * 이 단계를 따로 두는 이유는 순전히 환자 경험 때문이다. 없는 링크·만료된 링크에도
+     * 생년월일 입력창부터 보여주면, 환자는 자기 생년월일을 다 넣고 나서야 "이 링크는
+     * 이미 닫혔다"는 말을 듣는다. 문서 내용은 여기서 한 글자도 나가지 않는다
+     * ({@link SharedDocumentGateResponse} 주석 참고).
      */
     @Transactional(readOnly = true)
-    public SharedCertificateResponse readCertificate(String token) {
+    public SharedDocumentGateResponse openCertificateGate(String token) {
+        Certificate certificate = certificateRepository.findByShareToken(token)
+                .orElseThrow(() -> new NoSuchElementException("링크가 올바르지 않습니다."));
+
+        return new SharedDocumentGateResponse(requireNotExpired(certificate.getShareTokenIssuedAt()));
+    }
+
+    /**
+     * 생년월일이 맞을 때에만 증명서 내용을 돌려준다.
+     *
+     * <p>비교 대상은 발급 당시 스냅샷({@code content.patientBirthDate})이다. 환자 정보가
+     * 나중에 정정되더라도 환자 손에 있는 종이는 발급 시점의 사실이므로, 그 종이와 짝이 맞는
+     * 값으로 맞춰야 한다.
+     *
+     * <p>스냅샷에 생년월일이 없으면 열어주지 않는다. 확인할 수단이 없는데 통과시키면
+     * 생년월일을 등록하지 않은 환자의 서류만 아무나 열 수 있는 구멍이 된다. 만료 기산점이
+     * 비어 있을 때 열어주지 않는 것과 같은 판단이다({@link #requireNotExpired}).
+     *
+     * <p>무효(VOID) 처리된 증명서는 확인만 통과하면 그대로 보여준다. 링크를 막아버리면 환자는
+     * 자기 손의 종이가 왜 안 열리는지 알 수 없다. 무효 사유까지 함께 내려보내 화면에서
+     * "무효"임을 분명히 알리는 편이 낫다 — {@code CertificateDocumentView} 가 이미 무효 배너를 그린다.
+     */
+    @Transactional(readOnly = true)
+    public SharedCertificateResponse verifyCertificate(String token, String birthDateInput) {
+        // 잠금 확인이 조회보다 먼저다. 잠긴 동안에는 맞는 값을 넣어도 열리지 않아야
+        // 대입 시도가 실제로 느려진다.
+        accessGuard.checkNotLocked(token);
+
         Certificate certificate = certificateRepository.findByShareToken(token)
                 .orElseThrow(() -> new NoSuchElementException("링크가 올바르지 않습니다."));
 
         LocalDateTime expiresAt = requireNotExpired(certificate.getShareTokenIssuedAt());
+
+        String expected = normalizeBirthDate(
+                certificate.getContent() == null ? null : certificate.getContent().patientBirthDate());
+        if (expected == null) {
+            log.warn("증명서 열람: 스냅샷에 생년월일이 없어 본인 확인을 할 수 없다 (certificateId={})",
+                    certificate.getId());
+            throw new ShareVerificationFailedException(
+                    "이 서류는 온라인으로 확인할 수 없습니다. 병원에 문의해 주세요.");
+        }
+
+        if (!expected.equals(normalizeBirthDate(birthDateInput))) {
+            int remaining = accessGuard.recordFailure(token);   // 한도를 채우면 여기서 429 로 끊긴다
+            throw new ShareVerificationFailedException(
+                    "생년월일이 일치하지 않습니다. (남은 시도 %d회)".formatted(remaining));
+        }
+
+        accessGuard.reset(token);
         return SharedCertificateResponse.from(certificate, expiresAt);
+    }
+
+    /**
+     * 생년월일에서 숫자만 남긴다. {@code 1990-01-01}, {@code 19900101}, {@code 1990.01.01} 이
+     * 모두 같은 값이 되어, 환자가 어떤 형식으로 넣든 통과한다.
+     *
+     * 날짜로 파싱하지 않는 이유: 여기서 하려는 일은 두 값이 같은지 보는 것뿐이고, 파싱을 끼우면
+     * 이상한 입력이 예외로 튀어 그 처리를 또 얹어야 한다. 8자리가 아닌 결과는 애초에 스냅샷
+     * (항상 {@code yyyy-MM-dd})과 같아질 수 없으므로 그냥 틀린 값으로 떨어진다.
+     */
+    private String normalizeBirthDate(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String digits = raw.replaceAll("\\D", "");
+        return digits.isEmpty() ? null : digits;
     }
 
     @Transactional(readOnly = true)

@@ -65,7 +65,12 @@ public class SecurityConfig {
                 // 감열지 QR 로 들어오는 환자용 문서 열람 — 읽기 전용이고, 경로에 든
                 // share token(base62 12자리 SecureRandom)이 문서 한 건만 연다.
                 // 발급번호(2026-000006)처럼 순번인 값은 절대 이 아래에 두지 않는다.
+                //
+                // 증명서는 토큰만으로 열리지 않는다. GET 은 "링크가 살아 있는가"만 답하고,
+                // 내용은 환자 생년월일을 맞춘 POST .../verify 로만 나간다(DocumentShareService).
+                // verify 가 POST 인 이유는 생년월일이 URL 에 남지 않게 하려는 것뿐이다.
                 .requestMatchers(HttpMethod.GET, "/api/public/documents/certificate/*").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/public/documents/certificate/*/verify").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/public/documents/visit-summary/*").permitAll()
 
                 .anyRequest().authenticated()

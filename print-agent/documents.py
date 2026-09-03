@@ -195,6 +195,12 @@ def build_certificate_slip(p, data: schemas.CertificateSlipPayload) -> dict:
     meta = _share_qr(p, config.CERTIFICATE_VERIFY_URL_TEMPLATE, data.shareToken, "발급확인증")
 
     pr.align(p, "center")
+    # QR 을 찍으면 곧바로 내용이 뜨지 않고 생년월일을 묻는다(백엔드 DocumentShareService).
+    # 그 사실을 종이에 적어두지 않으면 환자는 입력창을 보고 "링크가 잘못됐나" 하고 되돌아간다.
+    if data.shareToken:
+        pr.kr_line(p, "※ QR 열람 시 생년월일 확인")
+        pr.feed(p, 1)
+
     pr.kr_line(p, "위 서류가 정히 발급되었음을 확인합니다.")
     pr.kr_line(p, "※ 본 확인증은 안내용이며,")
     pr.kr_line(p, "법정 서식(A4)을 대체하지 않습니다.")

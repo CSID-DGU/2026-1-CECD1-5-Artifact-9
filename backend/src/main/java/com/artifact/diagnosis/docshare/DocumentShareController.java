@@ -4,9 +4,12 @@ import com.artifact.diagnosis.common.security.PublicEndpoint;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,7 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>경로 변수는 토큰만 받는다. certificateId·visitId 처럼 추측 가능한 값을 받으면
  *       그 순간 아무나 남의 문서를 열 수 있게 된다.</li>
- *   <li>읽기 전용만 둔다. 이 경로로는 무엇도 바꾸지 않는다.</li>
+ *   <li>읽기 전용만 둔다. 이 경로로는 무엇도 바꾸지 않는다. 아래 {@code verify} 가 POST 인 것은
+ *       생년월일을 URL(쿼리스트링)에 실으면 접근 로그와 프록시 기록에 그대로 남기 때문이지,
+ *       무언가를 저장하기 때문이 아니다.</li>
  *   <li>SecurityConfig 의 permitAll 목록에도 같은 경로가 있어야 한다.</li>
  * </ul>
  */
@@ -34,13 +39,25 @@ public class DocumentShareController {
 
     private final DocumentShareService documentShareService;
 
-    @Operation(summary = "증명서 열람",
-               description = "발급확인증 QR 의 토큰으로 증명서 1건을 조회한다. "
+    @Operation(summary = "증명서 열람 확인 단계",
+               description = "발급확인증 QR 의 토큰이 살아 있는지 확인하고 링크 만료 시각만 돌려준다. "
+                           + "증명서 내용은 포함되지 않는다 — 아래 verify 를 통과해야 나간다. "
                            + "토큰이 유효하지 않으면 404, 유효기간이 지났으면 410.")
     @GetMapping("/certificate/{token}")
-    public SharedCertificateResponse certificate(
+    public SharedDocumentGateResponse certificateGate(
             @Parameter(description = "감열지 출력 시 발급된 열람 토큰") @PathVariable String token) {
-        return documentShareService.readCertificate(token);
+        return documentShareService.openCertificateGate(token);
+    }
+
+    @Operation(summary = "증명서 본인 확인 후 열람",
+               description = "환자 생년월일이 발급 당시 값과 일치할 때에만 증명서 1건을 돌려준다. "
+                           + "생년월일이 틀리면 403, 반복해서 틀리면 429, "
+                           + "토큰이 유효하지 않으면 404, 유효기간이 지났으면 410.")
+    @PostMapping("/certificate/{token}/verify")
+    public SharedCertificateResponse certificate(
+            @Parameter(description = "감열지 출력 시 발급된 열람 토큰") @PathVariable String token,
+            @Valid @RequestBody ShareVerificationRequest request) {
+        return documentShareService.verifyCertificate(token, request.birthDate());
     }
 
     @Operation(summary = "진료요약 열람",
