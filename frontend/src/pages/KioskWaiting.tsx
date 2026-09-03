@@ -6,6 +6,8 @@ import { Card } from "../components/Card";
 /** 디코딩용 축소 한계. 태블릿 사진은 4000px급이라 원본 그대로 돌리면 느리다. */
 const MAX_DECODE_DIMENSION = 1600;
 const SCANNER_BUFFER_RESET_MS = 500;
+/** 대기 상태 안내 문구. 화면 진입 직후부터 이 상태로 시작한다(별도 시작 버튼 없음). */
+const SCANNER_IDLE_MESSAGE = "QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요.";
 
 /** 파일 → 디코딩 가능한 이미지. onload 이후엔 픽셀이 메모리에 있으므로 objectURL을 바로 회수해도 된다. */
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -60,7 +62,7 @@ function extractToken(scanned: string): string | null {
  * 대기실 태블릿이 상시 띄워두는 화면. 로그인 없이 접근 가능(라우팅에서 인증 가드 제외).
  *
  * 진입 경로 세 가지:
- *   1. 이 화면의 [QR 스캔 시작] — USB QR 리더기를 키보드 입력처럼 받아 토큰 화면으로 이동.
+ *   1. USB QR 리더기 — 화면에 들어온 순간부터 항상 대기 상태이고, 키보드 입력처럼 받아 토큰 화면으로 이동.
  *   2. 태블릿 기본 카메라/렌즈로 QR을 찍어 /kiosk/{token} 으로 직접 진입.
  *   3. ?auto=1 — 3초 폴링으로 대기 환자를 잡아 자동 이동(QR 없이 시연할 때의 폴백).
  * 어느 쪽이든 목적지가 /kiosk/{token} 이라 이후 흐름은 완전히 동일하다.
@@ -76,8 +78,7 @@ export default function KioskWaiting() {
   const scannerResetTimerRef = useRef<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [scannerReady, setScannerReady] = useState(false);
-  const [scannerStatus, setScannerStatus] = useState("QR 리더기로 접수 QR을 스캔해 주세요.");
+  const [scannerStatus, setScannerStatus] = useState(SCANNER_IDLE_MESSAGE);
 
   useEffect(() => {
     if (!autoMode) return;
@@ -158,9 +159,7 @@ export default function KioskWaiting() {
       }
       scannerResetTimerRef.current = window.setTimeout(() => {
         resetScannerBuffer();
-        setScannerStatus(
-          scannerReady ? "QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요." : "QR 리더기로 접수 QR을 스캔해 주세요.",
-        );
+        setScannerStatus(SCANNER_IDLE_MESSAGE);
       }, SCANNER_BUFFER_RESET_MS);
     };
 
@@ -169,15 +168,17 @@ export default function KioskWaiting() {
       window.removeEventListener("keydown", handleScannerKeyDown);
       resetScannerBuffer();
     };
-  }, [navigate, scannerReady]);
+  }, [navigate]);
 
-  const activateScanner = () => {
-    scannerBufferRef.current = "";
-    setScanError(null);
-    setScannerReady(true);
-    setScannerStatus("QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요.");
-    window.setTimeout(() => scannerInputRef.current?.focus(), 0);
-  };
+  /**
+   * 화면에 들어오면 바로 숨은 입력창에 포커스를 준다.
+   * keydown은 window에 걸려 있어 포커스와 무관하게 잡히지만, 포커스가 버튼에 있으면
+   * 리더기가 마지막에 보내는 Enter가 그 버튼을 눌러버린다. 포커스를 여기 묶어 그걸 막는다.
+   */
+  useEffect(() => {
+    if (autoMode) return;
+    scannerInputRef.current?.focus();
+  }, [autoMode]);
 
   const openCamera = () => {
     if (!cameraInputRef.current) return;
@@ -247,7 +248,7 @@ export default function KioskWaiting() {
               </p>
             )}
 
-            {/* QR 리더기는 HID 키보드처럼 입력되므로 포커스 받을 입력창을 열어둔다. */}
+            {/* QR 리더기는 HID 키보드처럼 입력되므로 포커스 받을 입력창을 열어둔다(진입 즉시 포커스). */}
             <input
               ref={scannerInputRef}
               type="text"
@@ -256,10 +257,10 @@ export default function KioskWaiting() {
               aria-label="QR 리더기 입력"
               className="h-px w-px opacity-0"
               onFocus={() => {
-                if (scannerReady) setScannerStatus("QR 리더기 입력 대기 중입니다. 접수 QR을 스캔해 주세요.");
+                if (!autoMode) setScannerStatus(SCANNER_IDLE_MESSAGE);
               }}
               onBlur={() => {
-                if (scannerReady) window.setTimeout(() => scannerInputRef.current?.focus(), 0);
+                if (!autoMode) window.setTimeout(() => scannerInputRef.current?.focus(), 0);
               }}
             />
 
@@ -274,16 +275,9 @@ export default function KioskWaiting() {
             />
             <button
               type="button"
-              onClick={activateScanner}
-              className="mt-1 w-full rounded bg-blue-500 px-3 py-3 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              QR 스캔 시작
-            </button>
-            <button
-              type="button"
               onClick={openCamera}
               disabled={scanning}
-              className="w-full rounded border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-1 w-full rounded border border-blue-400/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-100 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {scanning ? "QR 인식 중..." : "카메라로 QR 촬영"}
             </button>
