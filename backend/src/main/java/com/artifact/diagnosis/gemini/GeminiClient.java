@@ -70,6 +70,11 @@ public class GeminiClient {
         if (!hasApiKey()) {
             return GeminiResult.failure("Gemini API 키가 설정되지 않았습니다.");
         }
+        // 빈 모델명을 그대로 URL 에 넣으면 /models/:generateContent 로 나가 본문 없는 404 가 돌아온다.
+        // 그러면 아래 파싱이 "빈 응답" 으로 오인하므로, 설정 문제는 여기서 그 이름으로 끝낸다.
+        if (model == null || model.isBlank()) {
+            return GeminiResult.failure("Gemini 모델명이 설정되지 않았습니다. (GEMINI_MODEL)");
+        }
 
         try {
             String body = objectMapper.writeValueAsString(
@@ -94,18 +99,32 @@ public class GeminiClient {
                 }
             }
 
-            JsonNode root = objectMapper.readTree(response.body());
+            String rawBody = response.body();
+            // 본문이 비어 있는 에러 응답도 있다(모델명이 빠진 URL 의 404 가 그렇다).
+            // readTree 에 빈 문자열을 넘기면 버전에 따라 예외이거나 MissingNode 라, 미리 갈라 둔다.
+            JsonNode root = rawBody.isBlank() ? objectMapper.missingNode() : objectMapper.readTree(rawBody);
+
             if (root.has("error")) {
                 int code = root.at("/error/code").asInt(0);
                 String errorMsg = root.at("/error/message").asText("알 수 없는 오류");
                 log.error("Gemini API 에러: {}", errorMsg);
                 return GeminiResult.apiError(code, errorMsg);
             }
+            if (response.statusCode() / 100 != 2) {
+                log.error("Gemini HTTP {} 응답. 본문: {}", response.statusCode(), rawBody);
+                return GeminiResult.apiError(response.statusCode(),
+                        "AI 서버가 HTTP " + response.statusCode() + " 를 반환했습니다.");
+            }
 
-            String text = root.at("/candidates/0/content/parts/0/text").asText("").trim();
+            // parts 는 여러 개로 쪼개져 올 수 있고, 생각(thought) 파트가 섞이기도 한다.
+            // parts[0] 만 읽으면 그런 응답이 통째로 빈 응답으로 보인다.
+            String text = extractText(root);
             if (text.isEmpty()) {
-                log.warn("Gemini 응답 텍스트가 비어있음. 전체 응답: {}", response.body());
-                return GeminiResult.failure("AI가 빈 응답을 반환했습니다.");
+                String finishReason = root.at("/candidates/0/finishReason").asText("");
+                String blockReason = root.at("/promptFeedback/blockReason").asText("");
+                log.warn("Gemini 응답 텍스트가 비어있음 (finishReason={}, blockReason={}). 전체 응답: {}",
+                        finishReason, blockReason, rawBody);
+                return GeminiResult.failure(emptyResponseMessage(finishReason, blockReason));
             }
             return GeminiResult.success(text, model);
 
@@ -117,6 +136,29 @@ public class GeminiClient {
             log.error("Gemini API 호출 실패: {}", e.getMessage());
             return GeminiResult.failure("AI 호출에 실패했습니다.");
         }
+    }
+
+    /** 첫 후보의 모든 파트에서 본문 텍스트를 이어 붙인다. 생각(thought) 파트는 답이 아니므로 건너뛴다. */
+    private String extractText(JsonNode root) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonNode part : root.at("/candidates/0/content/parts")) {
+            if (part.path("thought").asBoolean(false)) continue;
+            sb.append(part.path("text").asText(""));
+        }
+        return sb.toString().trim();
+    }
+
+    /** 텍스트가 비어 돌아온 이유를 사용자가 다음 행동을 고를 수 있는 문구로 바꾼다. */
+    private String emptyResponseMessage(String finishReason, String blockReason) {
+        if (!blockReason.isBlank()) {
+            return "AI가 안전 정책상 요청을 거부했습니다. (" + blockReason + ")";
+        }
+        return switch (finishReason) {
+            case "SAFETY", "PROHIBITED_CONTENT" -> "AI가 안전 정책상 응답을 거부했습니다.";
+            case "RECITATION" -> "AI 응답이 인용 정책에 걸려 중단됐습니다.";
+            case "MAX_TOKENS" -> "AI 응답이 길이 제한으로 잘렸습니다. 다시 시도해주세요.";
+            default -> "AI가 빈 응답을 반환했습니다. 다시 시도해주세요.";
+        };
     }
 
     private Map<String, Object> requestBody(String prompt, String responseMimeType,
