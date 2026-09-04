@@ -7,6 +7,9 @@ import { Button } from "../components/Button";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { formatConfidence } from "../utils/confidence";
 
+//DLscope 연동시
+//import MicroscopeShortcutCapture from "../components/MicroscopeShortcutCapture";
+
 const DISCLAIMER =
   "⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.";
 
@@ -43,6 +46,9 @@ export default function KioskAnalyze() {
   const [gradcamError, setGradcamError] = useState(false);
   const [result, setResult] = useState<PreliminaryAnalysis | null>(null);
   const [imageViewMode, setImageViewMode] = useState<"heatmap" | "original">("heatmap");
+  
+  //DLscope 연동시
+  //const [showCapture, setShowCapture] = useState(false);
 
   // 촬영한 원본 사진의 blob URL. 결과 화면의 "원본 이미지" 토글이 이 값을 그대로 쓴다 —
   // 방금 올린 파일이라 서버에 다시 요청할 필요가 없고, 태블릿에는 JWT도 없다.
@@ -279,6 +285,19 @@ export default function KioskAnalyze() {
                 >
                   사진 촬영
                 </button>
+                {/* DLscope shortcut 연동
+                <button onClick={() => setShowCapture(true)}>DLscope 촬영</button>
+                {showCapture && (
+                  <MicroscopeShortcutCapture
+                    apiBase="http://192.168.0.15:8080"
+                    shortcutName="현미경촬영"
+                    onCapture={({ blob, url }) => {
+                      // 기존 업로드/미리보기 로직에 연결
+                      setShowCapture(false);
+                    }}
+                    onClose={() => setShowCapture(false)}
+                  /> )}
+                  */}
               </div>
               <p className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-center text-[11px] text-gray-300">
                 {file ? file.name : "갤러리에서 선택하거나 태블릿 카메라로 촬영해 주세요."}
