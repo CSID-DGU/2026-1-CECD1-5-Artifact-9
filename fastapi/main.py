@@ -6,7 +6,7 @@ import hmac
 import torch
 import timm
 from torchvision import transforms
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 import base64
 import os
@@ -147,37 +147,246 @@ class PredictRequest(BaseModel):
     image_base64: str
 
 
-def _compute_gradcam(tensor: torch.Tensor) -> torch.Tensor | None:
-    """
-    GradCAM 중 **모델을 건드리는 구간**. 반드시 _model_lock 을 잡은 채로 호출한다.
-    반환값은 (1, 1, h, w) CAM 텐서. 실패 시 None(분석 결과에는 영향 없음).
-    """
-    activation_store = {}
+# =============================================
+# 히트맵 표시 기준 — 환경변수로 뺀 이유
+# =============================================
+# 현장(부스/진료실)에서 색이 너무 옅다/짙다는 조정이 코드 수정 없이
+# docker compose 재기동만으로 끝나야 한다. LOW_CONFIDENCE_THRESHOLD 와 같은 방식이다.
+#
+# DISPLAY_FLOOR: 이 값 미만의 CAM 은 **아예 칠하지 않는다**(원본 픽셀 그대로).
+#   화면 범례가 "빨간색 = AI 가 진단 근거로 삼은 부위"라고 말하므로, 모델이 보지
+#   않은 영역에 색이 묻으면 범례가 거짓말이 된다.
+#   예전 구현은 0.5*원본 + 0.5*히트맵 **균일 알파**였고, jet 의 cam=0 이
+#   (0,0,0.5) 중간 밝기 파랑이라 **안 본 영역이 전부 파랗게 덮였다**.
+#   "병변이 짙은 파란색으로 보인다"는 증상의 직접적 원인이다.
+# ALPHA_MAX: 가장 강한 지점의 최대 불투명도. 1.0 으로 올리면 병변 자체가 색에 가려
+#   보이지 않는다 — 의사가 병변을 눈으로 확인해야 하므로 0.6 이 기본이다.
+HEATMAP_DISPLAY_FLOOR = float(os.getenv("HEATMAP_DISPLAY_FLOOR", "0.35"))
+HEATMAP_ALPHA_MAX = float(os.getenv("HEATMAP_ALPHA_MAX", "0.60"))
 
-    def fwd_hook(*args):
-        act = args[2]  # (1, C, H, W)
-        activation_store['act'] = act
-        act.register_hook(lambda g: activation_store.__setitem__('grad', g))
+# 표시용 정규화의 하단 기준점. lo 분위를 0, 99 분위를 1 로 보낸다.
+# conv_head Grad-CAM++ 를 쓸 때는 이 뺄셈이 결정적이었다 — 그 맵은 상위 절반이
+# 최대값의 84% 에 몰려 있어 p99 로만 나누면 쓸 수 있는 대비가 0.16 밖에 안 남았다.
+# 지금 쓰는 LayerCAM 은 희소해서 p50 이 거의 0 이고, 따라서 이 뺄셈은 사실상
+# 무동작이다(실측 (p99-p50)/p99 의 p10 = 0.88). 그래도 남겨 둔다 — 올바른 일반형이고
+# 격자 해상도에서만 돌아 비용이 0 이며, 나중에 다른 레이어/방식으로 바꿀 때 다시 필요하다.
+_CAM_NORM_LO = 0.50
 
-    handle = model.conv_head.register_forward_hook(fwd_hook)
+
+def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
+    """
+    CAM 을 뽑을 레이어를 서버 시작 시 한 번만 자동 선택한다.
+
+    **conv_head 를 쓰지 않는다.** 처음에는 "깊은 쪽이 무엇을 알고 얕은 쪽이 어디를
+    안다"는 통념대로 conv_head + 14x14 블록을 썼다. 측정은 반대였다 — conv_head 에서는
+    Grad-CAM++ 도 LayerCAM 도 **클래스를 보지 않았다**: 예측 클래스로 뽑은 맵과 최소
+    로짓(가장 아니라고 본) 클래스로 뽑은 맵의 상관이 0.98 / 0.96 이다. 같은 방식이
+    blocks.2~5 에서는 0.16~0.33 으로 정상 작동한다.
+
+    구조상 당연한 결과다. conv_head 뒤에는 bn -> SiLU -> global pool -> linear 뿐이라
+    d(logit_k)/d(conv_head) 가 (클래스별 채널 스칼라 w_k[c]) x (클래스와 무관한 공간항)
+    으로 분해된다. relu(grad) 로 채널을 고르는 두 방식은 그 공간항만 1280 채널에 걸쳐
+    평균하므로 클래스 신호가 묻힌다. (표준 Grad-CAM 은 활성에 선형이라 1x1 conv 를
+    그대로 통과한다 — conv_head 와 마지막 블록의 Grad-CAM 은 **수학적으로 같은 맵**이고,
+    실측 상관도 소수점 셋째 자리까지 일치해 측정 자체의 교차검증이 됐다.)
+
+    그래서 해상도가 다른 **두 블록**을 쓴다(224 입력에서 14x14 + 28x28). conv_head 의
+    7x7 을 버리므로 격자가 16 배 촘촘해진다 — 폰카 3024x4452 에서 한 칸이 430x630
+    픽셀을 덮던 것이 108x159 로 줄어, "세밀하지 않다"는 증상에 직접 대응한다.
+
+    블록 인덱스를 상수로 박지 않는다 — timm 버전에 따라 blocks 구성이 바뀌고,
+    나중에 입력 해상도를 올리면 모든 단계의 격자 크기가 같이 바뀐다.
+    실제로 한 번 재서 고르면 둘 다에 깨지지 않는다.
+    """
+    sizes: dict[int, int] = {}
+    handles = [
+        blk.register_forward_hook(
+            lambda _m, _i, out, idx=idx: sizes.__setitem__(idx, int(out.shape[-1]))
+        )
+        for idx, blk in enumerate(model.blocks)
+    ]
     try:
-        output = model(tensor)
-        pred = output.argmax(dim=1).item()
-        model.zero_grad()
-        output[0, pred].backward()
+        with torch.no_grad():
+            model(torch.zeros(1, 3, 224, 224, device=device))
+    finally:
+        for h in handles:
+            h.remove()
 
-        act  = activation_store['act'].detach()   # (1, C, H, W)
-        grad = activation_store['grad'].detach()  # (1, C, H, W)
-    except Exception as e:
-        print(f"[GradCAM] CAM 계산 실패 (분석 결과에는 영향 없음): {e}")
-        return None
+    layers: list[tuple[str, torch.nn.Module]] = []
+    if sizes:
+        final = sizes[max(sizes)]              # 마지막 블록 출력 = conv_head 입력 해상도
+        for mult in (2, 4):                    # 224 입력에서 14x14, 28x28
+            cand = sorted(i for i, s in sizes.items() if s == final * mult)
+            if cand:
+                layers.append((f"blocks.{cand[-1]}", model.blocks[cand[-1]]))
+    if not layers:
+        # 해상도가 올라가는 블록을 못 찾은 경우의 최후 수단. conv_head 로는 가지 않는다
+        # (위 독스트링 참고 — 그 위치에서 LayerCAM 은 클래스를 보지 않는다).
+        last = max(sizes) if sizes else len(model.blocks) - 1
+        layers.append((f"blocks.{last}", model.blocks[last]))
+    return layers
+
+
+CAM_LAYERS = _select_cam_layers()
+CAM_LAYER_NAMES = [name for name, _ in CAM_LAYERS]
+print(f"[GradCAM] CAM 레이어: {CAM_LAYER_NAMES}")
+
+
+def _norm01(t: torch.Tensor, lo: float = _CAM_NORM_LO) -> torch.Tensor:
+    """
+    CAM 을 표시용 0~1 로 **펴낸다**. lo 분위를 0, 99 분위를 1 로 보낸다.
+
+    처음에는 "min 을 빼지 않으면 '모델이 아무 데도 강하게 안 봤다'가 화면에 남는다"고
+    보고 `t / p99` 만 썼다. **실측해 보니 그 이득은 없고 비용만 있었다.** p99 로
+    나누는 순간 p99 는 무조건 1.0 이 되므로 전역적으로 약한 CAM 도 풀레인지로
+    올라간다 — 절대 수준은 애초에 보존되지 않는다. 반면 CAM 원본은 상위 절반이
+    최대값의 80~100% 에 몰려 있어서(실측 p50/p99 = 0.84), 뺄셈을 생략하면 쓸 수 있는
+    대비가 0.16 밖에 안 남는다. 그 결과 융합 뒤 거의 전 픽셀이 표시 바닥에 가까스로
+    걸쳐 **화면의 70~90% 가 alpha 0.03 으로 뿌옇게 덮였다** — 히트맵이 보이지도 않고
+    범위도 넓은 최악의 조합이었다.
+
+    위 문단은 conv_head Grad-CAM++ 를 쓰던 시절의 실측이다. 지금은 LayerCAM 이라
+    p50 이 거의 0 이어서 이 뺄셈이 사실상 무동작이고(상수 주석 참고), 그 시절 짝으로
+    넣었던 contrast/level 판정은 포화·무근거로 _cam_quality 에서 제거했다.
+    그래도 이 형태를 유지한다 — 레이어나 방식을 다시 바꾸면 같은 함정이 돌아온다.
+
+    아래를 99 분위로 두는 이유는 그대로다 — 극값 픽셀 하나가 스케일을 독점하면
+    나머지 전부가 어두워진다. 격자 해상도(14x14~28x28)에서만 호출하므로 비용은 0 이다.
+    """
+    v = t.flatten().float()
+    bottom = float(torch.quantile(v, lo))
+    top = float(torch.quantile(v, 0.99))
+    if top - bottom <= 1e-8:
+        return torch.zeros_like(t)
+    return ((t - bottom) / (top - bottom)).clamp(0.0, 1.0)
+
+
+def _layercam(act: torch.Tensor, grad: torch.Tensor) -> torch.Tensor:
+    """
+    LayerCAM. 채널 가중치를 공간 평균하지 않고 픽셀별 양수 gradient 로 직접 가중하므로
+    얕은 층에서 경계가 살아남는다. 얕은 층을 표준 Grad-CAM 으로 뽑으면 거의 노이즈다.
+    """
+    return F.relu((F.relu(grad) * act).sum(dim=1, keepdim=True))
+
+
+def _fuse_cams(maps: list[torch.Tensor]) -> torch.Tensor:
+    """
+    해상도가 다른 LayerCAM 들을 **가장 촘촘한 격자에서 산술평균**한다.
+    반환값은 이미 0~1 로 정규화돼 있다 — 이후 렌더링/품질 계산은 다시 정규화하지 않는다.
+
+    처음에는 곱(변조)으로 합쳤다. "둘 다 켜진 곳만 남으면 배경 오탐(침구·옷·주변 정상
+    피부)이 줄어든다"는 생각이었다. 측정은 반대였다 — 곱은 한쪽이 0 인 곳을 통째로
+    지우므로 **나쁜 쪽이 좋은 쪽을 깎는다.** 게다가 당시 곱셈의 주체였던 깊은 맵
+    (conv_head Grad-CAM++)이 클래스를 보지 않는 맵이어서, 그 맵이 결과를 지배했다
+    (융합 결과의 '엉뚱한 클래스' 상관 0.93 — 입력인 LayerCAM 의 0.26 보다 훨씬 나쁘다).
+
+    deletion/insertion 충실도로 재서 골랐다(tests/evaluate_cam.py --faithfulness).
+    3 출처 300 장 평균 score(= insertion AUC - deletion AUC, 높을수록 좋음):
+
+        산술평균 (현재)                      +0.191
+        곱 변조  blocks.4 x blocks.2         +0.151
+        단일     blocks.4 LayerCAM           +0.145
+        변경 전  conv_head Grad-CAM          +0.114
+        기존 곱  conv_head++ x blocks.4      -0.043   <- 유일하게 음수
+
+    음수는 "CAM 이 가리킨 곳을 지워도 예측이 안 무너진다"는 뜻이다. 산술평균은 세
+    출처 전부에서, deletion·insertion **양방향 모두** 1 위였다.
+
+    각 맵을 먼저 정규화하고 평균한 뒤 상단만 다시 맞춘다(lo=0). 두 맵의 peak 가 서로
+    다른 픽셀에 있으면 평균의 최대값이 1 에 못 미쳐 alpha 예산을 다 쓰지 못하기 때문이다.
+    """
+    if len(maps) == 1:
+        return _norm01(maps[0])
+
+    target = max(maps, key=lambda m: m.shape[-1] * m.shape[-2])
+    hw = (target.shape[-2], target.shape[-1])
+    acc: torch.Tensor | None = None
+    for m in maps:
+        n = _norm01(m)
+        if (n.shape[-2], n.shape[-1]) != hw:
+            n = F.interpolate(n, size=hw, mode="bilinear", align_corners=False)
+        acc = n if acc is None else acc + n
+    return _norm01(acc / len(maps), lo=0.0)
+
+
+def _cam_quality(cam: torch.Tensor) -> dict:
+    """
+    히트맵이 화면에서 어떻게 보이는지를 숫자로 남긴다.
+    격자 해상도에서 계산하므로 비용은 사실상 0 이다.
+
+    - focus_area : 실제로 색이 칠해지는 면적 비율. 화면에 보이는 것과 일치한다.
+    - peak_ratio : 상위 10% 격자가 담은 CAM 에너지 비율. 집중도.
+
+    **`level: focused|diffuse` 와 `contrast` 는 뺐다.** 둘 다 "이 히트맵을 믿어도
+    되는가"를 단정하는 값이었는데, 실측이 뒷받침하지 않았다.
+
+    - contrast = (p99-p50)/p99 는 LayerCAM 에서 p50 이 거의 0 이라 포화됐다.
+      3 출처 240 장에서 p10 이 0.877 — 기존 기준 0.35 로는 전부 "focused" 가 된다.
+    - 그래서 focus_area 로 갈라 봤지만, 충실도 score 와의 관계가 출처마다 **반대**였다.
+      focus_area 사분위별 score: ham 은 넓을수록 오히려 올라가고(+0.246 -> +0.338),
+      pad 는 내려가고(+0.171 -> +0.130), scin 은 혼재. peak_ratio 와 확신도도 같았다.
+
+    품질을 가리지 못하는 값으로 "모델이 병변을 특정하지 못했다"고 화면에 쓰면 근거 없이
+    신뢰를 조작하게 된다. 집중도 자체는 서술값으로 남기되 판정은 하지 않는다.
+    히트맵을 믿을 수 있는지는 정답 마스크나 충실도 측정으로만 말할 수 있다.
+    """
+    v = cam.flatten()
+    total = float(v.sum())
+    if total <= 1e-8:
+        return {"focus_area": 0.0, "peak_ratio": 0.0}
+    k = max(1, int(round(0.1 * v.numel())))
+    return {
+        "focus_area": round(float((v >= HEATMAP_DISPLAY_FLOOR).float().mean()), 4),
+        "peak_ratio": round(float(torch.topk(v, k).values.sum()) / total, 4),
+    }
+
+
+def _compute_gradcam(
+    tensor: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor | None, dict | None]:
+    """
+    forward 1회 + backward 1회로 logits 와 CAM 을 **함께** 구한다.
+    반환: (logits, cam, quality). cam/quality 는 실패 시 None(분석 결과에는 영향 없음).
+
+    quality 를 여기서 함께 만드는 이유: focus_area 가 표시 임계값
+    (HEATMAP_DISPLAY_FLOOR)과 **같은 척도**여야 해서 _fuse_cams 가 0~1 로 맞춰 둔
+    격자 해상도 CAM 을 봐야 하는데, 그 값이 살아 있는 곳은 이 함수 안뿐이다.
+    업샘플 뒤에 재면 보간이 만든 값까지 면적에 섞인다.
+    반드시 _model_lock 을 잡은 채로 호출한다.
+
+    예전에는 no_grad forward 1회(분류용) + CAM 용 forward 1회를 돌렸다. 같은 입력에
+    같은 모델이므로 결과는 동일하고 비용만 두 배였다. CPU 전용 인스턴스에서는 이
+    낭비가 곧 응답 지연이라, 한 번만 돌려 둘 다 쓴다.
+
+    grad 는 tensor hook 대신 torch.autograd.grad 로 받는다 — 파라미터 .grad 를
+    건드리지 않으므로 요청 간 gradient 누적도, zero_grad 호출도 필요 없다.
+    """
+    store: dict[str, torch.Tensor] = {}
+    handles = [
+        layer.register_forward_hook(
+            lambda _m, _i, out, name=name: store.__setitem__(name, out)
+        )
+        for name, layer in CAM_LAYERS
+    ]
+    try:
+        logits = model(tensor)
     finally:
         # 예외가 나도 hook 은 반드시 떼어낸다.
         # (안 떼면 전역 model 에 hook 이 남아 이후 모든 요청이 계속 터진다)
-        handle.remove()
+        for h in handles:
+            h.remove()
 
-    weights = grad.mean(dim=(2, 3), keepdim=True)
-    return F.relu((weights * act).sum(dim=1, keepdim=True))
+    cam = quality = None
+    try:
+        pred = int(logits.argmax(dim=1).item())
+        acts = [store[name] for name in CAM_LAYER_NAMES]
+        grads = torch.autograd.grad(logits[0, pred], acts)
+        cam = _fuse_cams([_layercam(a, g).detach() for a, g in zip(acts, grads)])
+        quality = _cam_quality(cam)
+    except Exception as e:
+        print(f"[GradCAM] CAM 계산 실패 (분석 결과에는 영향 없음): {e}")
+
+    return logits.detach(), cam, quality
 
 
 def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str | None:
@@ -186,23 +395,39 @@ def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str |
     모델을 전혀 건드리지 않으므로 **_model_lock 밖에서** 실행한다 —
     원본 해상도가 클수록(키오스크 폰카메라 사진) 이 구간이 길어지는데,
     락 안에 두면 그만큼 다른 요청이 통째로 대기하게 된다.
+
+    입력 cam 은 _fuse_cams 가 격자 해상도에서 이미 0~1 로 맞춰 둔 값이다.
+    정규화를 여기(원본 해상도)에서 하지 않는 이유: 보간이 만들어낸 값이 기준이 되어
+    같은 CAM 인데 원본 해상도에 따라 색이 달라진다.
     """
     try:
-        # CAM을 원본 이미지 크기로 업샘플 (224×224 아님 → 원본과 동일 해상도 출력)
         orig_w, orig_h = orig_image.size
         cam = F.interpolate(cam, size=(orig_h, orig_w), mode="bilinear", align_corners=False)
-        cam = cam.squeeze().cpu().numpy()
-        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
+        t = cam.squeeze().cpu().numpy().astype(np.float32)
 
-        # Jet 컬러맵 (원본 크기)
-        r = np.clip(1.5 - np.abs(4 * cam - 3), 0, 1)
-        g = np.clip(1.5 - np.abs(4 * cam - 2), 0, 1)
-        b = np.clip(1.5 - np.abs(4 * cam - 1), 0, 1)
-        heatmap = np.stack([r, g, b], axis=-1)
+        # 표시 바닥 아래는 알파 0 → 원본 픽셀이 그대로 남는다.
+        # 이어서 smoothstep(t^2*(3-2t)) 으로 올려 경계가 계단처럼 끊기지 않게 한다.
+        # 전체 해상도 배열이라 제자리 연산으로 임시 배열 수를 줄인다 —
+        # 폰카 사진(3024x4452) 한 장에서 (H,W) float32 하나가 이미 54MB 다.
+        t -= HEATMAP_DISPLAY_FLOOR
+        t /= (1.0 - HEATMAP_DISPLAY_FLOOR)
+        np.clip(t, 0.0, 1.0, out=t)
+        s = 3.0 - 2.0 * t
+        t *= t
+        t *= s
+        del s
+        a = t * HEATMAP_ALPHA_MAX
 
-        # 원본 이미지 그대로 사용 (리사이즈 없음 → 동일 해상도 보장)
-        orig = np.array(orig_image, dtype=np.float32) / 255.0
-        overlay = np.clip(0.5 * orig + 0.5 * heatmap, 0, 1)
+        # 순차 컬러맵: 연노랑 → 주황 → 빨강. 파란색을 쓰지 않는다.
+        # jet 을 버린 이유는 위 HEATMAP_DISPLAY_FLOOR 주석에 적어두었다.
+        # 채널별 제자리 합성 — 전체 해상도 중간 배열을 채널마다 만들면 안 된다.
+        overlay = np.asarray(orig_image, dtype=np.float32) / 255.0
+        for ch, (lo, hi) in enumerate(((1.0, 1.0), (0.95, 0.10), (0.40, 0.0))):
+            color = lo + (hi - lo) * t
+            color *= a
+            overlay[..., ch] *= 1.0 - a
+            overlay[..., ch] += color
+        np.clip(overlay, 0.0, 1.0, out=overlay)
 
         buf = io.BytesIO()
         Image.fromarray((overlay * 255).astype(np.uint8)).save(buf, format="JPEG", quality=90)
@@ -215,18 +440,20 @@ def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str |
 
 def run_inference(image_bytes: bytes) -> dict:
     """EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 포함 결과 반환."""
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    # EXIF 회전을 먼저 적용한다. 폰카 사진은 센서 방향 그대로 저장되고 회전 정보는
+    # EXIF 태그에만 들어 있다. 이걸 무시하면 두 가지가 동시에 깨진다:
+    #  (1) 모델이 누운 이미지를 본다 — 학습 증강은 ±15도 회전뿐이라 90도는 분포 밖이다.
+    #  (2) 히트맵 JPEG 에는 EXIF 가 없는데 브라우저는 원본 blob 에 EXIF 를 적용하므로,
+    #      "히트맵 보기 ↔ 원본 이미지" 토글이 서로 다른 방향의 사진을 보여준다.
+    # 모델 입력과 오버레이 베이스가 같은 이미지를 쓰게 되므로 둘 다 사라진다.
+    image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
     # ── 모델을 만지는 구간은 한 번에 하나씩만 (위 _model_lock 주석 참고) ──
-    # 추론과 Grad-CAM 을 **둘 다** 락 안에 넣어야 한다.
-    # 한쪽만 감싸면 A 의 hook 이 걸린 상태에서 B 의 forward 가 돌아가는 상황이 그대로 남는다.
+    # 분류와 Grad-CAM 이 같은 forward 를 공유하므로 호출 하나가 통째로 락 안에 있다.
     with _model_lock:
-        with torch.no_grad():
-            outputs = model(tensor)
-            probs = torch.softmax(outputs, dim=1)[0]
-
-        cam = _compute_gradcam(tensor)
+        logits, cam, heatmap_quality = _compute_gradcam(tensor)
+        probs = torch.softmax(logits, dim=1)[0]
 
     top5 = torch.topk(probs, k=5)
     results = [
@@ -255,6 +482,9 @@ def run_inference(image_bytes: bytes) -> dict:
         "top1": results[0],
         "top5": results,
         "heatmap_base64": heatmap_base64,
+        # 새 필드. Spring 은 FAIL_ON_UNKNOWN_PROPERTIES=false 가 기본이라
+        # 백엔드 DTO 를 고치지 않아도 구버전 백엔드가 그대로 돈다.
+        "heatmap_quality": heatmap_quality,
         "model_version": MODEL_VERSION,
     }
 
@@ -269,6 +499,11 @@ def health():
         "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
         "model_version": MODEL_VERSION,
         "classes": CLASSES,
+        # 배포된 히트맵 표시 기준을 눈으로 확인할 수 있게 노출한다.
+        # 현장에서 색이 이상해 보일 때 코드를 열지 않고 먼저 여기를 본다.
+        "heatmap_display_floor": HEATMAP_DISPLAY_FLOOR,
+        "heatmap_alpha_max": HEATMAP_ALPHA_MAX,
+        "cam_layers": CAM_LAYER_NAMES,
     }
 
 

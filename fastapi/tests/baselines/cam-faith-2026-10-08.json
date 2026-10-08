@@ -1,0 +1,38 @@
+{
+  "mode": "faithfulness",
+  "model_version": "efficientnet_b0-03061a31e63f",
+  "cam_layers": [
+    "blocks.4",
+    "blocks.2"
+  ],
+  "heatmap_display_floor": 0.35,
+  "sample_count": 2857,
+  "classes": [
+    "akiec",
+    "bcc",
+    "bkl",
+    "df",
+    "mel",
+    "nv",
+    "vasc",
+    "inflammatory"
+  ],
+  "n": 2857,
+  "deletion": 0.27261566140453924,
+  "insertion": 0.4404206930819115,
+  "score": 0.16780503167737226,
+  "by_correctness": {
+    "correct": {
+      "n": 2396,
+      "deletion": 0.30184456550567496,
+      "insertion": 0.46876757464780533,
+      "score": 0.16692300914213037
+    },
+    "incorrect": {
+      "n": 461,
+      "deletion": 0.12070144399386425,
+      "insertion": 0.29309069691730943,
+      "score": 0.17238925292344517
+    }
+  }
+}

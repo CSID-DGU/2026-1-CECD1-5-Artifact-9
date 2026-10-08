@@ -129,10 +129,11 @@ jobs:
             -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
             -p 8000:8000 artifact-fastapi:ci
 
+          # 컨테이너를 여기서 지우지 않는다 — 아래 동시요청 검증이 이 서버에 붙는다.
+          # 정리는 마지막 always() 단계가 한다.
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/health > /dev/null; then
               echo "✅ 기동 확인"
-              docker rm -f fastapi-ci
               exit 0
             fi
             sleep 2
@@ -156,3 +157,18 @@ jobs:
             -v "${{ github.workspace }}:/repo:ro" -w /repo/fastapi \
             -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
             artifact-fastapi:ci python tests/test_model_contract.py
+
+      # Grad-CAM 은 전역 model 객체에 forward hook 을 붙여 중간 activation 을 꺼낸다.
+      # 서버가 모델 하나를 공유하므로, A 요청의 hook 이 B 요청의 forward 로 발화하면
+      # **히트맵이 뒤바뀐 채로 정상 응답이 나간다.** 확률도 병명도 그럴듯하고 그림만
+      # 남의 것이라 사람 눈으로는 영원히 못 잡는다. 기계가 매번 대조하게 한다.
+      #
+      # 위 단계와 달리 돌고 있는 서버에 HTTP 로 붙어야 하므로 docker exec 를 쓴다.
+      # 이미지에 tests/ 가 들어 있고(Dockerfile 의 COPY . .), 컨테이너 환경변수에
+      # INTERNAL_API_SECRET 이 이미 있으므로 테스트가 그 값을 그대로 읽는다.
+      - name: 동시 요청 히트맵 교차오염 검사
+        run: docker exec fastapi-ci python tests/test_concurrent_heatmap.py
+
+      - name: 컨테이너 정리
+        if: always()
+        run: docker rm -f fastapi-ci || true

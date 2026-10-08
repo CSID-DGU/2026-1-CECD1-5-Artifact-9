@@ -562,7 +562,7 @@ GEMINI_API_KEY=
 | **입력 전처리** | Resize 224×224, Normalize (ImageNet mean/std) |
 | **출력** | Top-1 / Top-5 질환 + confidence, **GradCAM 오버레이 (원본 해상도 보존)** |
 | **확신도 경고** | `top1_confidence < LOW_CONFIDENCE_THRESHOLD`이면 `confidence_level="low"` — 결과는 그대로 내보내고 화면에 경고만 붙인다 |
-| **GradCAM 구현** | 순수 PyTorch + Pillow, cv2/grad-cam 라이브러리 불필요 — `model.conv_head`에 forward hook 등록 |
+| **GradCAM 구현** | 순수 PyTorch + Pillow, cv2/grad-cam 라이브러리 불필요 — LayerCAM 을 `blocks.4`(14×14)·`blocks.2`(28×28) 두 레이어에 걸어 산술평균으로 융합. `conv_head`(7×7) 는 쓰지 않는다 — 그 위치의 CAM 은 클래스를 구분하지 못한다(근거는 `fastapi/main.py` 의 `_select_cam_layers` 독스트링) |
 | **모델 파일** | `fastapi/model.pth` |
 | **학습 노트북** | `fastapi/notebooks/skin_lesion_training_colab.ipynb` |
 | **참고 문서** | `docs/ai-colab-workflow.md` |
@@ -615,7 +615,8 @@ GEMINI_API_KEY=
 | FastAPI 시작 실패 | `fastapi/model.pth` 누락 여부 확인 |
 | 검색 결과가 비어 있음 | 백엔드 첫 기동의 비동기 적재(`data-initializer` 스레드) 완료 여부, `resources/data/*.xlsx` 존재 여부 확인 |
 | S3 관련 오류 | 환경변수 미설정 시 `IMAGE_STORAGE_TYPE=local` 권장 |
-| GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] 히트맵 생성 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
+| GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] CAM 계산 실패` 또는 `[GradCAM] 히트맵 렌더링 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
+| 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(표시 임계값을 넘는 면적 비율)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 표시 범위는 `HEATMAP_DISPLAY_FLOOR`(기본 0.35)·`HEATMAP_ALPHA_MAX`(기본 0.60) 로 조절하며, 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
 | Gemini 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY` 환경변수 설정 후 재기동 |
 | Gemini 503 | 1·2초 자동 재시도 후에도 실패 시 잠시 후 다시 시도 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
