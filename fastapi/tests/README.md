@@ -4,7 +4,8 @@
 |------|:---:|------|
 | `test_model_contract.py` | 없음 | 병명 목록이 서빙·학습·DB 사이에서 어긋나지 않았는지 검사. CI 가 매번 돌린다. |
 | `evaluate.py` | **필요** | 홀드아웃 이미지로 클래스별 정확도·재현율·혼동행렬·임계값 곡선을 낸다. `--ood-dir` 로 병변 아닌 사진 경고 성능도 잰다. |
-| `test_concurrent_heatmap.py` | 없음 | 동시 요청에서 Grad-CAM 히트맵이 뒤섞이지 않는지 재현. 서버를 띄운 상태에서 실행. |
+| `evaluate_cam.py` | **필요** (마스크는 선택) | 히트맵이 **실제로 근거를 짚는지** 잰다. 분류와는 다른 축이다. `--faithfulness` 는 마스크 없이 세 출처 전부, `--mask-dir` 는 정답 마스크로 더모스코피만 — 아래 절. |
+| `test_concurrent_heatmap.py` | 없음 | 동시 요청에서 Grad-CAM 히트맵이 뒤섞이지 않는지 재현. 서버를 띄운 상태에서, 서버와 같은 `INTERNAL_API_SECRET` 으로 실행. CI 가 매번 돌린다. |
 | `make_holdout.py` | **필요** | 공식 홀드아웃 목록(`baselines/holdout.csv`)을 만든 스크립트. 컨테이너 밖에서 실행. |
 | `make_ood.py` | PAD 만 | 병변이 아닌 사진(OOD) 평가 세트를 만든다. 전부 경고가 붙는 것이 정답인 이미지들. |
 | `baselines/` | — | 지금까지 잰 결과. `--compare` 의 대상. |
@@ -244,6 +245,79 @@ docker compose run --rm -v ~/Downloads/CapstoneDesign/archive:/data:ro fastapi \
 docker compose run --rm -v /데이터경로:/data:ro fastapi \
   python tests/evaluate.py --image-dir /data
 ```
+
+### 평가 — 히트맵이 병변을 짚는가 (CAM)
+
+위의 `evaluate.py` 는 **무엇이라고 답했는가**만 본다. 같은 병명을 맞히면서도 히트맵은
+엉뚱한 곳을 가리킬 수 있고, 실제로 배포 화면에서 그런 일이 있었다 — 벌레물림 사진에서
+자국은 파랗고 주변 정상 피부와 침구가 빨갰다. 분류 점수로는 그걸 영원히 못 잡는다.
+
+두 가지 방식이 있다. **먼저 `--faithfulness` 를 쓴다** — 정답 마스크가 필요 없어서
+폰카·염증 사진까지 잴 수 있고, 정작 문제가 된 쪽이 그쪽이다.
+
+#### ① `--faithfulness` — 마스크 없이, 세 출처 전부
+
+CAM 이 높다고 가리킨 픽셀을 상위부터 차례로 **지우면**(deletion) 예측 확률이 빨리
+떨어져야 하고, 그 픽셀만 차례로 **되살리면**(insertion) 빨리 올라와야 한다. 둘의
+AUC 차이 `score = insertion − deletion` 가 "CAM 이 진짜 근거를 짚었는가"다.
+
+이 측정은 **CAM 의 픽셀 순서만** 본다. 정규화·표시 임계값·알파·컬러맵을 어떻게
+바꿔도 숫자가 흔들리지 않으므로, 렌더링 취향과 로컬라이제이션 성능이 섞이지 않는다.
+
+```bash
+docker compose run --rm --no-deps \
+  -v ~/Downloads/CapstoneDesign/archive:/ham:ro \
+  -v /pad경로:/data/pad:ro -v /scin경로:/data/scin:ro \
+  -v "$PWD/fastapi/tests/baselines:/app/tests/baselines" \
+  fastapi python tests/evaluate_cam.py --faithfulness \
+    --csv tests/baselines/holdout.csv --label-col label \
+    --image-dir /ham/HAM10000_images_part_1 /ham/HAM10000_images_part_2 /data/pad /data/scin \
+    --json tests/baselines/cam-faith-$(date +%F).json
+```
+
+> ⚠️ **`tests/baselines` 를 쓰기 가능하게 마운트해야 한다.** `docker-compose.yml` 의
+> `fastapi` 서비스에는 소스 볼륨 마운트가 없다(이미지에 `COPY . .` 로 들어간다).
+> 마운트 없이 `--json tests/baselines/...` 를 주면 **컨테이너 안에 쓰이고 `--rm` 과
+> 함께 사라진다.** 화면에는 "저장" 이라고 찍히므로 눈치채기 어렵다. 한 번 당했다.
+
+`--min-score` 로 CI 에서 하한을 걸 수 있다. 한 장마다 forward 23회(원본 + deletion
+11 + insertion 11)가 들어가므로 `evaluate.py` 보다 훨씬 무겁다 — `--limit 120` 으로
+감을 먼저 잡는 편이 낫다.
+
+#### ② `--mask-dir` — 정답 마스크로, 더모스코피만
+
+정답 마스크: `HAM10000_segmentations_lesion_tschandl`
+(Harvard Dataverse, ISIC 2018 Task 1 GT와 동일). 파일명 규칙은
+`ISIC_0025837_segmentation.png` 이고, 이미지와 마찬가지로 저장소에 넣지 않는다.
+
+```bash
+docker compose run --rm \
+  -v ~/Downloads/CapstoneDesign/archive:/ham:ro \
+  -v /마스크경로:/masks:ro \
+  -v "$PWD/fastapi/tests/baselines:/app/tests/baselines" \
+  fastapi python tests/evaluate_cam.py \
+    --image-dir /ham/HAM10000_images_part_1 /ham/HAM10000_images_part_2 \
+    --mask-dir /masks \
+    --csv tests/baselines/holdout.csv --label-col label \
+    --json tests/baselines/cam-$(date +%F).json
+```
+
+**표에서 먼저 볼 곳은 전체 평균이 아니라 병변 면적 하위 구간이다.** CAM 격자가
+작은 병변에서 먼저 무너지는데, 전체 평균은 병변이 화면을 채우는 더모스코피 사진에
+가려 그 붕괴를 숨긴다. 멀리서 찍은 폰카 사진이 바로 그 상황이다.
+
+> ⚠️ **이쪽은 폰카 사진을 잴 수 없다.** 공개 병변 마스크가 있는 것은
+> HAM10000(더모스코피) 뿐이고, PAD-UFES-20(스마트폰 459장)과 SCIN(염증성 394장)에는
+> 없다. 그래서 ① 을 먼저 쓴다. 두 방식은 **서로 비교할 수 없다**(`--compare` 가
+> 모드가 다르면 거부한다). 지표 정의와 측정 기록은
+> [`baselines/README.md`](baselines/README.md).
+
+#### 품질 지표를 판정에 쓰지 말 것
+
+응답의 `heatmap_quality`(`focus_area`, `peak_ratio`)는 **서술값이다.** 한때 이 값으로
+`focused`/`diffuse` 를 판정해 내보냈지만, focus_area 사분위별 충실도 score 를 재 보니
+출처마다 방향이 엇갈렸다(ham 상승, pad 하락, scin 혼재). 근거가 없어 판정 필드를
+제거했다 — 자세한 이유는 `fastapi/main.py` 의 `_cam_quality` 독스트링.
 
 ### 평가 — 병변이 아닌 사진 (OOD)
 

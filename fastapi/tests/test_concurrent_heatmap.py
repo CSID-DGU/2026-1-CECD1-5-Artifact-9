@@ -12,13 +12,18 @@ A 요청이 hook 을 붙인 상태에서 B 요청이 forward 를 돌리면
 따라서 "혼자 보냈을 때의 결과"를 기준값으로 잡고,
 동시에 보냈을 때 결과가 달라지면 오염된 것이다.
 
+추론 엔드포인트는 `X-Internal-Secret` 으로 보호돼 있다. 컨테이너 안에서 돌리면
+서버와 같은 `INTERNAL_API_SECRET` 환경변수를 그대로 읽으므로 따로 줄 것이 없다.
+밖에서 돌릴 때는 직접 넘겨야 한다.
+
 사용법
 ------
-    # 서버를 띄운 상태에서
+    # 서버를 띄운 상태에서 (컨테이너 안 — 환경변수를 공유하므로 이게 가장 쉽다)
     docker compose exec -T fastapi python tests/test_concurrent_heatmap.py
 
-    # 다른 주소를 보려면
-    TARGET=http://localhost:8000 python tests/test_concurrent_heatmap.py
+    # 호스트에서 다른 주소를 보려면 시크릿도 같이 준다
+    INTERNAL_API_SECRET=... TARGET=http://localhost:8000 \
+        python tests/test_concurrent_heatmap.py
 """
 
 import base64
@@ -34,6 +39,12 @@ from PIL import Image, ImageDraw
 
 TARGET = os.getenv("TARGET", "http://127.0.0.1:8000")
 ROUNDS = int(os.getenv("ROUNDS", "20"))
+
+# 서버가 기동할 때 요구하는 것과 같은 환경변수다. 컨테이너 안에서 돌리면 서버와 같은
+# 값이 이미 들어 있다. 기본값을 두지 않는다 — 틀린 값으로 조용히 401 을 받는 것보다
+# 없다고 바로 말하는 편이 낫다. 이 테스트가 오랫동안 401 만 받으며 통과한 적도 없이
+# 방치됐던 이유가 헤더 누락이었다.
+SECRET = os.getenv("INTERNAL_API_SECRET", "")
 
 
 def make_image(seed: int, size=(320, 320)) -> str:
@@ -56,7 +67,10 @@ def predict(image_b64: str) -> dict:
     req = urllib.request.Request(
         f"{TARGET}/predict-base64",
         data=json.dumps({"image_base64": image_b64}).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Internal-Secret": SECRET,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
@@ -68,6 +82,12 @@ def predict(image_b64: str) -> dict:
 
 
 def main() -> int:
+    if not SECRET:
+        print("✗ INTERNAL_API_SECRET 이 비어 있습니다 — 모든 요청이 401 로 떨어집니다.")
+        print("  컨테이너 안에서 돌리거나(docker compose exec -T fastapi ...),")
+        print("  호스트에서는 INTERNAL_API_SECRET=... 를 앞에 붙이세요.")
+        return 1
+
     images = [make_image(0), make_image(1)]
 
     # ── 1. 기준값: 한 번에 하나씩만 보낸다 ──────────────────────────
@@ -77,6 +97,8 @@ def main() -> int:
         r = predict(img)
         if not r["ok"]:
             print(f"   ✗ 이미지 {i} 순차 요청부터 실패: {r}")
+            if r.get("status") == 401:
+                print("     → 시크릿이 서버의 INTERNAL_API_SECRET 과 다릅니다.")
             return 1
         h = r["body"]["heatmap_base64"]
         if h is None:
