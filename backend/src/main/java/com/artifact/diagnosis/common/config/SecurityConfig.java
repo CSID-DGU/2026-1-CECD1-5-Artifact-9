@@ -56,6 +56,7 @@ public class SecurityConfig {
                 // 곧 접근 자격이다. 토큰을 모르면 어떤 접수에도 닿을 수 없다.
                 .requestMatchers("/api/kiosk/session/*").permitAll()
                 .requestMatchers("/api/kiosk/session/*/analyze").permitAll()
+                .requestMatchers("/api/kiosk/session/*/comment").permitAll()
                 .requestMatchers("/api/kiosk/session/*/heatmap").permitAll()
 
                 // QR 없이 시연할 때의 폴백. 토큰 없이 "다음 대기 환자"를 알려주므로

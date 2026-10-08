@@ -29,27 +29,84 @@ export class ApiError extends Error {
 /** 응답을 아예 받지 못했을 때 쓰는 가짜 상태 코드 (서버 꺼짐, 오프라인, DNS 실패 등). */
 export const NETWORK_ERROR_STATUS = 0;
 
+/**
+ * 서버가 아니라 **우리가** 대기 한도를 넘겨 직접 끊었을 때 붙이는 상태 코드.
+ *
+ * 실제 HTTP 코드(408 Request Timeout)를 빌려 쓴다. 이 서버는 408을 내보내지 않으므로
+ * 겹칠 일이 없고, `getErrorMessage()` 의 기존 문구표를 그대로 태울 수 있다.
+ * "서버에 못 닿았다"(0)와는 갈라 두어야 한다 — 부스에서 이 둘은 대응이 완전히 다르다.
+ * 0은 와이파이를 보는 것이고, 408은 서버가 붐비니 잠시 기다리는 것이다.
+ */
+export const REQUEST_TIMEOUT_STATUS = 408;
+
+export type ApiRequestOptions = RequestInit & {
+  /**
+   * 응답 대기 한도(ms). 주지 않으면 걸지 않는다 — 브라우저 기본은 사실상 무한이다.
+   *
+   * `AbortSignal.timeout()` 을 쓰지 않는 이유: Safari 16 이상에서만 있다. 부스에 나갈
+   * 아이패드의 iOS 버전을 우리가 정할 수 없으므로 AbortController 로 직접 만든다.
+   */
+  timeoutMs?: number;
+};
+
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
+  const { timeoutMs, ...init } = options;
   const token = getToken();
 
+  // 한도를 준 요청만 컨트롤러를 만든다. 나머지는 이전과 완전히 같은 경로를 탄다.
+  const controller = timeoutMs ? new AbortController() : null;
+  let timedOut = false;
+  const timer =
+    controller && timeoutMs
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : null;
+
+  // 호출부가 자기 signal 을 함께 준 경우에도 취소가 전달되게 이어붙인다.
+  // (AbortSignal.any() 는 Safari 17.4+ 라 여기서도 쓸 수 없다)
+  if (controller && init.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
   let response: Response;
+  let body: unknown;
   try {
     response = await fetch(path, {
-      ...options,
+      ...init,
+      signal: controller ? controller.signal : init.signal,
       headers: {
         // FormData일 때 Content-Type을 우리가 정하면 안 된다. 브라우저가
         // multipart 경계문자열(boundary)까지 넣어 만들어야 서버가 파싱할 수 있다.
-        ...(options.body instanceof FormData
+        ...(init.body instanceof FormData
           ? {}
           : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
+        ...init.headers,
       },
     });
+    // 본문 읽기까지 이 안에 둔다. 한도를 넘겨 abort 하면 응답 헤더는 이미 왔더라도
+    // 본문 스트림이 끊기면서 여기서 터지는데, 밖에 두면 그 오류만 ApiError 로 감싸이지 않는다.
+    body = await readBody(response);
   } catch (cause) {
+    // 우리가 건 한도에 걸린 경우. 아래 네트워크 실패와 구분해서 올려보낸다.
+    if (timedOut) {
+      throw new ApiError({
+        status: REQUEST_TIMEOUT_STATUS,
+        // 문구는 만들지 않는다 — getErrorMessage() 의 408 항목이 채운다.
+        message: "",
+        details: cause,
+      });
+    }
+    // 호출부가 스스로 취소한 경우(화면 이동 등)는 오류가 아니다. 원본을 그대로 올려
+    // 호출부가 `err.name === "AbortError"` 로 조용히 흘려보낼 수 있게 한다.
+    if (init.signal?.aborted) throw cause;
+
     // fetch는 서버에 닿지 못하면 TypeError를 던진다. 그대로 두면 호출부의
     // `err instanceof ApiError` 검사를 통과하지 못해 "알 수 없는 오류"로 뭉개진다.
     // 여기서 ApiError로 감싸 두면 서버가 준 오류와 같은 방식으로 다룰 수 있다.
@@ -58,9 +115,9 @@ export async function apiRequest<T>(
       message: "서버에 연결할 수 없습니다.",
       details: cause,
     });
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
-
-  const body = await readBody(response);
 
   if (!response.ok) {
     // 401 = 토큰이 없거나 만료·위조됨. 다시 로그인시켜야 풀린다.

@@ -32,6 +32,7 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -142,14 +143,22 @@ public class KioskService {
 
     /**
      * 태블릿에서 선택한 이미지로 예비분석을 수행한다.
-     * Top-K + GradCAM은 FastAPI에서, 참고 소견은 Gemini에서 받아 preliminary_analysis에 저장(upsert)한다.
+     * Top-K + GradCAM을 FastAPI에서 받아 preliminary_analysis에 저장(upsert)한다.
      * Visit 상태는 변경하지 않는다(RECEIVED 유지) — 정식 진료 흐름과 완전히 분리된 채널이다.
      *
      * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
      * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
      *
-     * {@code @Transactional} 이 없는 것은 의도된 것이다. 한 번 호출에 외부 왕복이
-     * 세 번(FastAPI 추론 → 히트맵 업로드 → Gemini) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
+     * <p><b>참고 소견(Gemini)은 여기서 만들지 않는다.</b> 예전에는 이 안에서 이어서 불렀는데,
+     * Gemini 는 재시도까지 하면 최악 48초가 걸린다({@code GeminiClient} 의 MAX_RETRY). 결과와
+     * 히트맵이 이미 손에 있는데도 환자가 그만큼 더 로딩 화면을 봤고, 앞단 nginx 의 60초 한도에
+     * 걸려 504 가 될 수도 있었다. 지금은 화면이 결과를 먼저 그리고
+     * {@link #generateComment} 를 따로 호출해 소견만 나중에 채운다.
+     * 그래서 여기서는 {@code aiComment} 를 null 로 저장한다 — 재분석 시 이전 사진의 소견이
+     * 남아 있으면 안 되므로, 비우는 것이 맞다.
+     *
+     * <p>{@code @Transactional} 이 없는 것은 의도된 것이다. 한 번 호출에 외부 왕복이
+     * 두 번(FastAPI 추론 → 히트맵 업로드) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
      * DB 커넥션을 붙잡는다. 태블릿 몇 대가 동시에 촬영하면 커넥션 풀이 말라 진료실 화면까지 멈춘다.
      * DB 쓰기는 마지막에 {@link KioskTransactionService#saveResult} 한 번으로 끝낸다.
      */
@@ -180,15 +189,54 @@ public class KioskService {
             gradcamKey = imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
         }
 
-        String aiComment = geminiService.generatePreliminaryComment(topK);
-
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
+        // aiComment 는 null — 소견은 화면이 결과를 그린 뒤 generateComment 로 따로 채운다.
         PreliminaryAnalysis entity = kioskTransactionService.saveResult(
-                visitId, topK, confidenceLevel, gradcamKey, aiComment, prediction.modelVersionOrDefault());
+                visitId, topK, confidenceLevel, gradcamKey, null, prediction.modelVersionOrDefault());
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
         return toResponse(token, entity, prediction);
+    }
+
+    /**
+     * 예비분석 결과에 대한 AI 참고 소견을 생성해 저장한다. {@link #analyze} 직후 화면이 따로 호출한다.
+     *
+     * 분석과 나눈 이유는 {@code analyze} 주석 참고 — 요약하면 소견은 없어도 되는 정보인데
+     * Gemini 재시도가 최악 48초라 결과 표시를 그만큼 붙잡을 이유가 없다.
+     *
+     * <p>이미 소견이 있으면 Gemini 를 부르지 않고 그대로 돌려준다. 화면 재진입이나 더블탭으로
+     * 유료 API 를 두 번 부르지 않기 위한 것이다. 생성이 실패했을 때 돌아오는 안내 문구도 소견으로
+     * 저장되므로 그것 역시 캐시된다 — 다시 만들려면 사진을 다시 찍어 재분석하면 된다
+     * (재분석이 aiComment 를 null 로 비운다).
+     *
+     * <p>{@code @Transactional} 이 없는 것은 {@code analyze} 와 같은 이유다. Gemini 왕복이
+     * 이 안에 있고, 그동안 DB 커넥션을 붙잡으면 안 된다.
+     */
+    public KioskCommentResponse generateComment(String token) {
+        Long visitId = resolveToken(token).getId();
+
+        PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
+                .orElseThrow(() -> new NoSuchElementException("예비분석 결과가 없습니다. 먼저 분석을 실행하세요."));
+
+        if (entity.getAiComment() != null) {
+            return new KioskCommentResponse(entity.getAiComment());
+        }
+
+        // 어느 분석에 대한 소견인지 붙잡아 둔다. Gemini 를 기다리는 사이 환자가 다시 촬영하면
+        // 이 값이 달라지고, 그때는 저장하지 않는다(saveAiComment 주석 참고).
+        LocalDateTime analyzedAt = entity.getAnalyzedAt();
+
+        List<TopKItem> topK = entity.getTopKJson();
+        // generatePreliminaryComment 는 실패해도 예외를 던지지 않고 안내 문구를 돌려준다
+        // (GeminiService 참고). 그래서 여기에 별도 에러 처리가 없다.
+        String aiComment = geminiService.generatePreliminaryComment(topK == null ? List.of() : topK);
+
+        if (!kioskTransactionService.saveAiComment(visitId, aiComment, analyzedAt)) {
+            log.info("소견 저장 건너뜀 — 생성 중 재분석됨 visitId={}", visitId);
+        }
+
+        return new KioskCommentResponse(aiComment);
     }
 
     /** 의사 진료 페이지 조회용. 예비분석이 없으면 404(NoSuchElementException). */

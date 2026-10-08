@@ -53,6 +53,18 @@ public class KioskController {
         return kioskService.analyze(token, file);
     }
 
+    @Operation(summary = "키오스크 AI 참고 소견 생성",
+               description = "직전 예비분석 결과로 Gemini 참고 소견을 만들어 저장하고 돌려준다. 분석 응답과 나눠 둔 것은 "
+                           + "Gemini 가 재시도까지 하면 최악 48초라 결과 표시를 그만큼 붙잡을 이유가 없기 때문이다. "
+                           + "이미 소견이 있으면 다시 만들지 않고 그대로 반환한다. 예비분석이 없으면 404.")
+    // GET 이 아니라 POST 인 이유: DB 쓰기와 유료 외부 API 호출이라는 부수효과가 있다.
+    // GET 으로 두면 브라우저·프록시가 마음대로 재요청하거나 캐시해도 규격상 할 말이 없어진다.
+    @PostMapping("/session/{token}/comment")
+    public KioskCommentResponse comment(
+            @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token) {
+        return kioskService.generateComment(token);
+    }
+
     @Operation(summary = "예비분석 GradCAM 히트맵 조회",
                description = "방금 분석한 접수의 히트맵을 반환한다. 토큰이 유효하지 않거나 히트맵이 없으면 404.")
     @GetMapping("/session/{token}/heatmap")

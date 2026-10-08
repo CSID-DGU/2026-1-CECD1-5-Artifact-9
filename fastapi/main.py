@@ -14,6 +14,31 @@ import threading
 import numpy as np
 import torch.nn.functional as F
 
+# =============================================
+# 스레드 수 고정 — 워커를 여러 개 띄울 때만 의미가 있다
+# =============================================
+# 이 서버는 한 프로세스가 한 번에 하나의 추론만 돌린다(아래 _model_lock). 그래서 동시 처리량은
+# **컨테이너를 몇 개 띄우느냐**로 정해지는데, 그때 각 프로세스의 PyTorch 가 저마다 코어를
+# 전부 잡으려 들면 서로를 밀어낸다 — 4코어에 워커 3개 × 4스레드면 12스레드가 4코어를 놓고
+# 싸우면서 컨텍스트 스위칭 비용만 늘어난다(오버서브스크립션).
+#
+# 값이 없으면 아무것도 하지 않는다. 워커가 하나뿐인 로컬 개발에서는 코어를 다 쓰는 편이 빠르고,
+# 여기서 기본값을 정해버리면 그 사실이 코드에 묻혀 "왜 로컬이 느려졌지"가 된다.
+# 운영에서 몇으로 둘지는 docker-compose.prod.yml 의 TORCH_NUM_THREADS 주석 참고.
+#
+# OMP_NUM_THREADS 를 compose 에서 **함께** 주는 것이 중요하다. OpenMP 런타임은 라이브러리가
+# 로드되는 시점에 그 환경변수를 읽으므로, 파이썬 코드가 실행될 때는 이미 늦은 경우가 있다.
+_torch_threads = os.getenv("TORCH_NUM_THREADS", "")
+if _torch_threads:
+    torch.set_num_threads(int(_torch_threads))
+    try:
+        # intra-op(연산 내부 병렬)와 달리 이쪽은 **병렬 작업이 한 번이라도 시작된 뒤에는**
+        # RuntimeError 를 던진다. 그래서 모델 로드보다 앞인 여기서 부른다.
+        torch.set_num_interop_threads(int(_torch_threads))
+    except RuntimeError as e:
+        # 이미 초기화된 경우. 위 set_num_threads 만으로도 목적(코어 독점 방지)은 달성된다.
+        print(f"[torch] interop 스레드 수 설정을 건너뜁니다: {e}")
+
 app = FastAPI(title="Artifact Medical AI", version="1.0.0")
 
 app.add_middleware(

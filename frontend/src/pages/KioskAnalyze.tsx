@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage, isNotFound } from "../api/errors";
-import { analyzeKioskSession, getKioskSession, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
+import {
+  analyzeKioskSession,
+  generateKioskComment,
+  getKioskSession,
+  type KioskSession,
+  type PreliminaryAnalysis,
+} from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
@@ -39,6 +45,9 @@ export default function KioskAnalyze() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [gradcamLoading, setGradcamLoading] = useState(false);
+  // AI 참고 소견은 분석 응답에 들어오지 않는다 — 결과를 먼저 그린 뒤 따로 받아 채운다.
+  // 그동안 자리만 잡아두기 위한 상태다(히트맵의 gradcamLoading 과 같은 패턴).
+  const [commentLoading, setCommentLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gradcamError, setGradcamError] = useState(false);
   const [result, setResult] = useState<PreliminaryAnalysis | null>(null);
@@ -48,6 +57,12 @@ export default function KioskAnalyze() {
   // 방금 올린 파일이라 서버에 다시 요청할 필요가 없고, 태블릿에는 JWT도 없다.
   // 교체·이탈 시 revoke 하지 않으면 재촬영을 반복하는 만큼 메모리에 쌓인다.
   const previewUrlRef = useRef<string | null>(null);
+
+  // 분석 회차 번호. 소견 요청은 분석보다 오래 걸릴 수 있어서(Gemini), 환자가 그 사이 사진을
+  // 다시 찍으면 **이전 사진의 소견**이 뒤늦게 도착해 새 결과 옆에 붙는다. 요청 직전 회차를
+  // 붙잡아 두었다가 응답 시점에 같은지 확인해서, 늦게 온 것은 버린다.
+  // (서버에도 같은 취지의 방어가 있다 — KioskTransactionService.saveAiComment 참고)
+  const analysisSeqRef = useRef(0);
 
   useEffect(() => () => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -91,6 +106,7 @@ export default function KioskAnalyze() {
     setError(null);
     setGradcamError(false);
     setGradcamLoading(false);
+    setCommentLoading(false);
     setImageViewMode("heatmap");
 
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -112,8 +128,30 @@ export default function KioskAnalyze() {
     }
   };
 
+  /**
+   * AI 참고 소견을 뒤이어 받아 채운다.
+   *
+   * 실패해도 화면에 오류를 띄우지 않는다. 분석은 이미 성공했고 결과·히트맵은 손에 있는데,
+   * 참고 문구 하나가 없다고 "분석 실패"처럼 보이게 할 이유가 없다. 소견 자리만 조용히 비운다.
+   */
+  const loadComment = async (activeToken: string, seq: number) => {
+    setCommentLoading(true);
+    try {
+      const { aiComment } = await generateKioskComment(activeToken);
+      // 그 사이 재촬영·재분석이 있었으면 이 소견은 이전 사진 것이다. 버린다.
+      if (seq !== analysisSeqRef.current) return;
+      setResult((prev) => (prev ? { ...prev, aiComment } : prev));
+    } catch {
+      // 위 주석 참고 — 소견 실패는 사용자에게 알리지 않는다.
+    } finally {
+      // 지나간 회차가 현재 회차의 로딩 표시를 끄지 않도록 막는다.
+      if (seq === analysisSeqRef.current) setCommentLoading(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!file || !token) return;
+    const seq = ++analysisSeqRef.current;
     setLoading(true);
     setGradcamLoading(true);
     setGradcamError(false);
@@ -124,6 +162,10 @@ export default function KioskAnalyze() {
         new Promise((resolve) => window.setTimeout(resolve, MIN_ANALYSIS_LOADING_MS)),
       ]);
       setResult(response);
+      // 결과를 그린 뒤에 시작한다. 서버가 분석 응답 안에서 Gemini 를 부르던 시절에는
+      // 환자가 결과를 볼 때까지 최악 48초가 더 걸렸다(GeminiClient 의 재시도).
+      // await 하지 않는 것이 핵심이다 — 여기서 기다리면 분리한 의미가 없다.
+      void loadComment(token, seq);
     } catch (err) {
       setError(getErrorMessage(err));
       setGradcamLoading(false);
@@ -410,6 +452,17 @@ export default function KioskAnalyze() {
                 ))}
               </div>
 
+              {/*
+                소견은 분석과 별개로 뒤따라 온다. 세 가지 상태가 있다 —
+                오는 중(자리만 잡아둔다) / 도착(문구) / 실패(아무것도 띄우지 않는다).
+                실패에 오류 문구를 붙이지 않는 이유는 loadComment 주석 참고.
+              */}
+              {commentLoading && !result.aiComment && (
+                <div className="rounded bg-gray-800 p-2" aria-hidden="true">
+                  <div className="h-3 w-full animate-pulse rounded bg-gray-700" />
+                  <div className="mt-1.5 h-3 w-2/3 animate-pulse rounded bg-gray-700" />
+                </div>
+              )}
               {result.aiComment && (
                 <div className="rounded bg-gray-800 p-2 text-xs text-gray-200 leading-relaxed">
                   {result.aiComment}

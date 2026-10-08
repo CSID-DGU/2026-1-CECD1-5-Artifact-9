@@ -1,4 +1,4 @@
-import { ApiError, NETWORK_ERROR_STATUS } from "./client";
+import { ApiError, NETWORK_ERROR_STATUS, REQUEST_TIMEOUT_STATUS } from "./client";
 
 /**
  * 사용자에게 보여줄 오류 문구를 만든다.
@@ -25,7 +25,10 @@ const FALLBACK_BY_STATUS: Record<number, string> = {
   401: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
   403: "이 작업을 수행할 권한이 없습니다. 담당자에게 문의해 주세요.",
   404: "요청한 정보를 찾을 수 없습니다.",
-  408: "요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+  // 서버가 준 코드가 아니라 프론트가 대기 한도를 넘겨 직접 끊었을 때 붙는다
+  // (client.ts 의 REQUEST_TIMEOUT_STATUS). "연결 실패"(status 0)와 달리 서버는 살아 있고
+  // 지금 붐비는 것이므로, 네트워크를 확인하라고 하지 않고 다시 시도하라고만 안내한다.
+  408: "응답이 오래 걸리고 있습니다. 잠시 후 다시 시도해 주세요.",
   409: "지금 상태에서는 처리할 수 없는 요청입니다. 화면을 새로고침한 뒤 다시 시도해 주세요.",
   413: "파일 용량이 너무 큽니다. 더 작은 이미지로 다시 시도해 주세요.",
   415: "지원하지 않는 파일 형식입니다.",
@@ -70,6 +73,16 @@ export function isSessionExpired(error: unknown): boolean {
 /** 로그인은 유효하지만 직책 권한이 모자란 오류인가. */
 export function isForbidden(error: unknown): boolean {
   return error instanceof ApiError && error.status === 403;
+}
+
+/**
+ * 프론트가 건 대기 한도를 넘겨 스스로 끊은 요청인가.
+ *
+ * "서버에 못 닿았다"(status 0)와 갈라 쓴다 — 이쪽은 서버가 살아 있고 붐비는 것이라
+ * 잠시 뒤 다시 누르면 되지만, 그쪽은 네트워크부터 봐야 한다.
+ */
+export function isTimeout(error: unknown): boolean {
+  return error instanceof ApiError && error.status === REQUEST_TIMEOUT_STATUS;
 }
 
 /** 서버에 자원이 없음 — 호출부가 "없으면 null" 로 넘기는 데 쓴다. */

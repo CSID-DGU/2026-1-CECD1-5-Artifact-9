@@ -56,6 +56,18 @@ services:
     # 로컬에서 직접 찔러봐야 할 때만 아래를 임시로 켠다(외부에 열리지 않도록 127.0.0.1 바인딩).
     #   ports:
     #     - "127.0.0.1:8000:8000"
+    healthcheck:
+      # 이미지가 python:3.11-slim 이라 curl 도 wget 도 없다. 있는 것으로 찌른다.
+      # /health 는 시크릿을 요구하지 않는다(main.py 의 해당 주석 참고) — 이런 용도로 열어둔 것이다.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # 기동 시 timm 모델 생성 + 가중치 로드 + 해시 계산이 끝나야 응답한다.
+      # 이 시간을 짧게 잡으면 정상 기동 중인 컨테이너가 unhealthy 로 찍혀,
+      # 운영에서 ai-lb 가 멀쩡한 워커를 죽은 것으로 오해한다.
+      start_period: 60s
     networks:
       - artifact-network
 

@@ -1,7 +1,17 @@
 # GitHub Actions CI/CD 구축 가이드
 
-> 대상: `docs/ec2-deployment-guide.md` 로 EC2 배포와 HTTPS 까지 끝낸 상태.
+> 대상: [`ec2-deployment-guide.md`](./ec2-deployment-guide.md) 로 EC2 배포와 HTTPS 까지 끝낸 상태.
 > 소요: 1단계 30분 + 2단계 40분. 3단계는 선택.
+>
+> **상태: 1·2단계 구축 완료.** `.github/workflows/ci.yml`(PR 검사)과 `deploy.yml`(self-hosted
+> 러너 배포)이 저장소에 있다. 이 문서는 그것을 어떻게·왜 그렇게 만들었는지의 설명이자,
+> 다시 세울 때의 절차다.
+>
+> ⚠️ **Auto Scaling 으로 가면 2단계(CD)를 다시 설계해야 한다.** 여기의 배포 방식은
+> **EC2 인스턴스 안에 러너를 설치해 두는 것**이라, 인스턴스가 고정되어 있다는 전제 위에
+> 서 있다. ASG 는 인스턴스를 수시로 죽이고 새로 만들므로 그 전제가 깨진다 — 무엇으로
+> 바꿔야 하는지는 [`aws-architecture-migration-guide.md`](./aws-architecture-migration-guide.md)
+> §3-2 에 정리해 두었다.
 
 ---
 
@@ -19,8 +29,10 @@
 
 **하나. 깨진 코드가 main 에 들어가도 아무도 모른다.**
 실제로 이 저장소에서 백엔드 테스트가 **컴파일조차 안 되는 상태로 오래 방치돼 있었다**
-(`docs/security-remediation-plan.md` 감사 32번). 아무도 로컬에서 `./gradlew test` 를
-돌리지 않았기 때문이다. 사람의 성실함에 기대는 규칙은 지켜지지 않는다.
+([`security-remediation-plan.md`](./security-remediation-plan.md) 감사 32번). 아무도
+로컬에서 `./gradlew test` 를 돌리지 않았기 때문이다. 사람의 성실함에 기대는 규칙은
+지켜지지 않는다. **CI 를 세운 뒤로 이 상태는 해소됐다** — 현재 백엔드 테스트 클래스 11개가
+PR 마다 돈다.
 
 **둘. 배포가 한 사람의 손에 묶여 있다.**
 그 사람이 없으면 배포가 안 된다. 그리고 매번 명령어 세 줄을 손으로 치는 동안

@@ -57,7 +57,7 @@
 
 ### 0) 로그인 / 회원가입 — `/`
 
-직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 처음 실행할 때는 회원가입으로 계정을 만들면 된다(관리자 계정은 [환경 변수](#-환경-변수-env-예시)로 별도 설정).
+직책(의사/간호사/일반)을 선택해 회원가입하거나 기존 계정으로 로그인한다. 인증 후 JWT 토큰이 `localStorage`에 저장되고 보호된 라우트(`/main/*`)로 진입할 수 있다. 처음 실행할 때는 회원가입으로 계정을 만들면 된다(관리자 계정은 [환경 변수](#-환경-변수)로 별도 설정).
 
 <img width="400" height="466" alt="로그인" src="https://github.com/user-attachments/assets/00aa036a-1ad2-4ed7-a560-374a4890e958" />
 <img width="400" height="598" alt="회원가입" src="https://github.com/user-attachments/assets/9cd12b9f-10a8-4a49-a585-a4ca1ea80206" />
@@ -110,7 +110,8 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 
 ### 7) 증명서 발급 화면 — `/main/certificate` 
 
-진단서 · 소견서 · 진료확인서 · 처방전 발급 UI 목업이 구성되어 있으며, 제출 및 기타 목적에 따라 AI가 필요 내용을 자동으로 생성하여 작성하여 제공한다.
+진단서 · 소견서 · 진료확인서 · 처방전을 실제로 발급한다. 제출 목적을 고르면 AI 가 소견 문구 초안을 만들어 채워주고, 의사가 검토·수정한 뒤 확정한다.
+발급된 문서에는 연번(`2026-000007` 형식)과 QR 이 찍히며, 환자는 QR + 생년월일로 로그인 없이 원문을 확인할 수 있다. 재발급·무효화 이력도 남는다.
 
 <img width="3016" height="1578" alt="image" src="https://github.com/user-attachments/assets/64e9fe43-fea8-4d91-9203-5ef3fcdbb328" />
 
@@ -176,13 +177,46 @@ stateDiagram-v2
 | 진료 | 진료 시작, 이미지 업로드/선택, AI 분석 + GradCAM, **주/부상병 다중 등록**, 약품 다중 처방, Gemini 코멘트, 처방 저장, 진료 완료 |
 | 조회 | **차트번호/이름/내원일 조합 검색**, 환자별 내원 기록, 처방 상세 |
 | 의사별 조회 | `doctorId + from~to` 기간으로 의사별 환자 처방 이력 조회 |
-| 증명서 | 발급 UI 목업 *(실제 발급 예정)* |
+| 증명서 | 진단서·소견서·진료확인서·처방전 발급, AI 초안 생성, 재발급·무효화, QR 열람 링크 |
+| 키오스크 | 태블릿 예비분석(로그인 없음), 토큰 QR, 진료 화면에 예비 결과 노출 |
+| 인쇄 | 접수증·진료요약·증명서 확인증 감열지 출력 (접수 데스크 print-agent 아웃바운드 폴링) |
 
 ### KCD 상병코드 / 약품코드 검색 
 
 - KCD 상병코드: **약 50,941행 / 고유 24,328건** (`상병코드`, `상병명`, `상병명 영문`)
 - 처방(약품) 코드: **약 505,968행 / 고유 496,148건** (`처방코드`, `처방명`, `처방명 영문`)
 - 검색은 코드 contains + 한글명 contains로 페이징하여 반환된다.
+
+### 제증명 발급 + QR 열람
+
+진단서·소견서·진료확인서·처방전을 발급한다. 제출 목적을 고르면 LLM 이 **서술 문구 초안만**
+만들고, 환자명·상병코드·약품 같은 **사실 정보는 DB 에서 그대로 채운다** — LLM 응답 스키마에
+사실 필드를 아예 두지 않아, 모델이 지어낸 값이 문서에 들어갈 자리가 없다.
+
+발급된 문서에는 연번과 QR 이 찍힌다. 환자는 로그인 없이 **QR + 생년월일 2요소**로 원문을
+열람한다. 토큰당 5회 실패 시 10분 잠금이 걸린다(`ShareAccessGuard`).
+
+### 키오스크 예비분석
+
+접수 시 발급한 **base62 12자리 `SecureRandom` 토큰**으로 QR 을 만들고, 대기실 태블릿이 그
+주소로 접속해 환부를 촬영하면 의사가 진료실에서 미리 결과를 본다. `visit_id` 가 순차 정수라
+같은 LAN 에서 추측 가능하다는 판단에서 나온 설계다.
+
+예비분석은 Visit 상태머신과 **완전히 분리된 사이드 채널**이다. 태블릿에서 무슨 일이 일어나도
+정식 진료 흐름의 상태가 바뀌지 않는다.
+
+### 인쇄 — 아웃바운드 폴링 브로커
+
+프린터는 접수 데스크 맥북 USB 에 물려 있고 서버에는 없다. 서버가 맥북을 호출하는 대신
+**맥북의 `print-agent` 가 서버에 접속해 작업을 가져간다**(`GET /api/v1/print/jobs/next` 롱폴링).
+터널 주소도 인바운드 포트도 필요 없다.
+
+- `X-Agent-Instance` 펜싱 토큰으로 **같은 문서가 두 번 인쇄되는 일을 막는다** — 의료 문서에서
+  중복 출력은 실제 사고다.
+- 가시성 타임아웃으로 에이전트가 죽으면 작업을 다시 돌리고, 120초가 지나면 조용히 버린다.
+- **인쇄 실패는 예외를 던지지 않는다.** 프린터가 꺼져 있어도 접수·발급은 그대로 진행된다.
+
+자세한 설치·운영은 [`print-agent/README.md`](print-agent/README.md).
 
 ---
 
@@ -195,7 +229,7 @@ stateDiagram-v2
 5. 피부 병변 이미지를 업로드한다.
 6. 업로드한 이미지를 선택해 AI 분석을 요청한다(`IN_PROGRESS → ANALYZING`).
 7. Spring Boot 백엔드가 이미지를 base64로 인코딩해 FastAPI `/predict-base64` 를 호출한다.
-8. FastAPI가 EfficientNet-B0로 7-class 분류 + GradCAM 히트맵을 생성한다.
+8. FastAPI가 EfficientNet-B0로 8-class 분류 + GradCAM 히트맵을 생성한다.
 9. Top-1 / Top-5 후보 + GradCAM 오버레이가 저장된다(`ANALYZING → ANALYZED`).
 10. 의료진이 결과를 참고해 KCD **주상병**(필수) + **부상병**(선택)을 검색·확정한다(`ANALYZED → DIAGNOSED`).
 11. 약품/처방코드를 검색해 다중 약품 처방(용법·기간·주의사항)을 입력한다.
@@ -203,7 +237,7 @@ stateDiagram-v2
 13. 처방을 저장한다(`DIAGNOSED → PRESCRIBED`).
 14. 진료를 완료한다(`PRESCRIBED → COMPLETED`).
 15. 조회 화면에서 환자별 내원·처방 이력을 확인한다.
-16. (예정) 증명서 화면에서 진단서/처방전을 발급한다.
+16. 증명서 화면에서 진단서·소견서·진료확인서·처방전을 발급하고, 문서 하단 QR 로 환자가 직접 열람할 수 있다.
 
 ---
 
@@ -254,18 +288,15 @@ flowchart LR
 - 모든 비-인증 API는 `JwtFilter`를 통과한 뒤에야 컨트롤러에 도달한다. `/auth/login`, `/auth/signup`, `/swagger-ui/**`, 이미지/히트맵 컨텐츠 엔드포인트는 화이트리스트로 공개된다.
 - 이미지 업로드는 `ImageStorageService` 인터페이스(Local / S3 구현 전환 가능)를 통과한다. 도커 기본은 `local`, 운영은 `s3`.
 - AI 분석은 백엔드 → FastAPI base64 호출로 일원화되어 있어 모델 서버를 GPU 인스턴스로 옮기기 쉽다.
-- Gemini 호출은 백엔드에서만 발생한다 — 프론트는 API 키를 알지 못한다.
+- Gemini 호출은 백엔드에서만 발생한다 — 프론트는 API 키를 알지 못한다. 프롬프트에 들어가는
+  접수 메모·의사 소견은 `PiiMasker` 를 거쳐 환자 신원이 외부 로그에 남지 않게 한다.
+- 위 그림에 없는 경로가 둘 더 있다. **태블릿 키오스크**는 `/api/kiosk/**` 로 로그인 없이 붙고,
+  **접수 데스크의 print-agent** 는 백엔드로 롱폴링해 인쇄 작업을 가져간다 — 둘 다 백엔드가
+  먼저 호출하지 않는 방향이라 인바운드 포트를 열 필요가 없다.
 
 ---
 
 ## 🔁 데이터 흐름 (DFD / Clinical Workflow)
-
-<!-- ┌─────────────────────────────────────────────────────────────┐ -->
-<!-- │ 🖼️  IMAGE: Clinical Workflow DFD                              │ -->
-<!-- │ 경로 : docs/images/clinical-workflow-dfd.png                  │ -->
-<!-- │ 도구 : Mermaid → PNG export 추천                              │ -->
-<!-- └─────────────────────────────────────────────────────────────┘ -->
-![Clinical Workflow DFD](docs/images/clinical-workflow-dfd.png)
 
 ```mermaid
 flowchart TD
@@ -318,7 +349,7 @@ erDiagram
 | `visit_image` | 내원별 업로드 이미지 |
 | `analysis_result` | AI 분석 결과(Top-K JSON, confidence, `heatmap_image_url` 신규) |
 | `analysis_image` | 분석↔이미지 N:M |
-| `disease` | HAM10000 7-class 마스터 |
+| `disease` | AI 분류 클래스 8종 마스터 (HAM10000 7종 + `inflammatory`) |
 | `kcd_disease` | KCD 상병코드(약 5만 행) |
 | `drug_master` | 약품/처방코드(약 50만 행) |
 | `prescription` | 처방 헤더(작성자 `member_id` + `member_name` 스냅샷, `revisit_recommended_date`, `doctor_notes`) |
@@ -340,7 +371,8 @@ erDiagram
 | **AI Explainability** | GradCAM (순수 PyTorch + Pillow 구현, cv2 불필요) |
 | **LLM** | Google Gemini API (`gemini-3.1-flash-lite`) — 처방 코멘트 생성 |
 | **Database** | MySQL 8.0 (utf8mb4_unicode_ci) |
-| **Infra / Dev** | Docker, Docker Compose, Local Image Storage / AWS S3, Git / GitHub, Gradle |
+| **Infra / Dev** | Docker, Docker Compose(오버레이 3종), Caddy(HTTPS), Local Image Storage / AWS S3, GitHub Actions(CI + self-hosted 러너 배포), Gradle |
+| **Testing** | JUnit 5 + Spring Boot Test (백엔드 테스트 클래스 11개), 고정 홀드아웃 기반 AI 평가 하네스 |
 
 ---
 
@@ -351,39 +383,54 @@ artifact-medical-ai/
 ├── backend/                       # Spring Boot REST API
 │   ├── src/main/java/com/artifact/diagnosis/
 │   │   ├── analysis/              # AI 분석 결과 도메인 + GradCAM 연동
+│   │   ├── certificate/           # 제증명 발급·재발급·무효화, AI 초안
 │   │   ├── common/
 │   │   │   ├── config/            # Security, JWT, AWS, DataInitializer, OpenAPI
 │   │   │   ├── exception/         # GlobalExceptionHandler
-│   │   │   └── jwt/               # JwtFilter, JwtUtil
+│   │   │   ├── jwt/               # JwtFilter, JwtUtil
+│   │   │   ├── security/          # @PublicEndpoint 등 인가 표식
+│   │   │   └── util/              # PiiMasker 등
 │   │   ├── disease/               # AI 클래스 + KCD 상병코드
+│   │   ├── docshare/              # QR + 생년월일 문서 열람 (비로그인)
 │   │   ├── drug/                  # 약품/처방코드 마스터
+│   │   ├── gemini/                # Gemini 호출 클라이언트
 │   │   ├── image/                 # ImageStorageService (Local/S3)
+│   │   ├── kiosk/                 # 태블릿 예비분석 (Visit FSM 과 분리된 사이드 채널)
 │   │   ├── member/                # 회원 / 인증 (Auth)
 │   │   ├── patient/               # 환자 도메인
-│   │   ├── prescription/          # 처방 + GeminiService
+│   │   ├── prescription/          # 처방 + LLM 코멘트
+│   │   ├── print/                 # 인쇄 작업 큐 + 아웃바운드 폴링 브로커
 │   │   └── visit/                 # 내원, 상태머신, VisitImage
+│   ├── src/test/java/...          # 인가·동시성·증명서·문서공유·PII 테스트
 │   ├── src/main/resources/
-│   │   ├── data/                  # kcd_disease.xlsx, drug_master.xlsx
+│   │   ├── data/                  # kcd_disease.xlsx, drug_master.xlsx (커밋됨)
 │   │   └── application.properties
 │   └── Dockerfile
-├── frontend/                      # React 19 + Vite + Tailwind v4
-│   └── src/
-│       ├── api/                   # REST 클라이언트 모듈
-│       ├── components/            # Card, Input, AuthContext, SearchModal …
-│       ├── contexts/, hooks/      # auth context / useAuth
-│       └── pages/                 # Login, Reception, Clinic, Lookup, Certificate
+├── frontend/                      # React 19 + Vite + Tailwind v4  → frontend/README.md
+│   ├── src/
+│   │   ├── api/                   # REST 클라이언트 (도메인별 파일 + client/errors/session)
+│   │   ├── auth/                  # AuthContext 타입, 역할↔화면 매핑(roles.ts)
+│   │   ├── components/            # 공용 UI + PrivateRoute / RoleRoute / MainLayout
+│   │   ├── pages/                 # 업무 4화면 + 키오스크 2화면 + 공개문서 2화면 + 로그인
+│   │   └── types/ · utils/        # 공용 타입, 신뢰도 구간·날짜·키오스크 URL
+│   ├── nginx.conf                 # /api → backend 프록시 + SPA fallback
+│   └── Dockerfile
 ├── fastapi/                       # FastAPI AI inference server
 │   ├── main.py                    # /predict, /predict-base64 + GradCAM
-│   ├── model.pth                  # EfficientNet-B0 학습 가중치
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── notebooks/                 # 학습용 Colab 노트북
+│   ├── model.pth                  # EfficientNet-B0 학습 가중치 (커밋됨, 이미지에 포함)
+│   ├── notebooks/                 # 학습 노트북 + 절차 → fastapi/notebooks/README.md
+│   ├── tests/                     # 평가 하네스·홀드아웃·OOD → fastapi/tests/README.md
+│   └── Dockerfile
+├── print-agent/                   # 접수 데스크 맥북에서 도는 인쇄 에이전트 → print-agent/README.md
 ├── docker/
-│   └── mysql/init/                # MySQL 스키마 (member, visit 8-state, …)
-├── docs/
-│   ├── ai-colab-workflow.md
-│   └── images/                    # README screenshots & diagrams
-├── docker-compose.yml
+│   ├── caddy/Caddyfile            # HTTPS 종단 (docker-compose.https.yml 에서 사용)
+│   └── ai-lb/nginx.conf           # AI 워커 다중화용 로드밸런서 (booth 오버레이)
+├── docs/                          # ↓ "문서" 절 참고
+├── .github/workflows/             # ci.yml (PR 검사) · deploy.yml (EC2 배포)
+├── docker-compose.yml             # 로컬 기본
+├── docker-compose.prod.yml        # 운영 오버레이 (포트 닫기, Swagger off, 인쇄 queue 모드)
+├── docker-compose.https.yml       # Caddy 로 HTTPS 종단
+├── docker-compose.booth.yml       # 부스 시연용 AI 워커 다중화 (4 vCPU 이상에서만)
 └── README.md
 ```
 
@@ -478,46 +525,57 @@ npm run dev
 | `backend` | build `./backend`, port `8080`, `depends_on: mysql(healthy)`, FastAPI URL `http://fastapi:8000`, Gemini API 키 주입 |
 | `frontend` | build `./frontend` (node:20 빌드 → nginx:alpine 서빙), port `3000:80`, `/api/` 요청을 `backend:8080`으로 프록시 |
 
----
+#### 오버레이 파일 (운영 / 시연용)
 
-## 🔐 환경 변수 (`.env` 예시)
+`docker-compose.yml` 은 로컬 기본값이고, 그 위에 덮어쓰는 파일이 3개 있다. **뒤에 오는 `-f` 가 이긴다.**
 
-> 저장소의 [`.env.example`](.env.example)을 복사해 쓰는 것을 권장한다. — `cp .env.example .env`
+| 파일 | 하는 일 | 쓰는 때 |
+| --- | --- | --- |
+| `docker-compose.prod.yml` | MySQL·백엔드 호스트 포트 닫기, Swagger off, 로그 INFO, 인쇄 `queue` 모드 | EC2 배포 |
+| `docker-compose.https.yml` | Caddy 를 앞에 세워 443 종단 | 도메인 + 인증서가 있을 때 |
+| `docker-compose.booth.yml` | AI 워커 3개 + `docker/ai-lb` 로드밸런서 | 부스 시연 (4 vCPU / 8GB 이상에서만) |
 
-```env
-# JWT — 필수. 비어 있으면 서버가 기동되지 않는다.
-# 생성: openssl rand -base64 48
-JWT_SECRET=
-JWT_EXPIRATION_MS=86400000
-
-# 초기 관리자 계정 (선택). 비워두면 ADMIN 계정을 만들지 않는다.
-ADMIN_LOGIN_ID=
-ADMIN_PASSWORD=
-
-# DB
-DB_PASSWORD=rootpass
-
-# AWS S3 (운영 또는 실제 S3 연동 시)
-AWS_ACCESS_KEY=local-dev-access-key
-AWS_SECRET_KEY=local-dev-secret-key
-AWS_S3_BUCKET=local-dev-bucket
-AWS_REGION=us-east-1
-
-# 이미지 저장소 (local: 디스크 / s3: AWS S3)
-IMAGE_STORAGE_TYPE=local
-IMAGE_LOCAL_UPLOAD_DIR=/tmp/artifact-images
-
-# AI inference
-FASTAPI_URL=http://localhost:8000
-LOW_CONFIDENCE_THRESHOLD=0.45
-
-# Gemini LLM (처방 코멘트)
-GEMINI_API_KEY=
+```bash
+# EC2 운영 배포 예시
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+               -f docker-compose.https.yml up -d --build
 ```
 
-- 로컬 개발에서는 `IMAGE_STORAGE_TYPE=local`로 설정하면 **실제 AWS 없이** 이미지 업로드/분석 흐름을 검증할 수 있다.
-- `GEMINI_API_KEY`가 비어 있으면 코멘트 API는 *"Gemini API 키가 설정되지 않았습니다."* 를 반환한다(앱은 정상 동작).
-- **`JWT_SECRET`은 환경마다 다른 값을 쓴다.** 이 키를 아는 사람은 로그인 없이 임의의 사용자·권한으로 토큰을 위조할 수 있으므로, 저장소·이슈·메신저에 값을 남기지 않는다.
+> 절차 전체는 [`docs/ec2-deployment-guide.md`](docs/ec2-deployment-guide.md) 에 있다.
+
+---
+
+## 🔐 환경 변수
+
+**[`.env.example`](.env.example) 이 정본이다.** 각 변수의 의미·기본값·비워두면 벌어지는 일이
+그 파일 주석에 적혀 있으니, 아래 표를 참고해 복사부터 한다.
+
+```bash
+cp .env.example .env
+# 그리고 "[필수]" 로 표시된 3개를 채운다
+```
+
+| 구분 | 변수 | 비워두면 |
+| --- | --- | --- |
+| **필수** | `JWT_SECRET` | 백엔드가 기동되지 않는다 |
+| **필수** | `INTERNAL_API_SECRET` | FastAPI 가 기동되지 않는다 (백엔드↔AI 호출 확인용) |
+| **필수** | `DB_PASSWORD` | MySQL 컨테이너가 뜨지 않는다 |
+| 선택 | `ADMIN_LOGIN_ID` / `ADMIN_PASSWORD` | ADMIN 계정을 만들지 않는다 (화면 회원가입으로 진행) |
+| 선택 | `IMAGE_STORAGE_TYPE` / `IMAGE_LOCAL_UPLOAD_DIR` | `local` — AWS 없이 개발 가능 |
+| 선택 | `AWS_ACCESS_KEY` / `AWS_SECRET_KEY` / `AWS_S3_BUCKET` / `AWS_REGION` | `IMAGE_STORAGE_TYPE=s3` 일 때만 필요 |
+| 선택 | `FASTAPI_URL` · `LOW_CONFIDENCE_THRESHOLD` | `http://localhost:8000` · `0.45` |
+| 선택 | `GEMINI_API_KEY` · `GEMINI_MODEL` | 코멘트 API 가 "키가 설정되지 않았습니다" 반환 (앱은 정상) |
+| 선택 | `CORS_ALLOWED_ORIGINS` | compose 기본 도메인. **배포 도메인을 바꿨다면 반드시 갱신** |
+| 선택 | `PRINT_MODE` · `PRINT_AGENT_ENABLED` | 로컬은 직접 인쇄, 운영은 `prod.yml` 이 `queue` 로 고정 |
+| 선택 | `PRINT_KIOSK_ALLOWED_BASE_URLS` | 접수증 QR 에 찍힐 주소 허용 목록 (운영에서 도메인 잠금용) |
+| 선택 | `KIOSK_AUTO_PENDING` | 접수 즉시 키오스크 대기열에 올릴지 여부 |
+| 선택 | `HOSPITAL_*` | 제증명 문서의 의료기관 칸이 빈 채로 출력된다 |
+
+- **`JWT_SECRET` 은 환경마다 다른 값을 쓴다.** 이 키를 아는 사람은 로그인 없이 임의의
+  사용자·권한으로 토큰을 위조할 수 있으므로, 저장소·이슈·메신저에 값을 남기지 않는다.
+- **`CORS_ALLOWED_ORIGINS` 는 배포에서 가장 자주 사고가 나는 값이다.** 브라우저는 같은
+  출처라도 POST 에 `Origin` 을 붙이고 Caddy·nginx 가 그대로 넘기므로, 허용 목록에 없으면
+  **로그인부터 실패**한다(`Invalid CORS request`). 로컬 개발 출처는 코드에 이미 들어 있다.
 
 ---
 
@@ -538,6 +596,8 @@ GEMINI_API_KEY=
 | Visit | PATCH | `/api/v1/visits/{id}/start` | 진료 시작 (`→ IN_PROGRESS`) |
 | Visit | PATCH | `/api/v1/visits/{id}/diagnose` | 진단 확정 (`→ DIAGNOSED`) |
 | Visit | PATCH | `/api/v1/visits/{id}/complete` | 진료 완료 (`→ COMPLETED`) |
+| Visit | DELETE | `/api/v1/visits/{id}` | 접수 삭제 |
+| Visit | POST | `/api/v1/visits/{id}/kiosk-token` | 키오스크 토큰 발급 (QR 용) |
 | Image | POST | `/api/v1/visits/{visitId}/images` | 이미지 1장 업로드 (multipart) |
 | Image | GET | `/api/v1/visits/{visitId}/images` | 이미지 목록 |
 | Image | GET | `/api/v1/visits/{visitId}/images/{imageId}/content` | 이미지 바이트 (공개) |
@@ -550,6 +610,29 @@ GEMINI_API_KEY=
 | Prescription | GET | `/api/v1/visits/{visitId}/prescription` | 처방 조회 |
 | Prescription | POST | `/api/v1/visits/{visitId}/prescription/comment` | **Gemini AI 처방 코멘트 (신규)** |
 | Prescription | GET | `/api/v1/prescriptions/doctor-patients?doctorId&from&to` | 의사별 환자 처방 이력 (기간) |
+| **Certificate** | POST | `/api/v1/visits/{visitId}/certificates/draft` | 제증명 AI 초안 생성 |
+| Certificate | POST | `/api/v1/visits/{visitId}/certificates` | 제증명 발급 (연번 + QR 부여) |
+| Certificate | GET | `/api/v1/visits/{visitId}/certificates` | 해당 내원의 발급 목록 |
+| Certificate | GET | `/api/v1/certificates`, `/{certificateId}` | 전체 목록 / 단건 |
+| Certificate | POST | `/api/v1/certificates/{certificateId}/reissue`, `/void` | 재발급 / 무효화 |
+| **Print** | POST | `/api/v1/visits/{visitId}/print/ticket`, `/print/visit-summary` | 접수증 / 진료요약 인쇄 |
+| Print | POST | `/api/v1/certificates/{certificateId}/print/slip` | 증명서 확인증 인쇄 |
+| Print | GET | `/api/v1/print/jobs/next` | **에이전트 전용** — 인쇄 작업 롱폴링 수령 |
+| Print | POST | `/api/v1/print/jobs/{jobId}/result` | **에이전트 전용** — 인쇄 결과 보고 |
+| Print | GET | `/api/v1/print/jobs/status` | 에이전트 연결 상태 |
+| **Kiosk** | GET | `/api/kiosk/pending` | 대기 환자 목록 *(비로그인)* |
+| Kiosk | GET | `/api/kiosk/session/{token}` | 키오스크 세션 조회 *(비로그인)* |
+| Kiosk | POST | `/api/kiosk/session/{token}/analyze` | 예비분석 요청 (multipart) *(비로그인)* |
+| Kiosk | POST | `/api/kiosk/session/{token}/comment` | 예비분석 안내 문구 생성 *(비로그인)* |
+| Kiosk | GET | `/api/kiosk/session/{token}/heatmap` | 예비분석 히트맵 *(비로그인)* |
+| Kiosk | GET | `/api/v1/visits/{visitId}/preliminary`, `/heatmap` | 진료 화면에서 예비분석 확인 |
+| **DocShare** | GET | `/api/public/documents/certificate/{token}` | QR 증명서 열람 *(비로그인 + 생년월일 확인)* |
+| DocShare | POST | `/api/public/documents/certificate/{token}/verify` | 생년월일 검증 |
+| DocShare | GET | `/api/public/documents/visit-summary/{token}` | QR 진료요약 열람 *(비로그인 + 생년월일 확인)* |
+
+> *(비로그인)* 표시된 엔드포인트는 JWT 없이 열린다. 새 엔드포인트를 추가할 때는 반드시
+> `SecurityConfig` 의 permitAll 목록과 `@PublicEndpoint` 표식을 함께 확인한다. 문서 열람은
+> **토큰 + 생년월일 2요소**이며, 토큰당 5회 실패 시 10분 잠금(`ShareAccessGuard`)이 걸린다.
 
 ---
 
@@ -558,16 +641,17 @@ GEMINI_API_KEY=
 | 항목 | 내용 |
 | --- | --- |
 | **모델** | EfficientNet-B0 (timm) |
-| **목적** | 피부 병변 이미지 7-class 분류 |
+| **목적** | 피부 병변 이미지 8-class 분류 |
 | **입력 전처리** | Resize 224×224, Normalize (ImageNet mean/std) |
 | **출력** | Top-1 / Top-5 질환 + confidence, **GradCAM 오버레이 (원본 해상도 보존)** |
 | **확신도 경고** | `top1_confidence < LOW_CONFIDENCE_THRESHOLD`이면 `confidence_level="low"` — 결과는 그대로 내보내고 화면에 경고만 붙인다 |
 | **GradCAM 구현** | 순수 PyTorch + Pillow, cv2/grad-cam 라이브러리 불필요 — `model.conv_head`에 forward hook 등록 |
 | **모델 파일** | `fastapi/model.pth` |
-| **학습 노트북** | `fastapi/notebooks/skin_lesion_training_colab.ipynb` |
-| **참고 문서** | `docs/ai-colab-workflow.md` |
+| **모델 버전** | `efficientnet_b0-{model.pth 의 sha256 앞 12자리}` — 가중치가 바뀌면 자동으로 달라진다 |
+| **학습 노트북** | [`fastapi/notebooks/pad_ham_training.ipynb`](fastapi/notebooks/pad_ham_training.ipynb) |
+| **참고 문서** | [학습 절차](fastapi/notebooks/README.md) · [평가·홀드아웃 규율](fastapi/tests/README.md) |
 
-### 지원 질환 클래스 (7-class)
+### 지원 질환 클래스 (8-class)
 
 | 코드 | 한글명 | 영문 |
 | --- | --- | --- |
@@ -579,6 +663,12 @@ GEMINI_API_KEY=
 | `nv` | 멜라닌세포모반 | Melanocytic nevi |
 | `vasc` | 혈관성 병변 | Vascular lesions |
 | `inflammatory` | 염증성 피부질환 | Inflammatory skin condition |
+
+> 앞 7종은 HAM10000, `inflammatory` 는 SCIN 데이터셋에서 왔다. 출처가 갈라져 있어
+> `inflammatory` 는 "염증성 병변"보다 **"HAM10000 이 아닌 것"** 에 가깝게 학습됐을 수
+> 있다는 점을 평가에서 확인했다 — 근거와 수치는 [`fastapi/tests/README.md`](fastapi/tests/README.md).
+> 클래스 **순서**는 `fastapi/main.py` 의 `CLASSES` 와 DB `disease` 테이블이 일치해야 하며,
+> `fastapi/tests/test_model_contract.py` 가 이를 강제한다.
 
 ### FastAPI 엔드포인트
 
@@ -619,7 +709,11 @@ GEMINI_API_KEY=
 | Gemini 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY` 환경변수 설정 후 재기동 |
 | Gemini 503 | 1·2초 자동 재시도 후에도 실패 시 잠시 후 다시 시도 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
-| "확신 낮음" 경고가 너무 자주/드물게 뜸 | `LOW_CONFIDENCE_THRESHOLD` 조정 (올리면 경고가 잦아진다). 근거 수치는 `fastapi/tests/README.md` |
+| "확신 낮음" 경고가 너무 자주/드물게 뜸 | `LOW_CONFIDENCE_THRESHOLD` 조정 (올리면 경고가 잦아진다). 근거 수치는 [`fastapi/tests/README.md`](fastapi/tests/README.md) |
+| "프린터가 연결되어 있지 않습니다" | 접수 데스크 맥북의 `print-agent` 가 떠 있는지 확인. `GET /api/v1/print/jobs/status` 로 연결 상태를 본다 |
+| 태블릿에서 키오스크 QR 이 안 열림 | 접수 화면 "키오스크 QR" 카드에서 주소를 현재 Wi-Fi 대역에 맞게 덮어쓴다 (재빌드 불필요) |
+| 로그인 요청이 `Invalid CORS request` | 접속 도메인이 `CORS_ALLOWED_ORIGINS` 에 없다. `.env` 에 추가 후 재기동 |
+| FastAPI 가 시크릿 오류로 기동 실패 | `INTERNAL_API_SECRET` 미설정. 백엔드와 **같은 값**이어야 한다 |
 
 ---
 
@@ -627,16 +721,35 @@ GEMINI_API_KEY=
 
 > **예정 기능**이며, 위 "핵심 기능"의 구현 항목과 구분된다.
 
-- 증명서 / 진단서 **실제 발급 기능** 구현
+- **감사 추적(audit log)** — 환자 데이터 접근 이력 기록. 의료법·개인정보보호법상 필수이나 아직 없다
+- **처방 원본 보존** — 재처방 시 이전 처방이 물리 삭제된다. `version` / `is_active` 방식으로 전환 필요
 - 처방 다중 약품 입력 UX 정교화 (드래그 정렬, 템플릿 자동 채움)
-- AI 모델 **성능 평가 지표(metric)** 추가, 모델 모니터링 대시보드
+- AI 모델 모니터링 대시보드 (평가 하네스는 [`fastapi/tests/`](fastapi/tests/README.md) 에 이미 있다)
 - 모델 **학습 / 배포 파이프라인 자동화**, Active Learning 재학습 루프
-- **세분화된 권한 관리** (DOCTOR/NURSE/STAFF별 API 가드)
-- 실제 **EMR 연동 가능성** 검토 (비트컴퓨터 산학 연계)
-- **테스트 코드 및 CI/CD** 보강
+- 실제 **EMR 연동 가능성** 검토 (비트컴퓨터 산학 연계) — [`docs/emr-meeting-brief.md`](docs/emr-meeting-brief.md)
+- 프론트엔드 테스트 (백엔드·AI 테스트와 CI 는 구축 완료)
 - 분석 결과 **explainability 강화** — GradCAM 외 attribution 기법 추가
 - LLM 코멘트의 **임상 안전 가드레일** 강화 (약품 풀 동적 매핑, 알레르기/상호작용 점검)
-- Azure Blob Storage 마이그레이션 (2학기 종합설계2 예정)
+- **AWS 수평 확장 아키텍처** 전환 — [`docs/aws-architecture-migration-guide.md`](docs/aws-architecture-migration-guide.md)
+
+---
+
+## 📚 문서
+
+| 문서 | 내용 |
+| --- | --- |
+| [`docs/ec2-deployment-guide.md`](docs/ec2-deployment-guide.md) | EC2 + Docker Compose 배포 절차 (HTTPS, 부스 시연 포함) |
+| [`docs/cicd-guide.md`](docs/cicd-guide.md) | GitHub Actions CI + self-hosted 러너 배포 |
+| [`docs/aws-architecture-migration-guide.md`](docs/aws-architecture-migration-guide.md) | **S3/CloudFront + ALB + Auto Scaling 전환 설계와 콘솔 실습 가이드** |
+| [`docs/security-remediation-plan.md`](docs/security-remediation-plan.md) | 보안·품질 자체 감사 결과와 게이트별 개선 계획 |
+| [`docs/emr-meeting-brief.md`](docs/emr-meeting-brief.md) | 비트컴퓨터 EMR 연동 검토 브리프 |
+| [`docs/ksc2026-paper-strategy.md`](docs/ksc2026-paper-strategy.md) | KSC2026 논문 투고 전략 (주제 후보·실험 계획·집필 순서) |
+| [`docs/patent-strategy.md`](docs/patent-strategy.md) | 특허 출원 후보 검토와 청구항 초안 |
+| [`docs/ai-colab-workflow.md`](docs/ai-colab-workflow.md) | Colab ↔ 서버 모델 교체 흐름 (개요) |
+| [`fastapi/notebooks/README.md`](fastapi/notebooks/README.md) | 학습 노트북 사용법, 클래스 순서 계약 |
+| [`fastapi/tests/README.md`](fastapi/tests/README.md) | **평가 하네스 · 고정 홀드아웃 규율 · OOD 평가** |
+| [`print-agent/README.md`](print-agent/README.md) | 접수 데스크 인쇄 에이전트 설치·운영 |
+| [`frontend/README.md`](frontend/README.md) | 프론트엔드 구조·라우팅·API 주소 규칙 |
 
 ---
 

@@ -30,6 +30,19 @@
 # 그냥 `ports: []` 라고 쓰면 기본 파일의 "3306:3306" 이 그대로 살아남는다 — 흔한 함정이다.
 # `!reset` 은 "앞 파일의 값을 지우라"는 뜻으로, Docker Compose v2.24 이상에서 동작한다.
 # 버전 확인: docker compose version
+#
+# ---------------------------------------------
+# AI 워커를 여러 개로 돌리려면 (부스 시연)
+# ---------------------------------------------
+# 그 설정은 이 파일에 없다. docker-compose.booth.yml 에 따로 있고, 배포 명령에
+# **-f 를 한 줄 더 붙일 때만** 켜진다:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.https.yml -f docker-compose.booth.yml up -d --build
+#
+# 상시 반영하지 않는 이유는 하나다 — 워커 3개는 t4g.small(2 vCPU / 2GB)에서 뜨지 않는다.
+# 여기에 넣어두면 평소 배포가 그대로 메모리 부족에 빠진다. 인스턴스를 4 vCPU / 8GB 로
+# 올린 뒤에만 켠다. 사전 준비와 검증 절차는 docs/ec2-deployment-guide.md 9단계 "부스 시연".
 # =============================================
 
 services:
