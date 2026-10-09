@@ -190,9 +190,26 @@ def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
     그대로 통과한다 — conv_head 와 마지막 블록의 Grad-CAM 은 **수학적으로 같은 맵**이고,
     실측 상관도 소수점 셋째 자리까지 일치해 측정 자체의 교차검증이 됐다.)
 
-    그래서 해상도가 다른 **두 블록**을 쓴다(224 입력에서 14x14 + 28x28). conv_head 의
-    7x7 을 버리므로 격자가 16 배 촘촘해진다 — 폰카 3024x4452 에서 한 칸이 430x630
-    픽셀을 덮던 것이 108x159 로 줄어, "세밀하지 않다"는 증상에 직접 대응한다.
+    그래서 해상도가 다른 **두 블록**을 쓴다(224 입력에서 14x14 + 56x56). conv_head 의
+    7x7 을 버리므로 격자가 64 배 촘촘해진다 — 폰카 3024x4452 에서 한 칸이 430x630
+    픽셀을 덮던 것이 54x80 으로 줄어, "세밀하지 않다"는 증상에 직접 대응한다.
+
+    얕은 쪽이 28x28(blocks.2)이 아니라 **56x56(blocks.1)** 인 이유: log_softmax
+    역전파 타깃으로 바꾼 뒤 조합을 다시 재니 순위가 뒤집혔다. 출처별 50장 score:
+      b4+b1 +0.229 / b4+b2+b1 +0.216 / b4+b2 +0.180 / b4 단독 +0.136 / b2 단독 +0.125
+    ham +0.266→+0.297, pad +0.184→+0.267, scin +0.091→+0.122 로 세 출처 전부 올랐고
+    forward·backward 횟수는 그대로다(hook 위치만 다르다).
+
+    **고해상도 CAM 이 충실도 지표를 속인 것은 아닌지 따로 확인했다.** 상위 k% 화소를
+    마스킹하는 지표는 CAM 이 점묘처럼 흩어지면 유리해질 수 있다. 기준선을 블러 대신
+    회색(정규화 공간의 0)으로 바꿔 180장에서 교차검증했다:
+      b4+b2  블러 +0.185 / 회색 +0.123 / 파편화 0.244
+      b4+b1  블러 +0.233 / 회색 +0.185 / 파편화 0.397   <- 둘 다에서 같은 폭으로 이긴다
+      b1 단독 블러 +0.164 / 회색 +0.050 / 파편화 0.640   <- 회색에서 무너진다(= 속임수)
+    b1 단독이 대조군이다. 파편화가 가장 큰 그 구성만 회색 기준선에서 붕괴하므로
+    지표는 점묘를 실제로 잡아내며, b4+b1 은 거기에 걸리지 않는다. b1 쪽 가중치를
+    더 올리면(b4·1+b1·2) 회색이 +0.171 로 다시 떨어져, 동일 가중이 변곡점이다.
+    b4(14x14)가 의미 영역을 붙들고 b1(56x56)이 그 안의 경계를 세우는 구조다.
 
     블록 인덱스를 상수로 박지 않는다 — timm 버전에 따라 blocks 구성이 바뀌고,
     나중에 입력 해상도를 올리면 모든 단계의 격자 크기가 같이 바뀐다.
@@ -215,7 +232,7 @@ def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
     layers: list[tuple[str, torch.nn.Module]] = []
     if sizes:
         final = sizes[max(sizes)]              # 마지막 블록 출력 = conv_head 입력 해상도
-        for mult in (2, 4):                    # 224 입력에서 14x14, 28x28
+        for mult in (2, 8):                    # 224 입력에서 14x14, 56x56
             cand = sorted(i for i, s in sizes.items() if s == final * mult)
             if cand:
                 layers.append((f"blocks.{cand[-1]}", model.blocks[cand[-1]]))
@@ -380,7 +397,16 @@ def _compute_gradcam(
     try:
         pred = int(logits.argmax(dim=1).item())
         acts = [store[name] for name in CAM_LAYER_NAMES]
-        grads = torch.autograd.grad(logits[0, pred], acts)
+        # logits 가 아니라 log_softmax 를 미분한다. 원시 logit 의 gradient 는 "이
+        # 클래스 점수를 올리는 방향"만 보지만, log_softmax 의 gradient 는 거기서
+        # 다른 클래스들의 기여를 뺀 값이라 **그 클래스에만 고유한 근거**를 가리킨다
+        # (∂log p_k/∂z_j = δ_kj − p_j). 모든 클래스에 공통으로 반응하는 영역
+        # (피부 전체, 조명, 배경)이 상쇄되어 빠진다.
+        # forward·backward 횟수는 완전히 동일하다 — 비용 0 의 교체다.
+        # 홀드아웃 50장×3출처 실측 충실도 score(=insertion−deletion):
+        #   ham  +0.251 → +0.266 / pad +0.168 → +0.184 / scin +0.077 → +0.091
+        # 함께 비교한 logit−나머지평균(+0.171), logit−2위(+0.160)보다도 낫다.
+        grads = torch.autograd.grad(F.log_softmax(logits, dim=1)[0, pred], acts)
         cam = _fuse_cams([_layercam(a, g).detach() for a, g in zip(acts, grads)])
         quality = _cam_quality(cam)
     except Exception as e:
