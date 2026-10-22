@@ -35,6 +35,10 @@ Resize/Normalize 값을 복사해 두면 언젠가 한쪽만 바뀌고, 그때�
     # 5) 둘을 함께 주면 임계값의 양쪽 비용을 한 표에 놓고 본다
     ... python tests/evaluate.py --image-dir /data --csv /data/holdout.csv --ood-dir /ood
 
+    # 6) CSV 의 열 하나로 묶어 top-k 를 따로 본다 (holdout.csv 의 src = ham/pad/scin)
+    ... python tests/evaluate.py --image-dir ... --csv tests/baselines/holdout.csv \
+        --label-col label --group-col src
+
 JSON 키 이름에 대하여 — reject_rate 는 이제 "경고율"이다
 --------------------------------------------------------
 2026-08-30 에 서빙 임계값은 **차단선에서 경고선으로 바뀌었다**(fastapi/main.py 의
@@ -103,6 +107,12 @@ SEVERITY = {
 }
 DANGEROUS = {code for code, s in SEVERITY.items() if s in ("HIGH", "MEDIUM")}
 
+# 서빙 응답은 상위 5개를 내보낸다(main.py 의 torch.topk(probs, k=5)). top-1 만 보면
+# "1순위는 틀렸지만 화면 목록에는 정답이 있었다"가 그냥 오답으로 묻힌다.
+TOPK = (1, 3, 5)
+# 위험군은 정답이 1순위가 아니어도 상위 몇 개 안에 떠 있었는지를 따로 센다.
+DANGER_TOPK = 3
+
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
@@ -148,6 +158,20 @@ def load_from_csv(csv_path: Path, image_dirs: list[Path], id_col: str, label_col
                 continue
             samples.append((path, label))
     return samples, missing, unknown
+
+
+def read_groups(csv_path: Path, id_col: str, group_col: str) -> dict[str, str]:
+    """
+    image_id → 그룹 값(예: holdout.csv 의 src). top-k 를 그룹별로 나누는 데만 쓴다.
+
+    load_from_csv 의 반환형은 evaluate_cam.py 도 쓰므로 건드리지 않고 따로 읽는다.
+    """
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None or group_col not in reader.fieldnames:
+            raise SystemExit(
+                f"CSV 에 '{group_col}' 컬럼이 없습니다. 있는 컬럼: {reader.fieldnames}")
+        return {str(row[id_col]).strip(): (row[group_col] or "").strip() for row in reader}
 
 
 def load_from_dirs(image_dirs: list[Path]):
@@ -290,6 +314,28 @@ def threshold_sweep(labels, preds, top1_conf):
     return rows
 
 
+def topk_hits(probs, labels, k: int) -> list[bool]:
+    """샘플마다 정답이 상위 k 안에 들었는가. 임계값과 무관하다."""
+    index = {c: i for i, c in enumerate(CLASSES)}
+    top = probs.topk(k, dim=1).indices.tolist()
+    return [index[label] in row for label, row in zip(labels, top)]
+
+
+def topk_stats(labels, hits, idx):
+    """idx 로 고른 샘플만으로 top-k 정확도와 위험군 top-DANGER_TOPK 포함률을 낸다."""
+    idx = list(idx)
+    danger = [i for i in idx if labels[i] in DANGEROUS]
+    danger_hit = sum(1 for i in danger if hits[DANGER_TOPK][i])
+    stats = {"sample_count": len(idx)}
+    stats.update({f"top{k}": sum(hits[k][i] for i in idx) / len(idx) for k in TOPK})
+    stats.update({
+        "danger_total": len(danger),
+        "danger_hit": danger_hit,
+        "danger_rate": danger_hit / len(danger) if danger else None,
+    })
+    return stats
+
+
 def ood_per_category(categories, preds, top1_conf, threshold):
     """
     갈래별 채점. 여기서는 **경고가 정답**이라 경고율이 곧 정답률이다.
@@ -390,6 +436,22 @@ def print_report(result):
     if d["mel_confused_with"]:
         print("  mel 을 무엇으로 오인했나: "
               + ", ".join(f"{k} {v}건" for k, v in d["mel_confused_with"]))
+
+    # ── 상위 k ────────────────────────────────────────────────
+    tk = result["topk"]
+    dk = tk["danger_k"]
+    print("\n정답이 상위 k 안에 든 비율  (서빙 응답은 상위 5개를 내보낸다)")
+    print("  " + lj("범위", 14) + rj("건수", 6) + "".join(rj(f"top-{k}", 9) for k in tk["ks"])
+          + rj(f"위험군 top-{dk}", 16))
+    print("  " + "-" * (36 + 9 * len(tk["ks"])))
+    for name, st in [("전체", tk["overall"])] + list(tk.get("by_group", {}).items()):
+        print("  " + lj(name or "(빈값)", 14) + f"{st['sample_count']:>6}"
+              + "".join(pct(st[f"top{k}"], 9) for k in tk["ks"])
+              + pct(st["danger_rate"], 16))
+    print(f"  위험군 top-{dk} = 실제 {'·'.join(sorted(DANGEROUS))} 중 정답 병명이 상위 {dk}개 안에 든 비율")
+    print("  클래스별: " + ", ".join(
+        f"{code} {st[f'top{dk}'] * 100:.1f}% ({st['danger_hit']}/{st['danger_total']})"
+        for code, st in tk["danger_by_class"].items()))
 
     # ── 임계값 ────────────────────────────────────────────────
     print("\n임계값을 바꾸면")
@@ -518,6 +580,11 @@ def print_comparison(current, baseline):
         delta(current["accuracy"], baseline["accuracy"], "전체 정확도")
         delta(current["danger"]["downgrade_rate"], baseline["danger"]["downgrade_rate"],
               "악성→양성 오판율 (낮을수록 좋음)")
+        # top-k 는 2026-10 에 추가됐다. 그 전 기준선에는 없으므로 '비교 불가'로 찍힌다.
+        for k in TOPK[1:]:
+            delta(current.get("topk", {}).get("overall", {}).get(f"top{k}"),
+                  baseline.get("topk", {}).get("overall", {}).get(f"top{k}"),
+                  f"top-{k} 정확도")
         print("\n  클래스별 재현율")
         for code in CLASSES:
             delta(current["per_class"].get(code, {}).get("recall"),
@@ -553,6 +620,8 @@ def main() -> int:
                         help="이미지 ID·라벨 목록 (HAM10000 metadata 형식)")
     parser.add_argument("--id-col", default="image_id")
     parser.add_argument("--label-col", default="dx")
+    parser.add_argument("--group-col",
+                        help="이 CSV 열의 값별로 top-k 를 따로 낸다 (예: holdout.csv 의 src)")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--json", type=Path, help="결과를 이 경로에 JSON 으로 저장")
     parser.add_argument("--compare", type=Path, help="이전 --json 결과와 비교")
@@ -564,6 +633,8 @@ def main() -> int:
 
     if not args.image_dir and not args.ood_dir:
         parser.error("--image-dir 또는 --ood-dir 중 적어도 하나는 필요합니다.")
+    if args.group_col and not args.csv:
+        parser.error("--group-col 은 --csv 와 함께 써야 합니다.")
     for d in (args.image_dir or []) + (args.ood_dir or []):
         if not d.is_dir():
             raise SystemExit(f"폴더가 없습니다: {d}")
@@ -608,6 +679,26 @@ def main() -> int:
             p for p, l in zip(preds, labels) if l == "mel" and p != "mel")
         rejected_now = sum(1 for c in top1_conf if c < threshold)
 
+        hits = {k: topk_hits(probs, labels, k) for k in sorted(set(TOPK) | {DANGER_TOPK})}
+        topk = {
+            "ks": list(TOPK),
+            "danger_k": DANGER_TOPK,
+            "overall": topk_stats(labels, hits, range(len(labels))),
+            "danger_by_class": {
+                code: topk_stats(labels, hits, [i for i, l in enumerate(labels) if l == code])
+                for code in sorted(DANGEROUS) if code in labels
+            },
+        }
+        if args.group_col:
+            # _resolve 가 image_id 를 그대로 쓰거나 확장자를 붙여 찾으므로 name/stem 둘 중 하나가 키다.
+            group_of = read_groups(args.csv, args.id_col, args.group_col)
+            groups = [group_of.get(p.name, group_of.get(p.stem, "")) for p, _ in samples]
+            topk["group_col"] = args.group_col
+            topk["by_group"] = {
+                g: topk_stats(labels, hits, [i for i, x in enumerate(groups) if x == g])
+                for g in sorted(set(groups))
+            }
+
         result.update({
             "sample_count": len(samples),
             "accuracy": correct / len(samples),
@@ -625,6 +716,7 @@ def main() -> int:
                 "mel_confused_with": mel_confused.most_common(),
             },
             "threshold_sweep": threshold_sweep(labels, preds, top1_conf),
+            "topk": topk,
         })
         print_report(result)
 
