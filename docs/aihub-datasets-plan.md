@@ -1,0 +1,282 @@
+# AI허브 데이터셋 도입 계획 — 안면부 피부질환(1순위) · 화상(2순위)
+
+> 이 문서는 "어떤 데이터를, 어디서, 어떻게 학습해서, 서비스의 어느 층에 어떤 모양으로 붙이는가"를
+> 한 곳에 못박아 두는 계약서다. 코드 세 층(FastAPI·Spring·React)이 병명 코드를 각자 들고 있는
+> 구조라, 계약이 흐려지면 "서버는 멀쩡히 뜨고 병명만 조용히 틀리는" 사고가 난다
+> (`fastapi/tests/test_model_contract.py` 머리말 참고).
+
+## 0. 결론 먼저
+
+| 순위 | 데이터셋 | 입수 경로 | 학습 장소 | 서비스 반영 |
+|:---:|---|---|---|---|
+| 1 | **안면부 피부질환 이미지 합성 데이터** (AI허브 71863) | 일반 다운로드 (INNORIX, 약 10GB) | 제공받은 GPU 클라우드(V100 32GB · 8vCPU · 90GB), 대안 Colab | 이번 PR 에서 끝까지 (`facial` 태스크) |
+| 2 | **화상 이미지 및 임상 데이터** (AI허브 71398) | **안심존 온라인** — 반출 불가 | 안심존 서버 안에서만 | 라벨 스키마 확인 + 반출 경로 확정 후 후속 PR |
+| — | 피부질환 병리검사 이미지 데이터 (AI허브 71519) | 안심존 온라인, WSI(svs/mrxs) | — | **범위 제외** (사용자 결정 2026-10-23) |
+
+서비스 쪽 설계 원칙은 하나다. **기존 8클래스 모델(`fastapi/model.pth`)은 한 바이트도 건드리지 않는다.**
+새 데이터는 별도 태스크(별도 가중치·별도 클래스 목록)로 **옆에 추가**하고, 요청에 `task` 를
+안 적으면 지금과 100% 같은 동작을 한다. 그래야 "기존 서비스와 충돌 없음"이 검증 가능한 문장이 된다.
+
+---
+
+## 1. 데이터셋 사실 정리
+
+### 1-1. 안면부 피부질환 이미지 합성 데이터 (71863) — 1순위
+
+공개 페이지에서 확인한 사실(출처: [AI허브 71863](https://www.aihub.or.kr/aihubdata/data/view.do?aihubDataSe=data&dataSetSn=71863),
+[공공데이터포털 등록 정보](https://www.data.go.kr/data/15150279/fileData.do)):
+
+- 2024년 구축, 헬스케어 / 이미지 / **합성 데이터**. 내국인만 신청 가능. 국방데이터라 일부 제한 표기.
+- 원천데이터 총 **1만 2천 장**. 질환별 **정면(1024×1024 PNG)** 과 **측면(512×512 PNG)** 으로 나뉘고 각 1천 장.
+- 질환: 페이지 표에 **건선 · 아토피 · 여드름 · 주사 · 지루** 가 보이고, 다운로드 목록(사용자 화면)에
+  `VL_여드름_정면.zip`, `VL_정상_정면.zip`, `VL_주사_정면.zip`, `VL_지루_정면.zip` … 처럼 **정상** 폴더가 있다.
+  6종 × 2뷰 × 1,000장 = 12,000장으로 수량이 맞아떨어진다. → **6클래스(정상 포함)** 로 본다.
+- 라벨: PNG(세그멘테이션 마스크) + JSON(바운딩박스, 임상정보 텍스트, 중증도).
+- 파일명 접두어 규칙(AI허브 표준): `TS_` 학습 원천 / `TL_` 학습 라벨 / `VS_` 검증 원천 / `VL_` 검증 라벨.
+
+**아직 모르는 것 — 라벨 JSON 의 정확한 키 이름.** 다운로드가 끝나면
+`fastapi/training/aihub/inspect_dataset.py` 를 돌려 보고서를 공유한다(§4).
+클래스는 폴더/zip 이름(`_여드름_`, `_정상_` …)에서 확정할 수 있어 JSON 키가 달라도 학습은 가능하다.
+
+### 1-2. 화상 이미지 및 임상 데이터 (71398) — 2순위
+
+출처: [AI허브 71398](https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&dataSetSn=71398)
+
+- 2022년 구축, 2023-12 갱신. 주관 서울대학교 산학협력단(협력 한림대·순천향대·수원대). 구축량 23,010건.
+- 구성: (1) 화상 이미지 JPG + 라벨 JSON(바운딩박스·세그멘테이션) (2) 영상검사 DICOM(라벨 없음)
+  (3) 임상정보 JSON. **화상 이미지 라벨과 임상정보가 하나의 JSON** 에 들어 있다.
+- 목적: 화상 진단 보조와 **화상 단계(깊이) 판정** AI. 화상 원인 항목(예: 화학 화상)이 있다.
+- **온라인 안심존** 데이터다. 다운로드가 없고, 할당된 서버 안에서만 열람·학습한다.
+
+### 1-3. 안심존 제약 — 이게 2순위가 된 이유
+
+안심존 운영자 메일(2026-10-23)의 요지:
+
+- 할당 자원은 **신청승인일로부터 7일** 이용 가능(할당 작업일 포함). 첫날 15:00 이전 할당 완료.
+- 서버는 데이터 마운트 + **외부망 차단** 상태로 제공된다 → pip 설치, 사전학습 가중치 다운로드가 안 된다.
+- **데이터 열람 이용자는 파일 반출이 불가**하다. 만료 후 서버는 회수·초기화된다(복구 불가).
+
+즉 지금 할당된 것은 "열람환경"이라 **학습한 가중치 파일을 밖으로 가져올 공식 경로가 없다.**
+화상 모델을 서비스에 올리려면 둘 중 하나가 필요하다(사용자 확인 필요):
+
+1. 포털의 **데이터 분석** 서비스(분석환경)로 신청해 **반출 심사**를 거쳐 가중치(.pth)와 평가 리포트를 반출한다.
+2. 열람환경에서는 라벨 스키마 확인과 **학습 가능성 검증(지표)** 까지만 하고, 모델 반출은 추후 분석환경에서 한다.
+
+---
+
+## 2. 학습 환경
+
+### 2-1. 1순위: 제공받은 GPU 클라우드 (V100 32GB · 8vCPU · 90GB)
+
+- 10GB zip → 압축 해제 후 약 20~30GB. 90GB 디스크면 데이터 + 체크포인트가 들어간다.
+- 학습 코드는 **순수 Python 스크립트**(`fastapi/training/aihub/train.py`)로 만든다. 노트북은 Colab 에서
+  같은 스크립트를 부르는 얇은 래퍼만 둔다. 서버 종류가 바뀌어도 코드가 바뀌지 않게 하기 위해서다.
+- **외부망이 막혀 있어도 돌아가게** 만든다:
+  - 사전학습 가중치: ① 저장소의 `fastapi/model.pth`(피부 사진으로 이미 학습된 EfficientNet-B0 백본)를
+    기본 초기값으로 쓴다 — `git clone` 만 되면 함께 따라온다. ② 인터넷이 되면 `--pretrained imagenet` 으로 timm 다운로드.
+  - 의존성: torch · torchvision · timm · Pillow · numpy · scikit-learn 뿐. 환경에 이미 있는지 §4 의 점검으로 확인한다.
+- **확인 필요(사용자):** 이 클라우드가 (a) 안심존 분석환경 GPU 서버인지, (b) 별도 학습용 클라우드인지,
+  (c) 인터넷/`git clone`/`pip` 이 되는지, (d) 접속 방식(SSH · Jupyter)이 무엇인지. 코드는 어느 쪽이든 돌게 짜되,
+  데이터 반입(10GB 업로드)과 결과 반출 방법이 달라진다.
+
+### 2-2. 대안: Colab T4
+
+기존 `fastapi/notebooks/pad_ham_training.ipynb` 와 같은 방식(Drive 에 zip 업로드 → 노트북 실행).
+10GB 를 Drive 에 올리고 매번 `/content` 에 푸는 비용이 커서 GPU 클라우드가 되면 그쪽을 쓴다.
+
+### 2-3. 안심존 열람환경 (화상)
+
+- 접속 절차는 §5 에 가이드 전문 해설. 리눅스 서버에 Jupyter 가 있고 CPU 8코어/64GB 다(GPU 없음).
+- 할 수 있는 것: 라벨 스키마 점검(`inspect_dataset.py`), manifest 생성, 소규모 학습·평가로 **지표 산출**.
+- 할 수 없는 것: 파일 반출. 결과는 **화면 스크린샷**으로만 남긴다 → 스크립트 출력은 한 화면에 들어가게 짧게 찍는다.
+
+---
+
+## 3. 서비스 통합 계약 (이 PR 의 범위)
+
+### 3-1. 태스크와 클래스 코드
+
+| task | 의미 | 가중치 | 클래스 (순서 고정, 뒤에만 추가) |
+|---|---|---|---|
+| `skin_lesion` | 기존 피부 병변 8클래스 — **기본값, 변경 없음** | `fastapi/model.pth` | `akiec, bcc, bkl, df, mel, nv, vasc, inflammatory` |
+| `facial` | 안면부 피부질환 (71863) | `fastapi/models/facial.pth` | `acne, atopic, normal, psoriasis, rosacea, seb_derm` |
+| `burn` *(후속 PR)* | 화상 깊이 (71398) | `fastapi/models/burn.pth` | 라벨 스키마 확인 후 확정 (예정: `burn_1, burn_2s, burn_2d, burn_3`) |
+
+`facial` 클래스 코드 ↔ 데이터셋 폴더명 ↔ 한글 병명 ↔ KCD(프론트 검색 선입력용):
+
+| code | 폴더명 토큰 | 한글 | 영문 | severity | KCD |
+|---|---|---|---|---|---|
+| `acne` | 여드름 | 여드름 | Acne | LOW | L70 |
+| `atopic` | 아토피 | 아토피피부염 | Atopic dermatitis | LOW | L20 |
+| `normal` | 정상 | 정상 피부 | Normal skin | LOW | (없음) |
+| `psoriasis` | 건선 | 건선 | Psoriasis | LOW | L40 |
+| `rosacea` | 주사 | 주사(장미증) | Rosacea | LOW | L71 |
+| `seb_derm` | 지루 | 지루피부염 | Seborrheic dermatitis | LOW | L21 |
+
+코드는 알파벳순으로 고정한다. 기존 코드와 겹치지 않고 `disease.disease_code VARCHAR(20)` 안에 들어간다.
+`normal` 은 KCD 가 없으므로 프론트 매핑에서 비워 둔다(검색 모달에 선입력하지 않음).
+
+### 3-2. FastAPI (`fastapi/main.py`)
+
+- 모듈 상수 `TASKS = {"skin_lesion": {...}, "facial": {...}}` — 각 항목에 `classes`, `names_ko`, `weights`, `input_size`.
+- 가중치 파일이 **있는 태스크만 로드**한다. 없으면 로드하지 않고 `/health` 에 `loaded: false` 로만 보인다
+  (CI 에는 `facial.pth` 가 없어도 통과해야 한다).
+- `POST /predict-base64` 본문: `{"image_base64": ..., "task": "skin_lesion"}` — `task` 생략 시 기존과 동일.
+  모르는 task → 400, 등록됐지만 미로드 → 503. 응답에 `"task"` 필드 추가(Spring 은 모르는 필드를 무시한다).
+- `POST /predict`(multipart) 도 선택 폼 필드 `task`.
+- `/health` 는 기존 키를 그대로 두고 `tasks: {name: {loaded, model_version, classes, weights}}` 를 덧붙인다.
+- 기존 모듈 변수 `CLASSES`, `CLASS_NAMES_KO`, `model`, `transform`, `MODEL_VERSION` 은 **기본 태스크의 별칭으로 유지** —
+  `tests/evaluate.py`, `evaluate_cam.py`, `test_model_contract.py` 가 그대로 돈다.
+- 태스크마다 자기 `_model_lock` 과 CAM 레이어를 가진다(히트맵 교차오염 금지 규칙은 태스크별로 동일 적용).
+- 모델 버전은 태스크별 가중치 파일 SHA256 앞 12자리: `efficientnet_b0-<hash>`.
+
+### 3-3. Spring (`backend/`)
+
+- `AnalysisRequest(imageIds, analysisType)` — `analysisType` 은 `enum AnalysisType { SKIN_LESION("skin_lesion"), FACIAL("facial") }`,
+  **null 이면 SKIN_LESION**. FastAPI 호출 본문에 `task` 로 전달.
+- `analysis_result.analysis_type VARCHAR(20) NOT NULL DEFAULT 'skin_lesion'` (V10) + 엔티티 필드(`@Builder.Default`).
+- `AnalysisResponse.analysisType` 추가. 기존 필드 순서·이름 불변.
+- `disease` 시드: **V10 에서 `facial` 6행을 `ON DUPLICATE KEY UPDATE disease_id = disease_id` 로 추가.**
+  **V1 은 고치지 않는다** — Flyway 가 V1 을 직접 적용한 DB(2026-08-30 이후 새로 만든 개발 DB)에서 체크섬 불일치로
+  기동이 막힌다. 대신 계약 테스트가 **모든 마이그레이션의 `INSERT INTO disease`** 를 합쳐 모델 클래스와 대조한다.
+- `AnalysisService.DISEASE_NAME_KO` / `DISEASE_REASON`, `KioskService.DISEASE_NAME_KO` 에 6종 추가 —
+  `Map.of` 는 10쌍 한도라 `Map.ofEntries` 로 바꾼다(계약 테스트의 정규식도 함께).
+- 키오스크 예비분석은 `skin_lesion` 고정(변경 없음). `AnalysisService.analyze(visitId, imageIds)` 2-인자 메서드는
+  남겨 두고 기본 태스크로 위임한다(`AnalysisResilienceTest` 호환).
+
+### 3-4. React (`frontend/`)
+
+- `api/analysis.ts`: `AnalysisType = "skin_lesion" | "facial"`, `requestAnalysis(visitId, imageIds, analysisType)`, 응답에 `analysisType`.
+- `Clinic.tsx`: "AI 분석" 버튼 옆에 분석 모델 선택(피부 병변 / 안면부 피부질환). 결과 카드에 어떤 모델인지 표시.
+  `DISEASE_TO_KCD_CODE` 에 위 표의 KCD 추가.
+- `Lookup.tsx`: 분석 종류 라벨 표시(소폭).
+
+### 3-5. 계약 테스트 (`fastapi/tests/test_model_contract.py`)
+
+- 태스크별로: `names_ko` 집합 = classes, 로드된 모델의 출력 차원 = len(classes).
+- 노트북/학습 스크립트는 `TASK = "<task>"` 와 `CLASSES = [...]` 리터럴을 선언하고, 해당 태스크의 classes 와 **순서까지** 같아야 한다.
+- DB 시드(모든 마이그레이션 합집합) = 모든 태스크 클래스 합집합. Java 두 맵 = 같은 합집합. 한글 병명 일치.
+- 태스크별 홀드아웃 목록(`tests/baselines/<task>-holdout.csv`)이 있으면 라벨·중복 검사, 없으면 건너뜀(경고).
+
+---
+
+## 4. 사용자가 해야 할 일 (호출 지점)
+
+1. **[지금]** 안면부 데이터 다운로드가 끝나면, 맥에서 아래를 돌려 `report.txt` 를 공유한다(압축 안 풀어도 된다).
+   ```bash
+   cd 2026-1-CECD1-5-Artifact-9
+   python3 fastapi/training/aihub/inspect_dataset.py ~/Downloads/<다운로드폴더> --out ~/facial_report.txt
+   ```
+   → 라벨 JSON 키 이름과 중증도 값 체계를 확정하고 manifest 빌더의 키 매핑을 고정한다.
+2. **[지금]** GPU 클라우드의 정체 확인(§2-1 의 a~d). 가능하면 그 서버에서
+   `python3 -c "import torch, torchvision, timm; print(torch.__version__, torch.cuda.is_available())"` 결과를 알려 준다.
+3. **[안심존 할당 후]** 화상 데이터 쪽: 윈도우 서버 → 리눅스 서버(Jupyter) 에서
+   `inspect_dataset.py` 를 돌려 화면을 **스크린샷**으로 공유한다(반출 불가). 동시에 운영자에게
+   "열람환경에서 학습한 모델 가중치의 반출 가능 여부 / 분석환경 전환 절차"를 문의한다.
+4. **[학습 후]** `facial.pth` 와 평가 JSON 을 저장소에 넣는다(`fastapi/models/facial.pth`, `fastapi/tests/baselines/facial-*.json`).
+   가중치가 들어오기 전까지 서비스는 `facial` 을 "미로드" 상태로 안전하게 표시한다.
+
+> 보안: 포털 접속정보(터널링 서버 주소·ID·암호, 원격 윈도우/리눅스 서버 암호, 주피터 암호, `temp.pem`)는
+> **어떤 파일에도 적지 않는다.** 이 문서의 명령은 전부 자리표시자다.
+
+---
+
+## 5. 안심존 접속 가이드 해설 (제공 문서 2종 + 운영자 메일)
+
+### 5-1. 「안심존 온라인망 CPU 서버 접속 가이드 for MAC」(docx) — 전문 해설
+
+> 이 매뉴얼은 Mac OS 사용자를 위한 안심존 프로젝트의 온라인망 CPU 서버 접속 가이드이며, macOS Monterey 12.4 에서 테스트했다.
+
+**1. iTerm ssh 터널링 연결**
+
+1) 터널링 연결 및 확인
+- 터널링 연결 후 **터미널 창은 유지해야 한다** (닫으면 터널링이 해제된다).
+- 터널링 연결 후 접속 대상 서버는 **127.0.0.1 또는 localhost** 로 접속해야 한다.
+- `temp.pem` 은 키 파일이 있는 경로에서 실행하거나, 키 파일 경로를 입력한다.
+
+```bash
+# 운영자 메일에 적힌 값을 그대로 넣는다 (여기서는 자리표시자)
+ssh -i temp.pem ubuntu@<터널링서버_공인IP> -p <터널링_PORT> -L 3389:<원격윈도우서버_내부IP>:3389
+# 또는
+ssh -i <경로>/temp.pem ubuntu@<터널링서버_공인IP> -p <터널링_PORT> -L 3389:<원격윈도우서버_내부IP>:3389
+```
+
+- 그림 설명: 터미널에 `ssh ncloud@[터널링서버_IP] -p 2324 -L 3389:[Connect_SVR]:3389` 형태로 입력하고 암호를 넣는 화면.
+  `Connect_SVR` 자리에는 전달받은 서버 IP 를 넣는다(Connect server 는 3389 포트를 사용한다).
+  로그인 프롬프트가 떨어지면 **[터널링 연결 완료 — Close 금지]** 상태다.
+- 우리 경우(메일 기준): 사용자 `ubuntu`, 키 파일 인증, 로컬 3389 → 원격윈도우서버 내부 IP 의 3389 로 포워딩.
+  `temp.pem` 권한은 `chmod 400 temp.pem` 으로 맞춰 둔다(권한이 열려 있으면 ssh 가 키를 거부한다).
+
+**2. Windows 서버 접속**
+
+1) Microsoft Remote Desktop 설치: App Store → "Microsoft Remote Desktop" 검색 → 설치. (그림: App Store 검색 결과 화면)
+2) PC 에서 Microsoft Remote Desktop 실행 및 서버 추가. (그림: "Add your first PC connection to get started" 화면의 **Add PC**)
+3) 원격접속 설정: **Add PC → User account: Ask when required → Add User Account** → 유저 및 패스워드 등록.
+   **PC name 에는 localhost 또는 127.0.0.1 을 입력**한다(그림에 빨간 글씨로 강조). 서버 IP 가 아니다 — 1 단계 터널이 3389 를 로컬로 끌어왔기 때문이다.
+   (그림: Add a User Account — Username `User@Domain or Domain\User`, Password, Friendly name)
+   - Username 은 포털 "원격윈도우서버 접속 ID", Password 는 "원격윈도우서버 접속 암호".
+4) 생성된 원격 PC(서버) 더블클릭으로 접속. (그림: `test.pc — No user account` 타일)
+
+### 5-2. 「AI허브 Safezone 사용자 가이드 ver1.0 (MAC 사용자)」(PDF 9쪽) — 쪽별 전문 해설
+
+이 PDF 는 **SSL VPN(BLUEMAX) 방식**이다. 포털 접속정보 화면에 "SSL VPN 서버 URL / 사용자 이름 / 암호" 가
+**"Mac OS 사용자는 제공되지 않습니다"** 로 떠 있으므로, **맥 사용자는 5-1 의 SSH 터널링 방식으로 간다.**
+그래도 윈도우 서버 이후 절차(원격 데스크톱 → MobaXterm → 분석환경)는 공통이라 전부 옮겨 둔다.
+
+- **1쪽 — 01 | SSL VPN 접속 가이드 / 가. SSL VPN 프로그램 다운로드**
+  ① AI허브 안심존 포털 "데이터 접속 정보" → [MAC용 VPN 프로그램 다운로드] 클릭.
+  ② `BLUEMAXESP.pkg` 더블클릭 설치.
+- **2쪽 — 나. SSL VPN 클라이언트 에이전트 설치**
+  ① BLUEMAXCLIENT 설치 프로그램 시작 → "BLUEMAXESP 설치".
+  ② 설치 완료 후 응용프로그램에 생성된 "BLUEMAXESP" 실행 → "시스템 확장 프로그램 차단됨" 안내가 뜬다.
+- **3쪽**
+  ③ 시스템 확장 프로그램 차단됨 → 보안 환경설정 열기 → 자물쇠 클릭(변경 허용) → "허용".
+  ④ "허용" 클릭 후 → 클라이언트 종료 → 에이전트 "재실행" 및 CA 인증서 등록.
+- **4쪽**
+  ⑤ URL 입력(가이드 예시: `https://<VPN서버>:8443/index.html`) → Connect → ID/PW 입력 후 "Send EMAIL" →
+  등록된 이메일로 OTP 번호 전송 → 인증번호 입력 후 Login → 로그인 완료.
+  (포털 안내: VPN 장비는 macOS 12.0~14.0 만 지원, 그 외 버전은 관리자 문의.)
+- **5쪽 — 02 | 사용자 Windows Server 접속 가이드**
+  가. BLUEMAX SSL VPN 실행 및 로그인.
+  나. Windows Server 접속 절차 ① 안심존 포털 → 데이터 접속정보 → 각 서버별 "접속 IP 및 접속 ID, 암호" 확인
+  ② BLUEMAX SSL VPN 실행 및 로그인.
+- **6쪽** ③ 단말(데스크탑/노트북)에서 App Store → "Microsoft remote desktop" 검색/설치
+  ④ 설치 후 "Add PC" 클릭 ⑤ 사용자 접속 ID / 패스워드 입력.
+- **7쪽** ⑥ 생성된 서버 더블클릭 ⑦ RDP 호스트 연결 "Continue" ⑦ Windows 서버 접속 화면.
+- **8쪽 — 03 | GPU Server 접속 가이드 / 가. GPU 서버 접속 절차**
+  ① Windows 서버 바탕화면의 "MobaXterm" 아이콘 더블클릭 실행 ② "분석환경접속" 더블클릭.
+  → 우리 할당에서는 이 자리가 **리눅스 서버(포털의 "리눅스 서버 내부 IP", ID `ubuntu`)** 다.
+  리눅스 서버의 Jupyter 는 포털의 "주피터노트북 암호"로 들어간다.
+- **9쪽** 표지/여백(본문 없음).
+
+### 5-3. 운영자 메일 요지 (2026-10-23)
+
+- "첨부파일의 temp 키가 저장된 위치에서 `ssh -i temp.pem ubuntu@<공인IP> -p <PORT> -L 3389:<윈도우서버내부IP>:3389` 를 입력하고,
+  터널링 서버 접근 후에 첨부 가이드를 참고해 순서대로 수행."
+- 자원 할당: 이용시작일 첫날 할당 작업(15:00 이전 완료), 포털(safezone.aihub.or.kr)에서 확인, **승인일로부터 7일**.
+- 열람서비스: 데이터 마운트 + **외부망 차단**. 상세는 안심존 통합 사용자 매뉴얼 41p~.
+- **반출 불가**: 열람 이용자는 파일 반출 불가. 만료 후 서버 자동 회수·초기화(복구 불가).
+
+### 5-4. 접속 체크리스트 (맥)
+
+1. `chmod 400 temp.pem` → 5-1 의 ssh 터널 명령 실행 → 터미널 유지.
+2. Microsoft Remote Desktop → Add PC(`localhost`) → 포털의 원격윈도우서버 ID/암호 → 접속.
+3. 윈도우 서버 안에서 MobaXterm(또는 브라우저) → 리눅스 서버 내부 IP 로 SSH/Jupyter.
+4. 리눅스 서버에서 §4-3 의 점검 스크립트 실행 → 화면 스크린샷.
+   스크립트 파일은 반입이 안 되면 **윈도우 서버 안의 메모장에 타이핑/붙여넣기**로 옮긴다
+   (RDP 클립보드가 막혀 있으면 수동 입력 — 그래서 점검 스크립트는 표준 라이브러리만 쓰고 짧게 유지한다).
+
+---
+
+## 6. 단계별 커밋 계획
+
+| 단계 | 커밋 | 내용 |
+|:---:|---|---|
+| 1 | `docs: AI허브 데이터셋 도입 계획 및 점검 스크립트` | 이 문서 + `inspect_dataset.py` |
+| 2 | `feat(fastapi): 태스크별 모델 레지스트리 (기본 동작 불변)` | `main.py` 레지스트리, `/health` 확장, 계약 테스트 확장 |
+| 3 | `feat(training): 안면부 피부질환 데이터 파이프라인·학습 스크립트` | manifest 빌더, 홀드아웃, `train.py`, 평가 |
+| 4 | `feat(backend): 분석 태스크(facial) 지원 + disease 시드 V10` | enum, 요청/응답 필드, 마이그레이션, 병명 맵 |
+| 5 | `feat(frontend): 분석 모델 선택 UI + 안면부 KCD 매핑` | Clinic/Lookup, api 타입 |
+| 6 | PR | CI(백엔드 테스트·프론트 빌드·FastAPI 계약 테스트) 통과 확인 |
+
+가중치(`facial.pth`)와 기준 성적(`facial-holdout-*.json`)은 학습이 끝난 뒤 **별도 커밋**으로 들어온다.
