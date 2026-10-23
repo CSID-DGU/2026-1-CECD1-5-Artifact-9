@@ -280,3 +280,93 @@ ssh -i <경로>/temp.pem ubuntu@<터널링서버_공인IP> -p <터널링_PORT> -
 | 6 | PR | CI(백엔드 테스트·프론트 빌드·FastAPI 계약 테스트) 통과 확인 |
 
 가중치(`facial.pth`)와 기준 성적(`facial-holdout-*.json`)은 학습이 끝난 뒤 **별도 커밋**으로 들어온다.
+
+---
+
+## 7. 진행 현황과 인수인계 (2026-10-23, 클라우드 세션 → 맥북 로컬 세션)
+
+작업 환경이 아래처럼 정해졌다(사용자 결정 2026-10-23).
+
+- **코드 작업**: 사용자 맥북의 로컬 Claude Code 세션이 이 브랜치(`kannikii/admiring-mccarthy-nfen9c`)를 이어받아 진행한다.
+- **학습**: AI허브가 제공하는 GPU 환경(NVIDIA Tesla V100 32GB · 8vCPU · 90GB)을 쓴다. 맥북 MPS 는 예비 수단이다.
+- **데이터**: 이미 맥북에 받아 둔 안면부 데이터(10GB zip)를 그 GPU 환경으로 올려 쓴다. 다시 내려받지 않는다.
+- **화상 데이터**: 안심존 안에서만 열람·학습 가능(§1-3). 반출 경로가 확정되면 같은 `train.py` 로 안에서 학습한다.
+
+이 절은 로컬 세션이 그대로 이어받을 수 있도록 "무엇이 확정됐고, 무엇이 어디까지 됐고, 다음에 무엇을 어떤 순서로 하는가"를 적는다.
+
+### 7-1. 확정된 사실 — 안면부 데이터 실제 구조 (점검 보고서로 확인)
+
+- 경로: `~/Downloads/14.안면부 피부질환 이미지 합성데이터/3.개방데이터/1.데이터/` (경로에 공백이 있으니 항상 큰따옴표).
+- 레이아웃: `Training/01.원천데이터/TS_<질환>_<뷰>.zip`(png 800) · `Training/02.라벨링데이터/TL_…zip`(json 800) ·
+  `Validation/01.원천데이터/VS_…zip`(png 100) · `Validation/02.라벨링데이터/VL_…zip`(json 100). 질환 6 × 뷰 2 → **총 10,800장**(train 9,600 / val 1,200).
+  정면 1024×1024, 측면 512×512. `1.데이터` 바로 아래 `.DS_Store` 가 있다(무시).
+- zip 안 항목은 **`/H0_205860_P1_L2.png` 처럼 루트에 평평하게, 앞에 `/` 가 붙어** 있다. 하위 폴더 없음.
+- 파일명(=identifier) 패턴 `<접두2자>_<숫자>_P<n>_L<n>` (예: `H0_…`=여드름, `Z4_…`=정상). P/L 의 의미는 미문서 → 메타 열로만 보존.
+- 라벨 JSON(파일당 `annotations` 1개):
+  - `annotations[0].diagnosis_info.diagnosis_name` = 여드름 | 건선 | 아토피 | 정상 | 주사 | 지루 ← **클래스 라벨**(폴더 토큰과 일치, 교차검증용)
+  - `diagnosis_info.{onset, distribution, bodypart, symptom, desc}` — 발병 시기·침범 범위(부분/넓은)·부위·증상(none/itching)·설명문
+  - `generated_parameters.{gender(여/남/N/A), age_range, bodypart, race(황인)}`
+  - `photograph.{file_path, width, height}` — **`file_path` 는 `여드름/정면/H0_….png` 로 적혀 있어 실제 zip 경로와 다르다 → stem(identifier)으로 짝짓는다.**
+  - `bbox.{xpos, ypos, width, height}` — 정면 (0,0,1024,1024) 전체, 측면 500×500 오프셋 0~12 → 사실상 전체 이미지, **크롭 불필요**.
+  - 여드름에만 `bbox.lesions[] {xpos, ypos, width, height, inflammatory}` 와 `bbox.lesion_area`(마스크 경로; 파일은 배포본에 없음).
+  - **중증도(severity) 필드는 없다.** 학습 라벨은 질환명 하나. 나머지는 manifest 메타 열(gender, age_range, distribution, onset, symptom, lesion_count, inflammatory_lesions, prefix, p_code, l_code).
+- 분할: AI허브가 준 Training/Validation 을 그대로 쓴다. 합성 데이터라 환자 ID 그룹핑이 필요 없다. Validation 1,200장이 공식 홀드아웃(`tests/baselines/facial-holdout.csv`)이 된다.
+
+### 7-2. 어디까지 됐나
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| git identity kannikii 고정, 서명 비활성 | ✅ 커밋됨 | 로컬에서도 `git config user.name kannikii`, `user.email kwnnh0124@dgu.ac.kr` 확인 |
+| 이 문서 + `inspect_dataset.py` | ✅ 커밋됨 (`92c90a9`, `244074e`) | |
+| FastAPI 태스크 레지스트리 (`fastapi/main.py`, `tests/*.py`, `fastapi/models/`, `.gitignore`) | 🟡 구현 완료 · **검증 전 스냅샷** | 클라우드 세션의 병렬 에이전트가 작성. 로컬에서 계약 테스트·스모크 재실행 필요 |
+| 백엔드 (`AnalysisType`, `V10__facial_task.sql`, 병명 맵, 엔티티·응답 필드, 테스트) | 🟡 구현 완료 · 검증 전 스냅샷 | `./gradlew test` 미실행 |
+| 프론트 (`api/analysis.ts`, `Clinic.tsx`, `Lookup.tsx`) | 🟡 구현 완료 · 검증 전 스냅샷 | `npm run lint && npm run build` 미실행 |
+| 학습 파이프라인 (`fastapi/training/aihub/train.py`, `facial/*`, README) | 🟡 작성 중이던 스냅샷 | 7-1 의 실제 스키마가 확정되기 **전** 에 범용으로 짜였다. `facial/build_manifest.py` 를 7-1 에 맞게 고정해야 한다 |
+| 화상(`burn`) 태스크 | ⬜ 미착수 | §1-2·§1-3. 안심존 안에서만 가능 |
+
+### 7-3. 로컬 세션이 할 일 (순서대로)
+
+1. **스냅샷 검증부터.** 아무것도 고치기 전에 세 층의 검사를 돌려 현재 상태를 안다.
+   ```bash
+   # FastAPI (venv 에 torch CPU + timm + fastapi + httpx 설치 후)
+   cd fastapi && INTERNAL_API_SECRET=test python tests/test_model_contract.py
+   # 백엔드
+   cd backend && ./gradlew test --no-daemon
+   # 프론트
+   cd frontend && npm ci && npm run lint && npm run build
+   ```
+   실패하는 것은 §3 계약 기준으로 고친다. 특히 확인할 것: task 생략 시 `/predict-base64` 응답이 변경 전과 같은가, `facial.pth` 없이 서버가 뜨고 `/health.tasks.facial.loaded == false` 인가,
+   계약 테스트가 `Map.ofEntries` 와 모든 마이그레이션의 `INSERT INTO disease` 를 읽는가, Grad-CAM 락이 태스크별로 걸리는가.
+2. **`fastapi/training/aihub/facial/build_manifest.py` 를 7-1 실제 구조로 고정.** zip 항목의 선행 `/` 제거, stem 으로 이미지↔JSON 짝짓기, 라벨은 `diagnosis_name`(폴더 토큰과 불일치 시 에러), 메타 열 추가, 중증도 인자 제거.
+   그 다음 실제 데이터로 `build_manifest → make_holdout` 을 돌려 `fastapi/tests/baselines/facial-holdout.csv`(1,200행) 를 만든다. 이 파일은 커밋한다.
+3. **층별 커밋 (검증 통과 후), 메시지는 한글 conventional commit, author 는 kannikii, 트레일러 없음:**
+   `feat(fastapi): 태스크별 모델 레지스트리 (기본 동작 불변)` → `feat(training): 안면부 피부질환 데이터 파이프라인·학습 스크립트` →
+   `feat(backend): 분석 태스크(facial) 지원 + disease 시드 V10` → `feat(frontend): 분석 모델 선택 UI + 안면부 KCD 매핑`.
+4. **AI허브 GPU 환경(V100)에서 학습.**
+   - 반입: 맥북의 `1.데이터/` 폴더(10GB zip)와 이 저장소(`git clone` 또는 zip)를 GPU 환경으로 올린다. 환경이 외부망을 막고 있으면 pip 설치가 안 되므로
+     먼저 `python -c "import torch, torchvision, timm; print(torch.__version__, torch.cuda.is_available())"` 로 기본 패키지 유무를 확인한다.
+     timm 이 없을 때를 대비해 `train.py` 는 timm 미설치 시 torchvision 의 efficientnet_b0 로 대체하도록 보강하는 것이 안전하다(로컬 세션 할 일에 포함).
+   - 실행(압축 해제 후 약 20~30GB 필요, 90GB 디스크면 충분):
+     ```bash
+     python fastapi/training/aihub/facial/build_manifest.py "<GPU환경의 1.데이터 경로>" --extract-to ~/facial_data --out ~/facial_run/manifest.csv
+     python fastapi/training/aihub/facial/make_holdout.py --manifest ~/facial_run/manifest.csv --out ~/facial_run/facial-holdout.csv
+     python fastapi/training/aihub/train.py --manifest ~/facial_run/manifest.csv --task facial --device cuda \
+       --init repo --epochs 15 --batch-size 64 --image-size 224 --out-dir ~/facial_run
+     ```
+     `--init repo` 는 `fastapi/model.pth`(피부 사진으로 학습된 EfficientNet-B0) 백본을 물려받는다 — 저장소가 함께 올라가 있어야 한다.
+     V100 에서 1만 장·15 epoch 은 수십 분 단위(추정). 산출물: `facial.pth`, `facial-train-report.json`, `facial-val-predictions.csv`, `facial-holdout.csv`.
+   - 반출: 가중치·리포트·홀드아웃 목록만 맥북으로 가져온다(이미지 반출 없음). 안심존 분석환경이라면 반출 심사 절차를 따른다.
+   - 예비: GPU 환경을 못 쓰는 날은 맥북에서 `--device mps`(연산 미지원 오류 시 `PYTORCH_ENABLE_MPS_FALLBACK=1` 또는 `--device cpu`)로 같은 명령을 돌린다. 1~3시간대(추정).
+5. **가중치 적재와 검증.** `facial.pth` → `fastapi/models/facial.pth`, 리포트 → `fastapi/tests/baselines/facial-holdout-<날짜>.json` 으로 넣고
+   `tests/evaluate.py --task facial` 로 홀드아웃 1,200장을 다시 재서 학습 리포트와 일치하는지 본다. 그 다음 `docker compose up --build` 로 화면에서 "안면부 피부질환" 모델을 선택해 분석이 되는지 확인.
+   커밋: `feat(fastapi): 안면부 피부질환 모델 가중치 및 기준 성적 추가`.
+6. **PR.** `kannikii/admiring-mccarthy-nfen9c` → `main`. 본문에 §0 의 표와 "기존 8클래스 경로는 변경 없음(task 생략 시 동일 응답)" 을 명시. CI 세 잡(백엔드 테스트·프론트 빌드·FastAPI 빌드/계약/동시요청)이 전부 초록이어야 한다.
+7. **화상(`burn`) 후속.** 안심존 리눅스 서버에서 `inspect_dataset.py` 로 라벨 스키마 확인(스크린샷) → `training/aihub/burn/classes.py`(예정 코드 `burn_1, burn_2s, burn_2d, burn_3`) 와 manifest 빌더 작성 →
+   같은 `train.py` 로 안심존 안에서 학습 → 반출 가능 여부(분석환경/반출 심사) 확인 후 가중치·리포트만 반출 → V11 시드 + 레지스트리 + 프론트 매핑 추가.
+
+### 7-4. 지키는 규칙 (변하지 않음)
+
+- GitHub 업로드는 **무조건 kannikii** 로. 커밋 author/committer 가 kannikii 가 아니면 올리지 않는다. Co-Authored-By 등 트레일러 금지, PR 본문에도 AI 표기 금지.
+- 기존 8클래스 모델(`fastapi/model.pth`)과 그 응답 형식은 건드리지 않는다. 새 태스크는 옆에 추가한다.
+- 홀드아웃 목록은 커밋하고 다시 고르지 않는다. 이미지 자체는 커밋하지 않는다.
+- 안심존 접속정보·암호·`temp.pem` 은 어떤 파일에도 적지 않는다.
