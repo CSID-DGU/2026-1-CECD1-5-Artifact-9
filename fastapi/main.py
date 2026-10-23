@@ -314,8 +314,14 @@ def _weights_path_for(name: str) -> str:
     파일을 바꾸지 않고도 다른 가중치를 가리킬 수 있어야 한다. 상대경로는 작업 디렉터리
     (fastapi/) 기준이다 — evaluate.py 와 test_model_contract.py 가 임포트 전에 그리로
     chdir 하는 이유다.
+
+    **빈 문자열은 "덮어쓰기 없음"으로 본다.** docker compose 는 .env 에 `MODEL_PATH_FACIAL=` 처럼
+    값이 비어 있어도 변수를 빈 문자열로 넘긴다(GEMINI_MODEL 에서 이미 겪은 함정 — docker-compose.yml
+    주석 참고). 그걸 경로 "" 로 해석하면 저장소에 가중치가 있어도 그 태스크가 꺼지고, 기본 태스크면
+    기동이 막힌다. 에러 메시지에도 빈 경로만 찍혀 원인을 찾기 어렵다.
     """
-    return os.getenv(f"MODEL_PATH_{name.upper()}", TASKS[name]["weights"])
+    override = os.getenv(f"MODEL_PATH_{name.upper()}", "").strip()
+    return override or TASKS[name]["weights"]
 
 
 def _load_tasks() -> tuple[dict[str, TaskModel], dict[str, str]]:
