@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
 import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
-import { getLatestAnalysis, type AnalysisResponse } from "../api/analysis";
+import { ANALYSIS_TYPE_LABELS, getLatestAnalysis, type AnalysisResponse } from "../api/analysis";
 import { listVisitImages, type VisitImage } from "../api/images";
 import { getErrorMessage } from "../api/errors";
 import { AuthedImage } from "../components/AuthedImage";
@@ -657,9 +657,9 @@ export default function Lookup() {
                     </div>
                   )}
 
-                  {/* 분석 메타 */}
+                  {/* 분석 메타 — 모델 종류 라벨은 analysisType 이 없는 구버전 응답이면 피부 병변(당시 유일한 모델)으로 본다. */}
                   <p className="text-[10px] text-gray-500">
-                    {selectedVisit.analysis.modelVersion} · {selectedVisit.analysis.inferenceTimeMs}ms · {formatDate(selectedVisit.analysis.analyzedAt)}
+                    {ANALYSIS_TYPE_LABELS[selectedVisit.analysis.analysisType ?? "skin_lesion"]} · {selectedVisit.analysis.modelVersion} · {selectedVisit.analysis.inferenceTimeMs}ms · {formatDate(selectedVisit.analysis.analyzedAt)}
                   </p>
                 </div>
               </Card>
