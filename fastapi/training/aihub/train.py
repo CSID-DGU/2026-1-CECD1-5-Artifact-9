@@ -34,6 +34,7 @@
                                가중치 sha256 앞 12자리(= 서빙의 model_version). 매 epoch 끝에 덮어써 둔다 —
                                세션이 끊겨도 곡선은 남는다.
   <task>-val-predictions.csv   image_id, label, pred, confidence (best 가중치로 검증 세트를 다시 돌린 결과)
+  <task>.safetensors           같은 가중치의 safetensors 사본 (안심존 반출 심의에서 .pth 가 막힐 때의 대안)
   <task>-val-split.csv         val 이 없어 train 에서 떼어 냈을 때만. 이 목록이 그 학습의 홀드아웃이다.
 
 사용법
@@ -426,6 +427,25 @@ def sha256_12(path: Path) -> str:
     return h.hexdigest()[:12]
 
 
+def save_safetensors_copy(state: dict, path: Path) -> None:
+    """
+    같은 가중치를 safetensors 로도 남긴다 — 안심존 반출 심의 대비.
+
+    통합 매뉴얼 p37~38 은 zip·npz·npy·pkl 과 압축 파일의 반출을 막는다. torch.save 가 만드는 .pth 는
+    내부적으로 zip 컨테이너 + pickle 이라, 심의자가 "AI 모델"로 볼지 "pkl/압축"으로 볼지는 그쪽 판단이다.
+    safetensors 는 텐서만 담는 평문 포맷이라 그 논란이 없다. 승인되면 밖에서 .pth 로 되돌린다(README §1-4).
+    safetensors 패키지는 timm 의 의존성이라 timm 이 있는 곳엔 거의 항상 있다 — 없으면 조용히 건너뛴다.
+    """
+    try:
+        from safetensors.torch import save_file
+    except ImportError:
+        return
+    try:
+        save_file({k: v.contiguous() for k, v in state.items()}, str(path))
+    except Exception as exc:  # noqa: BLE001 — 사본 저장 실패가 학습을 멈추게 하지 않는다
+        print(f"  (safetensors 사본 저장 실패, .pth 는 정상: {exc})")
+
+
 def write_json(path: Path, obj: dict) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -564,7 +584,9 @@ def main() -> int:
             mark = ""
             if score > best_score:
                 best_score, best_epoch, since_best = score, epoch, 0
-                torch.save({k: v.detach().cpu() for k, v in model.state_dict().items()}, weights_path)
+                best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                torch.save(best_state, weights_path)
+                save_safetensors_copy(best_state, weights_path.with_suffix(".safetensors"))
                 mark = "  <- 저장"
             else:
                 since_best += 1

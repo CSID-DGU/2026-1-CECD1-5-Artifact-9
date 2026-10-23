@@ -7,6 +7,7 @@
 | 파일 | 무엇 | 언제 |
 |---|---|---|
 | `inspect_dataset.py` | zip 을 풀지 않고 폴더·파일명·해상도·라벨 JSON 키·클래스 분포를 보고서로 뽑는다 (표준 라이브러리만) | 데이터를 **처음 받았을 때**, 안심존처럼 밖에서 못 보는 데이터일 때 |
+| `inspect_mini.py` | 위의 30줄 축약판. 파일 반입도 클립보드도 막힌 안심존 Jupyter 셀에 **손으로 쳐 넣어** 폴더별 파일 수와 JSON 키 구조만 본다 | 안심존 열람환경에서 저장소를 반입할 수 없을 때 |
 | `facial/classes.py` | `facial` 태스크의 `TASK`·`CLASSES` 리터럴과 폴더 토큰 표. `main.py` 와 순서까지 같아야 하며 계약 테스트가 대조한다 | 클래스를 바꿀 때만 (뒤에만 덧붙인다) |
 | `facial/build_manifest.py` | AI허브 zip/폴더 → `manifest.csv` (어떤 파일이 어떤 클래스·뷰·분할인가 + 메타 열) | 학습 전 1회 |
 | `facial/make_holdout.py` | manifest 의 Validation 분할을 공식 홀드아웃 목록 `fastapi/tests/baselines/facial-holdout.csv` 로 고정 | 데이터셋을 새로 받았을 때 1회 |
@@ -20,9 +21,16 @@
 
 | 환경 | 용도 | 비고 |
 |---|---|---|
-| **AI허브 안심존 GPU(분석환경) 서버** (V100 32GB · 8vCPU · 90GB) | 안면부 본 학습 | 접속은 처음 받은 가이드의 "03 GPU Server 접속"(SSH 터널 → 원격 윈도우 → MobaXterm → 분석환경접속). **외부망 차단**이라 맥북의 zip(10GB)·이 저장소·timm wheel 을 **반입 절차**로 올리고, 가중치는 **반출 심사**로 꺼낸다. 절차는 안심존 통합 사용자 매뉴얼(41p~)을 따른다. 압축 해제 후 약 20~30GB |
-| 맥북 (Apple Silicon) | 예비 학습, manifest/홀드아웃 생성, 평가 | `--device mps`. 연산 미지원 오류 시 `PYTORCH_ENABLE_MPS_FALLBACK=1` 또는 `--device cpu` |
-| 안심존 리눅스 서버 (화상 데이터) | 스키마 점검, 안에서 학습 | 외부망 차단·파일 반출 불가. 결과는 화면 스크린샷 |
+| **Colab(T4) / 맥북(Apple Silicon)** | 안면부 학습 — **지금 바로 가능한 경로** | 안면부는 공개 다운로드 데이터라 안심존이 필요 없다. Colab 은 `--device cuda`, 맥북은 `--device mps`(연산 미지원 오류 시 `PYTORCH_ENABLE_MPS_FALLBACK=1` 또는 `--device cpu`) |
+| **AI허브 안심존 GPU(분석환경) 서버** (V100 32GB · 8vCPU · 90GB RAM · CUDA 12.2 · Python 3.11) | 안면부 재학습·비교, 화상 학습 | **별도 분석 이용 신청**(IRB 연구계획서·결과통지서 필수, 시작일은 신청 2주 후~, 30일 제공). 실사용 전 **5일 외부망 기간**에 `git clone`·`pip install timm`·데이터 업로드를 끝내고 마운트를 요청하면 외부망이 끊긴다. 도커 이미지 v7.1(PyTorch 2.2.1) 선택. 접속은 가이드의 "03 GPU Server 접속"(SSH 터널 → 원격 윈도우 → MobaXterm → 분석환경접속). 압축 해제 후 약 20~30GB |
+| 안심존 **열람** CPU 서버 (8vCPU · 64GB, 지금 할당된 것) | 화상 데이터 스키마 점검·지표 산출 | 할당 즉시 마운트 + 외부망 차단, **파일 반출 불가**. 저장소를 넣으려면 "서버 초기화 요청 → 외부망 → `git clone`/pip → 데이터 마운트 요청"(약 1일 소요). 그게 어려우면 `inspect_mini.py` 를 손으로 친다. 결과는 화면 스크린샷 |
+
+### 안심존 분석환경의 반출 규칙 (통합 매뉴얼 p36~38)
+
+- 반출 파일은 Jupyter 의 `nasw/download/` 에 두고 포털에서 신청한다. **자원 종료일 기준 3영업일 전**까지. 심의 2~3영업일, 기간 내 최대 3회 승인, 승인 파일은 10일간 URL 로 다운로드.
+- 가능: 소스코드, AI 모델, 원천데이터가 들어 있지 않은 성능지표 파일(csv·png·json 등).
+- 불가: **zip·npz·npy·pkl**, 이미지·영상(모델이 만든 합성물 포함), 압축 파일, **외부에서 반입한 파일**. `.git`·`.ipynb_checkpoints` 는 지우고 신청.
+- 그래서 `train.py` 는 `<task>.pth` 와 함께 `<task>.safetensors` 사본도 쓴다. `.pth` 는 내부적으로 zip+pickle 이라 심의자가 "pkl/압축"으로 볼 여지가 있다. safetensors 가 승인되면 맥북에서 `.pth` 로 되돌려 `fastapi/models/` 에 넣는다(README §1-5).
 
 필요한 패키지는 `torch`, `torchvision`, `timm`, `Pillow`, `numpy` 뿐이다. scikit-learn 은 일부러 쓰지 않는다(혼동행렬·재현율은 numpy 로 센다).
 들어가자마자 아래로 확인한다.
@@ -99,9 +107,14 @@ python3 fastapi/training/aihub/train.py --manifest ~/facial_run/manifest.csv --t
 | `facial.pth` | `timm.create_model('efficientnet_b0', num_classes=6)` 의 state_dict. `main.py` 가 그대로 `load_state_dict` 한다 |
 | `facial-train-report.json` | 인자·환경·장수·epoch 곡선·best epoch·클래스별 recall/precision·혼동행렬·가중치 sha256 앞 12자리(= 서빙 `model_version`). 매 epoch 덮어쓴다 |
 | `facial-val-predictions.csv` | image_id, label, pred, confidence (best 가중치로 검증 세트 재추론) |
+| `facial.safetensors` | 같은 가중치의 safetensors 사본(`safetensors` 패키지가 있을 때만 — timm 이 의존하므로 보통 있다). 안심존 반출 심의에서 `.pth` 가 막힐 때의 대안 |
 | `facial-val-split.csv` | val 이 없어 train 에서 떼어 냈을 때만. 이 데이터에서는 생기지 않는다 |
 
-**반출/복사는 이 산출물만** 한다. 이미지는 옮기지 않는다.
+**반출/복사는 이 산출물만** 한다. 이미지는 옮기지 않는다. safetensors 만 반출됐다면 맥북에서 되돌린다:
+
+```bash
+python3 -c "from safetensors.torch import load_file; import torch; torch.save(load_file('facial.safetensors'), 'facial.pth')"
+```
 
 ### 1-5. 서비스에 넣기
 
