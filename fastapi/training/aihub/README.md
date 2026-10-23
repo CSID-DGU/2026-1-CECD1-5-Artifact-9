@@ -79,6 +79,11 @@ AI허브가 준 Validation 분할을 그대로 쓴다. 사람이 시드나 비�
 
 ### 1-4. 학습
 
+**가장 빠른 경로는 Colab 래퍼 노트북** [`fastapi/notebooks/facial_training_colab.ipynb`](../../notebooks/facial_training_colab.ipynb) 이다.
+Drive 의 `MyDrive/artifact_medical_ai/facial/1.데이터/` 에 zip 48개를 올려 두고 위에서부터 실행하면 아래 1-2 ~ 1-4 가 그대로 돈다
+(저장소 clone → manifest → 홀드아웃 → `train.py` → 산출물 Drive 저장). 맥북이나 GPU 서버에서는 같은 명령을 터미널에서 친다.
+
+
 ```bash
 # GPU 환경 (V100)
 python3 fastapi/training/aihub/train.py \
