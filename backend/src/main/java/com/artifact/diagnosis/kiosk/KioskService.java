@@ -81,17 +81,30 @@ public class KioskService {
 
     /**
      * disease.name_ko 컬럼은 과거 초기 적재 시 인코딩이 깨져 있어(mojibake) 재조회 시 사용하지 않는다.
-     * AnalysisService.DISEASE_NAME_KO 와 동일한 값 — HAM10000 코드 → 한글 병명 하드코딩 매핑.
+     * AnalysisService.DISEASE_NAME_KO 와 동일한 값 — 모델 클래스 코드 → 한글 병명 하드코딩 매핑.
+     * 두 사본의 코드 집합과 값이 같은지는 fastapi/tests/test_model_contract.py [7] 이 대조한다.
+     *
+     * 키오스크는 skin_lesion 모델만 부르므로(아래 callFastApi) facial 6종이 여기서 조회될 일은 아직 없지만,
+     * 계약 테스트가 두 맵을 통째로 비교하므로 같은 14쌍을 둔다.
+     * Map.of 가 아니라 Map.ofEntries 인 이유: Map.of 오버로드는 10쌍까지라 14쌍이 들어가지 않는다.
      */
-    private static final Map<String, String> DISEASE_NAME_KO = Map.of(
-            "akiec", "광선각화증/상피내암",
-            "bcc",   "기저세포암",
-            "bkl",   "양성 각화증성 병변",
-            "df",    "피부섬유종",
-            "mel",   "악성 흑색종",
-            "nv",    "멜라닌세포모반",
-            "vasc",  "혈관성 병변",
-            "inflammatory", "염증성 피부질환"
+    private static final Map<String, String> DISEASE_NAME_KO = Map.ofEntries(
+            // skin_lesion — HAM10000 7종 + SCIN 염증성 1종 (fastapi/model.pth)
+            Map.entry("akiec", "광선각화증/상피내암"),
+            Map.entry("bcc", "기저세포암"),
+            Map.entry("bkl", "양성 각화증성 병변"),
+            Map.entry("df", "피부섬유종"),
+            Map.entry("mel", "악성 흑색종"),
+            Map.entry("nv", "멜라닌세포모반"),
+            Map.entry("vasc", "혈관성 병변"),
+            Map.entry("inflammatory", "염증성 피부질환"),
+            // facial — 안면부 피부질환 6종 (fastapi/models/facial.pth, AI허브 71863)
+            Map.entry("acne", "여드름"),
+            Map.entry("atopic", "아토피피부염"),
+            Map.entry("normal", "정상 피부"),
+            Map.entry("psoriasis", "건선"),
+            Map.entry("rosacea", "주사(장미증)"),
+            Map.entry("seb_derm", "지루피부염")
     );
 
     /**
@@ -287,6 +300,8 @@ public class KioskService {
     private FastApiPredictResponse callFastApi(byte[] imageBytes) {
         try {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+            // task 를 보내지 않는다 → FastAPI 기본값 skin_lesion. 태블릿 앞에는 어느 모델이 맞는지 고를 의사가
+            // 없고 preliminary_analysis 에도 태스크 컬럼이 없다(V10 머리말). 모델 선택은 진료실(AnalysisService)에서만.
             String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
 
             HttpRequest request = HttpRequest.newBuilder()

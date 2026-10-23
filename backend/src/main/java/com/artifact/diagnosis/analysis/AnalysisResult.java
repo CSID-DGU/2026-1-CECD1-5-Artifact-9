@@ -31,6 +31,21 @@ public class AnalysisResult {
     @Column(name = "visit_id", nullable = false)
     private Long visitId;
 
+    /**
+     * 어느 태스크(모델)의 결과인가 — {@link AnalysisType#code()} 문자열. V10__facial_task.sql 에서 추가.
+     *
+     * enum 이 아니라 String 으로 두는 이유. {@code @Enumerated(STRING)} 은 코드가 아니라 enum 이름(SKIN_LESION)을
+     * 저장해 FastAPI·프론트가 쓰는 소문자 코드와 또 하나의 사본이 생기고, 나중에 태스크를 내리더라도 저장된 기록은
+     * 읽혀야 하는데 enum 컬럼은 상수를 지우는 순간 그 행들이 역직렬화에서 터진다.
+     *
+     * 기본값은 DB 컬럼의 DEFAULT('skin_lesion')와 맞춰 둔다. confidenceLevel 과 같은 이유다 — Hibernate 는
+     * 값이 없으면 NULL 을 명시적으로 넣어서 DB DEFAULT 가 발동하지 않고 NOT NULL 위반이 난다.
+     * ({@code @Builder.Default} 가 없으면 Lombok 이 이 초기값을 무시한다 — 빼지 말 것.)
+     */
+    @Builder.Default
+    @Column(name = "analysis_type", nullable = false, length = 20)
+    private String analysisType = AnalysisType.DEFAULT.code();
+
     @Column(name = "model_version", nullable = false, length = 50)
     private String modelVersion;
 

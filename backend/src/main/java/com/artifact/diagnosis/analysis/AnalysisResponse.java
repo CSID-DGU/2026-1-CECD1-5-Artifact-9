@@ -21,6 +21,14 @@ public record AnalysisResponse(
         List<Long> analyzedImageIds,
 
         String modelVersion,
+
+        /**
+         * 어느 모델의 결과인가 — {@link AnalysisType#code()} 문자열. top1/top5 의 병명 코드가 어느 클래스
+         * 목록에 속하는지 화면이 이 값으로 안다(analysisType 이 생기기 전 행은 전부 skin_lesion, V10 참고).
+         */
+        @Schema(description = "분석 종류(모델) 코드", example = "skin_lesion", allowableValues = {"skin_lesion", "facial"})
+        String analysisType,
+
         Top1Result top1,
         List<TopKResult> top5,
 

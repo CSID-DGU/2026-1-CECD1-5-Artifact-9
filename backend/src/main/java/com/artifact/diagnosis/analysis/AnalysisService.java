@@ -56,27 +56,66 @@ public class AnalysisService {
     @Value("${fastapi.internal-secret}")
     private String fastapiInternalSecret;
 
-    private static final Map<String, String> DISEASE_NAME_KO = Map.of(
-            "akiec", "광선각화증/상피내암",
-            "bcc",   "기저세포암",
-            "bkl",   "양성 각화증성 병변",
-            "df",    "피부섬유종",
-            "mel",   "악성 흑색종",
-            "nv",    "멜라닌세포모반",
-            "vasc",  "혈관성 병변",
-            "inflammatory", "염증성 피부질환"
+    /**
+     * 모델 클래스 코드 → 한글 병명. 두 태스크(skin_lesion 8종 + facial 6종)의 합집합이다.
+     * 한글 병명의 원본은 docs/aihub-datasets-plan.md §3-1 표이며, fastapi/main.py 의 names_ko·DB 시드·
+     * KioskService 의 같은 상수와 글자 하나까지 같아야 한다(fastapi/tests/test_model_contract.py [6][7]).
+     * disease.name_ko 를 읽지 않고 여기 두는 이유는 KioskService.DISEASE_NAME_KO 주석에.
+     *
+     * Map.of 가 아니라 Map.ofEntries 인 이유: Map.of 오버로드는 10쌍까지라 14쌍이 들어가지 않는다.
+     */
+    private static final Map<String, String> DISEASE_NAME_KO = Map.ofEntries(
+            // skin_lesion — HAM10000 7종 + SCIN 염증성 1종 (fastapi/model.pth)
+            Map.entry("akiec", "광선각화증/상피내암"),
+            Map.entry("bcc", "기저세포암"),
+            Map.entry("bkl", "양성 각화증성 병변"),
+            Map.entry("df", "피부섬유종"),
+            Map.entry("mel", "악성 흑색종"),
+            Map.entry("nv", "멜라닌세포모반"),
+            Map.entry("vasc", "혈관성 병변"),
+            Map.entry("inflammatory", "염증성 피부질환"),
+            // facial — 안면부 피부질환 6종 (fastapi/models/facial.pth, AI허브 71863)
+            Map.entry("acne", "여드름"),
+            Map.entry("atopic", "아토피피부염"),
+            Map.entry("normal", "정상 피부"),
+            Map.entry("psoriasis", "건선"),
+            Map.entry("rosacea", "주사(장미증)"),
+            Map.entry("seb_derm", "지루피부염")
     );
 
-    private static final Map<String, String> DISEASE_REASON = Map.of(
-            "nv",    "균일한 색소 분포와 규칙적인 경계선이 멜라닌세포모반의 특성과 일치합니다. 대부분 양성이나 크기 변화 시 추적 관찰이 필요합니다.",
-            "mel",   "불규칙한 색상 분포와 비대칭적 경계 패턴이 악성 흑색종의 특성과 일치합니다.",
-            "bkl",   "각질층의 과증식 및 지루성 표면 패턴이 관찰됩니다. 양성 경과가 많으나 급격한 변화 시 조직 검사를 권장합니다.",
-            "bcc",   "진주빛 경계와 확장된 모세혈관 패턴이 기저세포암의 특성과 일치합니다. 조기 외과적 제거가 권장됩니다.",
-            "akiec", "표피 세포의 이형성 패턴이 광선각화증/상피내암의 특성과 일치합니다. 전암성 병변으로 조기 치료가 중요합니다.",
-            "df",    "피부 내 경계 명확한 섬유성 결절 패턴이 피부섬유종의 특성과 일치합니다. 양성이며 경과 관찰만으로 충분합니다.",
-            "vasc",  "혈관 확장 및 혈관 내 이상 패턴이 감지되었습니다. 혈관 레이저 치료를 고려할 수 있습니다.",
-            "inflammatory", "홍반·부종·인설을 동반한 염증성 반응 패턴이 관찰됩니다. 습진·접촉피부염·두드러기·벌레물림 등이 포함되는 군으로, 색소성 종양 계열과는 구분됩니다. 원인 물질 회피와 국소 치료로 호전되는 경우가 많으나 증상이 지속되면 피부과 진료가 필요합니다."
+    /**
+     * Top-K 각 후보에 붙는 소견 문구. 화면의 참고용 설명이지 진단 근거가 아니다.
+     *
+     * facial 6종의 문구는 합성 데이터(AI허브 71863)로 학습한 참고용 모델이라는 전제로 썼다 — 병변의
+     * 전형적 임상 소견만 짧게 적고 치료 지시나 단정은 넣지 않는다. 정상 피부는 '병변 소견이 뚜렷하지
+     * 않다'는 뜻이지 '이상 없음'의 보증이 아니므로, 증상이 있으면 진료를 권하는 문장을 함께 둔다.
+     */
+    private static final Map<String, String> DISEASE_REASON = Map.ofEntries(
+            // skin_lesion
+            Map.entry("nv", "균일한 색소 분포와 규칙적인 경계선이 멜라닌세포모반의 특성과 일치합니다. 대부분 양성이나 크기 변화 시 추적 관찰이 필요합니다."),
+            Map.entry("mel", "불규칙한 색상 분포와 비대칭적 경계 패턴이 악성 흑색종의 특성과 일치합니다."),
+            Map.entry("bkl", "각질층의 과증식 및 지루성 표면 패턴이 관찰됩니다. 양성 경과가 많으나 급격한 변화 시 조직 검사를 권장합니다."),
+            Map.entry("bcc", "진주빛 경계와 확장된 모세혈관 패턴이 기저세포암의 특성과 일치합니다. 조기 외과적 제거가 권장됩니다."),
+            Map.entry("akiec", "표피 세포의 이형성 패턴이 광선각화증/상피내암의 특성과 일치합니다. 전암성 병변으로 조기 치료가 중요합니다."),
+            Map.entry("df", "피부 내 경계 명확한 섬유성 결절 패턴이 피부섬유종의 특성과 일치합니다. 양성이며 경과 관찰만으로 충분합니다."),
+            Map.entry("vasc", "혈관 확장 및 혈관 내 이상 패턴이 감지되었습니다. 혈관 레이저 치료를 고려할 수 있습니다."),
+            Map.entry("inflammatory", "홍반·부종·인설을 동반한 염증성 반응 패턴이 관찰됩니다. 습진·접촉피부염·두드러기·벌레물림 등이 포함되는 군으로, 색소성 종양 계열과는 구분됩니다. 원인 물질 회피와 국소 치료로 호전되는 경우가 많으나 증상이 지속되면 피부과 진료가 필요합니다."),
+            // facial
+            Map.entry("acne", "면포·구진·농포 등 모낭 단위의 염증 소견이 여드름의 특성과 일치합니다. 병변 분포와 경과를 함께 확인해 주세요."),
+            Map.entry("atopic", "홍반과 건조한 인설, 긁은 자국을 동반한 습진성 패턴이 아토피피부염의 특성과 일치합니다. 가려움의 정도와 재발 병력을 함께 확인해 주세요."),
+            Map.entry("normal", "병변 소견이 뚜렷하지 않습니다. 모델이 병변을 놓쳤을 수 있으므로 증상이 있으면 진료가 필요합니다."),
+            Map.entry("psoriasis", "경계가 명확한 홍반 위에 은백색 인설이 덮인 판 모양 패턴이 건선의 특성과 일치합니다. 두피·팔꿈치·무릎 등 호발 부위와 손발톱 변화를 함께 확인해 주세요."),
+            Map.entry("rosacea", "얼굴 중앙부의 지속적인 홍조와 확장된 모세혈관, 구진 패턴이 주사(장미증)의 특성과 일치합니다. 면포가 없다는 점에서 여드름과 구분되며 열·음주·햇빛 등 악화 요인 확인이 필요합니다."),
+            Map.entry("seb_derm", "피지 분비가 많은 부위의 홍반과 기름진 노란 인설이 지루피부염의 특성과 일치합니다. 만성 재발 경과가 흔하며 건선·아토피피부염과의 감별이 필요합니다.")
     );
+
+    /**
+     * 기존 2-인자 진입점 — 기본 태스크(skin_lesion)로 위임한다.
+     * analysisType 이 생기기 전의 호출자와 {@code AnalysisResilienceTest} 가 그대로 돈다.
+     */
+    public AnalysisResponse analyze(Long visitId, List<Long> imageIds) {
+        return analyze(visitId, imageIds, AnalysisType.DEFAULT);
+    }
 
     /**
      * AI 분석 요청.
@@ -89,8 +128,13 @@ public class AnalysisService {
      *
      * 대신 트랜잭션이 실패를 자동으로 되돌려 주지 않으므로, 외부 호출이 실패하면
      * ANALYZING 상태를 직접 복구해야 한다(아래 catch 절).
+     *
+     * @param analysisType 어느 모델로 볼지. null 이면 {@link AnalysisType#DEFAULT}(skin_lesion) —
+     *                     이 인자가 생기기 전의 호출자와 같은 동작이다.
      */
-    public AnalysisResponse analyze(Long visitId, List<Long> imageIds) {
+    public AnalysisResponse analyze(Long visitId, List<Long> imageIds, AnalysisType analysisType) {
+        AnalysisType task = AnalysisType.orDefault(analysisType);
+
         // 컨트롤러의 @Valid(@NotEmpty)가 HTTP 경로는 이미 막지만, 서비스를 직접 부르는 경로
         // (배치·테스트·향후 내부 호출)에서는 get(0)이 그대로 500으로 터진다.
         if (imageIds == null || imageIds.isEmpty()) {
@@ -111,8 +155,19 @@ public class AnalysisService {
             long startMs = System.currentTimeMillis();
             // 현재 FastAPI /predict-base64 는 이미지 1장을 받는다(fastapi/main.py PredictRequest).
             // 다중 입력 모델이 되면 target.imageUrls() 를 그대로 넘기도록 여기만 바꾼다.
-            prediction = callFastApi(target.primaryImageUrl());
+            prediction = callFastApi(target.primaryImageUrl(), task);
             int inferenceMs = (int) (System.currentTimeMillis() - startMs);
+
+            // 응답의 task 로 "요청한 모델이 실제로 돌았는지" 확인한다. task 를 모르는 구버전 FastAPI 는
+            // 이 필드를 안 보내고 기본 모델로 돌리므로, facial 을 요청했는데 skin_lesion 코드가 돌아와
+            // facial 로 저장되는 사고를 여기서 막는다 — 그 행은 top_k 의 코드가 다른 클래스 목록을
+            // 가리키는 거짓 기록이 된다. 기본 태스크 요청에 task 가 비어 오는 것만 과도기 호환으로 허용한다.
+            String servedTask = prediction.task();
+            if (servedTask == null ? task != AnalysisType.DEFAULT : !servedTask.equals(task.code())) {
+                log.error("FastAPI 가 요청한 태스크로 추론하지 않았다 requested={} served={}", task.code(), servedTask);
+                throw new AiServiceUnavailableException(
+                        "AI 분석 서버가 요청한 분석 종류(" + task.code() + ")를 지원하지 않습니다. 서버 버전을 확인해주세요.");
+            }
 
             // 신뢰도가 낮아도 여기서 막지 않는다. 결과는 그대로 내보내고 "확신 낮음" 등급만 붙인다.
             // 차단하던 시절에는 홀드아웃 2,857장 중 4.5% 가 답을 못 받았고, 하필 그 안에
@@ -127,7 +182,7 @@ public class AnalysisService {
 
             // (3) 짧은 트랜잭션 — 결과 저장 + 근거 이미지 매핑 + ANALYZED 전이
             result = analysisTransactionService.saveResult(
-                    visitId, targetImageIds,
+                    visitId, targetImageIds, task,
                     prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
                     prediction.top1().confidence(), confidenceLevel, topK, inferenceMs, heatmapKey);
         } catch (RuntimeException e) {
@@ -135,7 +190,7 @@ public class AnalysisService {
             throw e;
         }
 
-        log.info("분석 완료 visitId={} top1={} confidence={}", visitId,
+        log.info("분석 완료 visitId={} task={} top1={} confidence={}", visitId, task.code(),
                 prediction.top1().diseaseCode(), prediction.top1().confidence());
 
         return toResponse(result, prediction, targetImageIds);
@@ -211,6 +266,7 @@ public class AnalysisService {
                 result.getVisitId(),
                 findAnalyzedImageIds(result.getId()),
                 result.getModelVersion(),
+                result.getAnalysisType(),
                 new AnalysisResponse.Top1Result(
                         disease.getDiseaseCode(),
                         DISEASE_NAME_KO.getOrDefault(disease.getDiseaseCode(), disease.getDiseaseCode()),
@@ -238,11 +294,16 @@ public class AnalysisService {
                 .body(bytes);
     }
 
-    private FastApiPredictResponse callFastApi(String imageUrl) {
+    private FastApiPredictResponse callFastApi(String imageUrl, AnalysisType task) {
         try {
             byte[] imageBytes = imageStorageService.download(imageUrl);
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
+            // task 는 FastAPI 가 모델을 고르는 키다(fastapi/main.py TASKS). 생략해도 그쪽이 skin_lesion 으로
+            // 접지만, 기본값을 두 서버에 따로 두면 언젠가 한쪽만 바뀐다 — 항상 명시해서 보낸다.
+            // task 필드가 없던 구버전 FastAPI 는 모르는 필드를 무시하므로(pydantic 기본값) 배포 순서와 무관하다.
+            String requestBody = objectMapper.writeValueAsString(Map.of(
+                    "image_base64", base64Image,
+                    "task", task.code()));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
@@ -257,11 +318,22 @@ public class AnalysisService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+            if (response.statusCode() == 503) {
+                // 등록은 됐지만 가중치 파일이 없어 로드되지 않은 태스크가 이렇게 온다(fastapi/main.py —
+                // CI·개발 환경에는 facial.pth 가 없다). 우리 버그가 아니라 그쪽 준비 상태의 문제이므로
+                // 500 이 아니라 503 으로 내보낸다. 로그에 FastAPI 본문을 남겨 어느 태스크가 빠졌는지 보이게 한다.
+                log.error("FastAPI 503 task={} body={}", task.code(), response.body());
+                throw new AiServiceUnavailableException(
+                        "AI 분석 서버에 '" + task.code() + "' 모델이 준비되어 있지 않습니다. 서버 상태를 확인해주세요.");
+            }
             if (response.statusCode() != 200) {
                 throw new RuntimeException("FastAPI 오류 " + response.statusCode() + ": " + response.body());
             }
 
             return objectMapper.readValue(response.body(), FastApiPredictResponse.class);
+        } catch (AiServiceUnavailableException e) {
+            // 바로 위에서 던진 것. 아래 Exception 절에 잡혀 RuntimeException(500) 으로 둔갑하지 않게 그대로 올린다.
+            throw e;
         } catch (HttpConnectTimeoutException | ConnectException e) {
             log.error("FastAPI 연결 실패 url={}", fastapiUrl, e);
             throw new AiServiceUnavailableException("AI 분석 서버에 연결할 수 없습니다. 서버 상태를 확인해주세요.");
@@ -293,6 +365,7 @@ public class AnalysisService {
                 result.getVisitId(),
                 analyzedImageIds,
                 result.getModelVersion(),
+                result.getAnalysisType(),
                 new AnalysisResponse.Top1Result(
                         prediction.top1().diseaseCode(),
                         DISEASE_NAME_KO.getOrDefault(prediction.top1().diseaseCode(), prediction.top1().diseaseCode()),
