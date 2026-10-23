@@ -47,6 +47,51 @@ from pathlib import Path
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp", ".dcm", ".svs", ".mrxs"}
 LABEL_EXT = {".json", ".csv", ".txt", ".xml"}
 
+# 경고는 화면에만 찍고 끝내지 않는다. 첫 실행에서 "경로 없음" 이 터미널에만 남고 보고서 파일은
+# 빈 채로 공유되는 바람에 원인을 아무도 알 수 없었다. 전부 모아 보고서 머리에 싣는다.
+WARNINGS: list[str] = []
+
+
+def warn(msg: str) -> None:
+    WARNINGS.append(msg)
+    print(f"  ⚠️  {msg}")
+
+
+def describe_path(raw: str) -> list[str]:
+    """입력 경로가 무엇인지(있는지, 폴더인지, 안에 뭐가 있는지) 사람이 읽을 수 있게 적는다."""
+    p = Path(raw).expanduser()
+    lines = [f"  입력: {raw}  →  {p}"]
+    if not p.exists():
+        lines.append("     존재하지 않는다. 경로 오타이거나 <자리표시자> 를 그대로 넣었을 수 있다. "
+                     "Finder 에서 폴더를 터미널 창으로 끌어다 놓으면 정확한 경로가 입력된다.")
+        parent = p.parent
+        if parent.exists():
+            try:
+                near = sorted(x.name for x in parent.iterdir())[:30]
+                lines.append(f"     상위 폴더 {parent} 안의 항목: {near}")
+            except PermissionError:
+                lines.append(f"     상위 폴더 {parent} 를 읽을 권한이 없다.")
+        return lines
+    if p.is_file():
+        lines.append(f"     파일 1개 ({p.stat().st_size / 1e6:,.1f} MB). zip 이 아니면 내용은 보지 않는다.")
+        return lines
+    try:
+        entries = sorted(p.iterdir(), key=lambda x: x.name)
+    except PermissionError:
+        lines.append("     폴더를 읽을 권한이 없다. macOS 라면: 시스템 설정 → 개인정보 보호 및 보안 → 파일 및 폴더 → "
+                     "터미널(또는 iTerm) → '다운로드 폴더' 허용. 또는 폴더를 ~/aihub 처럼 다른 곳으로 옮겨서 다시 실행.")
+        return lines
+    lines.append(f"     폴더. 바로 아래 항목 {len(entries)}개:")
+    for x in entries[:40]:
+        try:
+            kind = "폴더" if x.is_dir() else f"{x.stat().st_size / 1e6:,.1f} MB"
+        except OSError:
+            kind = "?"
+        lines.append(f"       - {x.name}  ({kind})")
+    if len(entries) > 40:
+        lines.append(f"       … 외 {len(entries) - 40}개")
+    return lines
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 파일 열거 — 폴더와 zip 을 같은 모양으로 다룬다
@@ -86,8 +131,8 @@ def _fix_zip_name(info: zipfile.ZipInfo) -> str:
 def iter_zip(zip_path: Path, group_prefix: str = ""):
     try:
         zf = zipfile.ZipFile(zip_path)
-    except zipfile.BadZipFile:
-        print(f"  ⚠️  zip 열기 실패(손상/미완료 다운로드?): {zip_path}")
+    except (zipfile.BadZipFile, OSError) as exc:
+        warn(f"zip 열기 실패(손상/미완료 다운로드/권한?): {zip_path} — {exc}")
         return
     group = f"{group_prefix}{zip_path.name}"
     for info in zf.infolist():
@@ -103,7 +148,8 @@ def iter_zip(zip_path: Path, group_prefix: str = ""):
 
 
 def iter_dir(root: Path):
-    for dirpath, dirnames, filenames in os.walk(root):
+    # os.walk 는 권한 오류를 기본적으로 삼킨다 — 그러면 "파일이 하나도 없다" 로만 보인다. 반드시 받아 적는다.
+    for dirpath, dirnames, filenames in os.walk(root, onerror=lambda e: warn(f"읽기 실패: {e.filename} — {e.strerror}")):
         dirnames.sort()
         rel_dir = Path(dirpath).relative_to(root)
         for fn in sorted(filenames):
@@ -125,7 +171,7 @@ def iter_inputs(paths: list[str]):
     for raw in paths:
         p = Path(raw).expanduser()
         if not p.exists():
-            print(f"  ⚠️  없음: {p}")
+            warn(f"경로 없음: {p}")
             continue
         if p.is_dir():
             yield from iter_dir(p)
@@ -243,7 +289,7 @@ def main() -> int:
             except Exception as exc:
                 json_errors[g] += 1
                 if json_errors[g] <= 2:
-                    emit(f"  ⚠️  JSON 파싱 실패 [{g}] {e.name}: {type(exc).__name__}: {exc}")
+                    warn(f"JSON 파싱 실패 [{g}] {e.name}: {type(exc).__name__}: {exc}")
                 continue
             json_scanned[g] += 1
             if g not in json_first:
@@ -251,6 +297,22 @@ def main() -> int:
             walk_json(obj, "", json_schema[g], json_values[g])
 
     groups = sorted(counts)
+    total_files = sum(sum(c.values()) for c in counts.values())
+
+    emit("=" * 78)
+    emit(f"[0] 실행 정보 — 입력 {len(args.paths)}개, 찾은 파일 {total_files:,}개, 경고 {len(WARNINGS)}건")
+    emit("=" * 78)
+    for w in WARNINGS[:50]:
+        emit(f"  ⚠️  {w}")
+    if len(WARNINGS) > 50:
+        emit(f"  … 경고 {len(WARNINGS) - 50}건 더 있음")
+    if total_files == 0:
+        emit("  ❌ 파일을 하나도 찾지 못했다. 아래 경로 진단을 보고 경로/권한을 고친 뒤 다시 실행할 것.")
+        for raw in args.paths:
+            for line in describe_path(raw):
+                emit(line)
+    emit()
+
     emit("=" * 78)
     emit("[1] 그룹별 파일 수  (그룹 = 폴더 또는 zip)")
     emit("=" * 78)
