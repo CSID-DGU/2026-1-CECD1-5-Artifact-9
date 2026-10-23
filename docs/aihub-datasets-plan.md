@@ -152,7 +152,7 @@
 - `AnalysisRequest(imageIds, analysisType)` — `analysisType` 은 `enum AnalysisType { SKIN_LESION("skin_lesion"), FACIAL("facial") }`,
   **null 이면 SKIN_LESION**. FastAPI 호출 본문에 `task` 로 전달.
 - `analysis_result.analysis_type VARCHAR(20) NOT NULL DEFAULT 'skin_lesion'` (V10) + 엔티티 필드(`@Builder.Default`).
-- `AnalysisResponse.analysisType` 추가. 기존 필드 순서·이름 불변.
+- `AnalysisResponse.analysisType` 을 `modelVersion` 바로 뒤에 추가. 기존 필드의 이름·타입은 불변(record 라 위치 기반 생성자가 바뀌므로 호출처 2곳을 함께 수정; JSON 키 순서는 클라이언트가 의존하지 않는다).
 - `disease` 시드: **V10 에서 `facial` 6행을 `ON DUPLICATE KEY UPDATE disease_id = disease_id` 로 추가.**
   **V1 은 고치지 않는다** — Flyway 가 V1 을 직접 적용한 DB(2026-08-30 이후 새로 만든 개발 DB)에서 체크섬 불일치로
   기동이 막힌다. 대신 계약 테스트가 **모든 마이그레이션의 `INSERT INTO disease`** 를 합쳐 모델 클래스와 대조한다.
