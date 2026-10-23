@@ -39,6 +39,10 @@ Resize/Normalize 값을 복사해 두면 언젠가 한쪽만 바뀌고, 그때�
     ... python tests/evaluate.py --image-dir ... --csv tests/baselines/holdout.csv \
         --label-col label --group-col src
 
+    # 7) 다른 태스크의 모델을 잰다 (main.py TASKS 의 키. 생략하면 skin_lesion)
+    ... python tests/evaluate.py --task facial --image-dir /data/facial \
+        --csv tests/baselines/facial-holdout.csv --label-col label
+
 JSON 키 이름에 대하여 — reject_rate 는 이제 "경고율"이다
 --------------------------------------------------------
 2026-08-30 에 서빙 임계값은 **차단선에서 경고선으로 바뀌었다**(fastapi/main.py 의
@@ -89,12 +93,16 @@ from PIL import Image  # noqa: E402
 
 import main as serving  # noqa: E402
 
-CLASSES = serving.CLASSES
+# 평가 대상 태스크. 기본은 서빙의 기본 태스크(skin_lesion)이고 --task 로 바꾼다(main() 이
+# 재지정한다). 모듈 전역으로 두는 이유: 아래 지표 함수들이 전부 CLASSES 를 읽고,
+# evaluate_cam.py 가 evaluate.CLASSES / evaluate.TASK 를 가져다 쓴다.
+TASK = serving.TASK_MODELS[serving.DEFAULT_TASK]
+CLASSES = TASK.classes
 
-# 심각도 — 원본은 backend/src/main/resources/db/migration/V1__baseline_schema.sql 의
-# disease 시드다. 여기에 복사본이 생기는 것이 마음에 들지는 않지만, 이 값이 있어야
+# 심각도 — 원본은 backend/src/main/resources/db/migration/ 의 disease 시드다(V1 + 이후
+# 태스크별 추가분). 여기에 복사본이 생기는 것이 마음에 들지는 않지만, 이 값이 있어야
 # "악성을 양성으로 놓친 건수"라는 유일하게 임상적으로 의미 있는 지표를 낼 수 있다.
-# 키가 CLASSES 와 어긋나면 tests/test_model_contract.py 가 잡는다.
+# 키가 모든 태스크의 클래스 합집합과 어긋나면 tests/test_model_contract.py 가 잡는다.
 SEVERITY = {
     "akiec": "MEDIUM",
     "bcc": "HIGH",
@@ -104,6 +112,15 @@ SEVERITY = {
     "nv": "LOW",
     "vasc": "LOW",
     "inflammatory": "LOW",
+    # facial(안면부 피부질환) — 전부 LOW. 정상 피부와 염증성·구진성 질환(여드름·아토피·건선·
+    # 주사·지루)이라 악성도 전암도 없다. 그래서 이 태스크에서는 '악성→양성 오판' 지표가
+    # 항상 0 이고, 위험군 재현율은 분모가 없어 대시(—)로 찍힌다 — 틀린 것이 아니다.
+    "acne": "LOW",
+    "atopic": "LOW",
+    "normal": "LOW",
+    "psoriasis": "LOW",
+    "rosacea": "LOW",
+    "seb_derm": "LOW",
 }
 DANGEROUS = {code for code, s in SEVERITY.items() if s in ("HIGH", "MEDIUM")}
 
@@ -214,16 +231,16 @@ def load_ood(ood_dirs: list[Path]):
 # 추론
 # =============================================
 def predict_all(paths, batch_size: int):
-    """확률 행렬 (N, 8) 을 만든다. 서빙과 같은 transform·같은 model 객체를 쓴다."""
+    """확률 행렬 (N, 클래스 수) 을 만든다. 서빙과 같은 transform·같은 model 객체(TASK)를 쓴다."""
     chunks = []
     total = len(paths)
     for start in range(0, total, batch_size):
         batch = paths[start:start + batch_size]
         tensors = torch.stack([
-            serving.transform(Image.open(p).convert("RGB")) for p in batch
+            TASK.transform(Image.open(p).convert("RGB")) for p in batch
         ]).to(serving.device)
         with torch.no_grad():
-            probs = torch.softmax(serving.model(tensors), dim=1)
+            probs = torch.softmax(TASK.model(tensors), dim=1)
         chunks.append(probs.cpu())
         done = min(start + batch_size, total)
         print(f"\r  추론 {done}/{total}", end="", flush=True)
@@ -610,6 +627,9 @@ def print_comparison(current, baseline):
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="홀드아웃 이미지로 서빙 모델의 성능을 측정한다.")
+    parser.add_argument("--task", default=serving.DEFAULT_TASK,
+                        help=f"평가할 태스크 (main.py TASKS 의 키: {', '.join(serving.TASKS)}). "
+                             f"기본 {serving.DEFAULT_TASK}")
     parser.add_argument("--image-dir", type=Path, nargs="+",
                         help="병변 이미지 폴더. 여러 개 줄 수 있다(HAM10000 은 part_1/part_2 로 쪼개져 있다). "
                              "--csv 가 없으면 하위 폴더명을 라벨로 본다.")
@@ -639,9 +659,26 @@ def main() -> int:
         if not d.is_dir():
             raise SystemExit(f"폴더가 없습니다: {d}")
 
+    # 태스크 선택. 모듈 전역 TASK/CLASSES 를 바꿔 끼운다 — 지표 함수들이 전부 전역 CLASSES 를
+    # 읽으므로 인자로 일일이 넘기는 것보다 이쪽이 "서빙과 같은 목록을 쓴다"를 지키기 쉽다.
+    global TASK, CLASSES
+    if args.task not in serving.TASKS:
+        raise SystemExit(f"모르는 태스크입니다: {args.task!r} (가능한 값: {', '.join(serving.TASKS)})")
+    if args.task not in serving.TASK_MODELS:
+        raise SystemExit(
+            f"태스크 '{args.task}' 의 모델이 로드되지 않았습니다 — "
+            f"{serving.TASK_LOAD_ERRORS.get(args.task, '사유 불명')} "
+            f"(가중치: {serving._weights_path_for(args.task)}, "
+            f"환경변수 MODEL_PATH_{args.task.upper()} 로 다른 경로를 줄 수 있다)")
+    TASK = serving.TASK_MODELS[args.task]
+    CLASSES = TASK.classes
+
     threshold = serving.LOW_CONFIDENCE_THRESHOLD
     result = {
-        "model_version": serving.MODEL_VERSION,
+        # task 는 2026-10 의 태스크 레지스트리와 함께 들어왔다. 그 전 기준선 JSON 에는 없다
+        # (= skin_lesion). --compare 는 model_version/classes 로 같은 시험지인지 가린다.
+        "task": TASK.name,
+        "model_version": TASK.model_version,
         "serving_threshold": threshold,
     }
 
@@ -662,7 +699,8 @@ def main() -> int:
         if not samples:
             raise SystemExit("평가할 이미지가 하나도 없습니다. --image-dir / --csv 를 확인하세요.")
 
-        print(f"홀드아웃 {len(samples)}건, 모델 {serving.MODEL_VERSION}, device={serving.device}")
+        print(f"홀드아웃 {len(samples)}건, 태스크 {TASK.name}, 모델 {TASK.model_version}, "
+              f"device={serving.device}")
         labels = [l for _, l in samples]
         probs = predict_all([p for p, _ in samples], args.batch_size)
         preds = [CLASSES[i] for i in probs.argmax(dim=1).tolist()]
@@ -726,7 +764,8 @@ def main() -> int:
         if not ood_samples:
             raise SystemExit(f"OOD 이미지가 하나도 없습니다: {args.ood_dir}")
 
-        print(f"OOD {len(ood_samples)}장, 모델 {serving.MODEL_VERSION}, device={serving.device}")
+        print(f"OOD {len(ood_samples)}장, 태스크 {TASK.name}, 모델 {TASK.model_version}, "
+              f"device={serving.device}")
         categories = [c for _, c in ood_samples]
         ood_probs = predict_all([p for p, _ in ood_samples], args.batch_size)
         ood_preds = [CLASSES[i] for i in ood_probs.argmax(dim=1).tolist()]
@@ -765,6 +804,8 @@ def main() -> int:
     if args.min_mel_recall is not None:
         if "per_class" not in result:
             raise SystemExit("--min-mel-recall 은 --image-dir 이 있어야 판정할 수 있습니다.")
+        if "mel" not in CLASSES:
+            raise SystemExit(f"--min-mel-recall 은 mel 이 있는 태스크에서만 뜻이 있습니다 (현재 {TASK.name}).")
         actual = result["per_class"]["mel"]["recall"]
         if actual is None:
             print("⚠ 홀드아웃에 mel 이 없어 --min-mel-recall 을 판정할 수 없습니다.")

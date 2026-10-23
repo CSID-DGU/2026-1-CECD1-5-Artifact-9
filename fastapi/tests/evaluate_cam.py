@@ -76,6 +76,10 @@ import torch.nn.functional as F  # noqa: E402
 from PIL import Image, ImageOps  # noqa: E402
 
 serving = evaluate.serving
+# CAM 평가는 기본 태스크(skin_lesion)만 잰다 — 정답 마스크(HAM10000 segmentation)와 기준값이
+# 그 태스크에만 있다. 다른 태스크를 재려면 evaluate.py 처럼 --task 를 붙이고 여기서 TASK 를
+# 바꿔 끼우면 되지만, 비교할 마스크가 생기기 전에는 의미가 없어 아직 두지 않았다.
+TASK = evaluate.TASK
 CLASSES = evaluate.CLASSES
 lj, rj, pct = evaluate.lj, evaluate.rj, evaluate.pct
 
@@ -106,10 +110,10 @@ def cam_for(path: Path) -> tuple[torch.Tensor | None, int, dict | None]:
     이미지를 평가하게 된다.
     """
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
-    tensor = serving.transform(image).unsqueeze(0).to(serving.device)
-    # 단일 스레드지만 _compute_gradcam 의 호출 계약(락을 잡은 채 호출)을 지킨다.
-    with serving._model_lock:
-        logits, cam, quality = serving._compute_gradcam(tensor)
+    tensor = TASK.transform(image).unsqueeze(0).to(serving.device)
+    # 단일 스레드지만 _compute_gradcam 의 호출 계약(그 태스크의 락을 잡은 채 호출)을 지킨다.
+    with TASK.lock:
+        logits, cam, quality = serving._compute_gradcam(tensor, TASK)
     return cam, int(logits.argmax(dim=1).item()), quality
 
 
@@ -186,8 +190,9 @@ def evaluate_cam(samples, limit: int | None) -> dict:
     print()
 
     result = {
-        "model_version": serving.MODEL_VERSION,
-        "cam_layers": serving.CAM_LAYER_NAMES,
+        "task": TASK.name,
+        "model_version": TASK.model_version,
+        "cam_layers": TASK.cam_layer_names,
         "heatmap_display_floor": serving.HEATMAP_DISPLAY_FLOOR,
         "sample_count": len(rows),
         "classes": CLASSES,
@@ -239,9 +244,9 @@ def faithfulness_for(path: Path) -> dict | None:
     이미지 크기 때문에 의존성을 최소로 둔다), 회색 채움보다 저주파 맥락을 남겨 준다.
     """
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
-    x = serving.transform(image).unsqueeze(0).to(serving.device)
-    with serving._model_lock:
-        logits, cam, _ = serving._compute_gradcam(x)
+    x = TASK.transform(image).unsqueeze(0).to(serving.device)
+    with TASK.lock:
+        logits, cam, _ = serving._compute_gradcam(x, TASK)
     if cam is None:
         return None
     pred = int(logits.argmax(dim=1).item())
@@ -264,8 +269,8 @@ def faithfulness_for(path: Path) -> dict | None:
         dels.append(x * (1 - msk) + blur * msk)
         inss.append(blur * (1 - msk) + x * msk)
     with torch.no_grad():
-        pd = F.softmax(serving.model(torch.cat(dels)), dim=1)[:, pred]
-        pi = F.softmax(serving.model(torch.cat(inss)), dim=1)[:, pred]
+        pd = F.softmax(TASK.model(torch.cat(dels)), dim=1)[:, pred]
+        pi = F.softmax(TASK.model(torch.cat(inss)), dim=1)[:, pred]
 
     deletion = float(torch.trapz(pd, FAITH_STEPS))
     insertion = float(torch.trapz(pi, FAITH_STEPS))
@@ -299,8 +304,9 @@ def evaluate_faithfulness(samples, limit: int | None) -> dict:
 
     return {
         "mode": "faithfulness",
-        "model_version": serving.MODEL_VERSION,
-        "cam_layers": serving.CAM_LAYER_NAMES,
+        "task": TASK.name,
+        "model_version": TASK.model_version,
+        "cam_layers": TASK.cam_layer_names,
         "heatmap_display_floor": serving.HEATMAP_DISPLAY_FLOOR,
         "sample_count": len(rows),
         "classes": CLASSES,
