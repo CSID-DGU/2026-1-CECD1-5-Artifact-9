@@ -9,7 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "AI 분석", description = "피부 병변 AI 분석 API")
+@Tag(name = "AI 분석", description = "피부 병변·안면부 피부질환 AI 분석 API")
 @RestController
 @RequestMapping("/api/v1/visits/{visitId}/analysis")
 @RequiredArgsConstructor
@@ -18,13 +18,15 @@ public class AnalysisController {
     private final AnalysisService analysisService;
 
     @Operation(summary = "AI 분석 요청",
-               description = "선택한 이미지를 AI 모델에 전달해 Top-5 병명을 반환합니다. visit 상태: IN_PROGRESS/ANALYZED → ANALYZING → ANALYZED")
+               description = "선택한 이미지를 AI 모델에 전달해 Top-5 병명을 반환합니다. "
+                       + "analysisType 으로 모델을 고릅니다 — skin_lesion: 피부 병변 8종(생략 시 기본값) / facial: 안면부 피부질환 6종. "
+                       + "visit 상태: IN_PROGRESS/ANALYZED → ANALYZING → ANALYZED")
     @MedicalAccess
     @PostMapping
     public AnalysisResponse analyze(
             @PathVariable Long visitId,
             @Valid @RequestBody AnalysisRequest request) {
-        return analysisService.analyze(visitId, request.imageIds());
+        return analysisService.analyze(visitId, request.imageIds(), request.analysisType());
     }
 
     @Operation(summary = "최근 분석 결과 조회",

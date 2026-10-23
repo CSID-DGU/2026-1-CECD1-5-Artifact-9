@@ -37,6 +37,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -398,6 +399,25 @@ class DiagnosisApplicationTests {
 		assertThat(masked).contains("연락");
 		// 신원을 되짚을 수 있는 조각은 하나도 남지 않아야 한다.
 		assertThat(masked).doesNotContain("최유출", "5555", "851231", "x@y.com");
+	}
+
+	/**
+	 * 모르는 분석 종류는 400 으로 끊어야 한다 — 조용히 기본 모델로 접으면 오타 하나로 엉뚱한 모델이 돈다.
+	 * 역직렬화 단계({@code AnalysisType.fromCode})에서 막히므로 접수 데이터도 FastAPI 도 필요 없다.
+	 * 이 핸들러가 빠지면 {@code HttpMessageNotReadableException} 이 마지막 안전망으로 떨어져 500 이 된다.
+	 */
+	@Test
+	void analysisRejectsUnknownAnalysisTypeWith400() throws Exception {
+		MemberResponse doctor = memberService.signup(new MemberSignupRequest(
+				"derm-task", "1234", "태스크의사", "LIC-9001", "피부과", null));
+		String token = jwtUtil.generate(doctor.memberId(), "derm-task", MemberRole.DOCTOR.name());
+
+		mockMvc.perform(post("/api/v1/visits/{visitId}/analysis", 999_999L)
+						.header("Authorization", "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"imageIds\": [1], \"analysisType\": \"burn\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", containsString("알 수 없는 분석 종류")));
 	}
 
 	/** 메모가 비어 있으면 null — 프롬프트에서 그 줄이 통째로 빠진다. */

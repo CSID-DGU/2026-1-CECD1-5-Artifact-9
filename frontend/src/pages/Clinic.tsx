@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getLatestAnalysis, requestAnalysis, type AnalysisResponse } from "../api/analysis";
+import { ANALYSIS_TYPE_LABELS, getLatestAnalysis, requestAnalysis, type AnalysisResponse, type AnalysisType } from "../api/analysis";
 import { getErrorMessage } from "../api/errors";
 import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
 import { listVisitImages, uploadVisitImage, type VisitImage } from "../api/images";
@@ -19,7 +19,10 @@ import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 import { formatConfidence } from "../utils/confidence";
 
+// 모델 병명 코드 → KCD 선입력 코드. 상병명 검색이 빗나갔을 때의 예비 경로다(handleToggleAnalysisCandidate).
+// 여기 없는 코드는 fallbackCode 가 undefined 로 떨어져 "직접 추가해 달라"는 안내로 끝나므로, 빠진 코드가 있어도 깨지지 않는다.
 const DISEASE_TO_KCD_CODE: Record<string, string> = {
+  // skin_lesion — HAM10000 7종 + SCIN 염증성 1종
   nv:    'D22',
   mel:   'C43',
   bkl:   'L82',
@@ -28,6 +31,13 @@ const DISEASE_TO_KCD_CODE: Record<string, string> = {
   df:    'D23',
   vasc:  'D18',
   inflammatory: 'L309',
+  // facial — AI허브 71863 (docs/aihub-datasets-plan.md §3-1 표의 KCD 열).
+  // normal(정상 피부)은 대응하는 KCD 가 없어 일부러 뺀다 — 정상을 상병코드로 선입력하면 안 된다.
+  acne:      'L70',
+  atopic:    'L20',
+  psoriasis: 'L40',
+  rosacea:   'L71',
+  seb_derm:  'L21',
 };
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -95,6 +105,8 @@ export default function Clinic() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  // 어느 모델로 분석할지. 진료를 바꿔도 마지막 선택을 유지하되, 불러온 최근 분석에 analysisType 이 있으면 그쪽으로 맞춘다(loadVisitDetail).
+  const [analysisType, setAnalysisType] = useState<AnalysisType>("skin_lesion");
   const [preliminaryAnalysis, setPreliminaryAnalysis] = useState<PreliminaryAnalysis | null>(null);
   const [prescription, setPrescription] = useState<PrescriptionResponse | null>(null);
 
@@ -210,6 +222,9 @@ export default function Clinic() {
       setImages(visitImages);
       setSelectedImageIds(visitImages.map((img) => img.imageId));
       setAnalysis(latestAnalysis);
+      // 선택 상자가 결과 카드와 다른 모델을 가리키고 있으면 "재분석" 이 조용히 다른 모델로 도는 수가 있어 맞춘다.
+      // 구버전 응답(analysisType 없음)이나 분석이 없는 진료는 사용자의 마지막 선택을 그대로 둔다.
+      if (latestAnalysis?.analysisType) setAnalysisType(latestAnalysis.analysisType);
       setPrescription(latestPrescription);
       setPreliminaryAnalysis(preliminary);
     } catch (error) {
@@ -293,7 +308,7 @@ export default function Clinic() {
     if (!selectedVisit || selectedImageIds.length === 0) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
-      const result = await requestAnalysis(selectedVisit.id, selectedImageIds);
+      const result = await requestAnalysis(selectedVisit.id, selectedImageIds, analysisType);
       setAnalysis(result);
       setSelectedAnalysisCandidateCodes([]);
       setSelectedKcds([]);
@@ -643,6 +658,19 @@ export default function Clinic() {
                 <Button onClick={handleUploadImage} disabled={!selectedFile || !canUploadImage || isActionLoading} className="py-1 text-xs">
                   업로드
                 </Button>
+                {/* 분석 모델 선택. 옵션은 ANALYSIS_TYPE_LABELS 에서 뽑아 라벨·코드가 한 곳에서만 관리되게 한다. */}
+                <select
+                  aria-label="분석 모델"
+                  title="분석 모델"
+                  value={analysisType}
+                  onChange={(e) => setAnalysisType(e.target.value as AnalysisType)}
+                  disabled={!selectedVisit || isActionLoading}
+                  className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-xs text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {(Object.keys(ANALYSIS_TYPE_LABELS) as AnalysisType[]).map((type) => (
+                    <option key={type} value={type}>{ANALYSIS_TYPE_LABELS[type]}</option>
+                  ))}
+                </select>
                 <Button onClick={handleAnalyze} disabled={!canAnalyze || selectedImageIds.length === 0 || isActionLoading} className="py-1 text-xs">
                   {isActionLoading ? "분석 중..." : "AI 분석"}
                 </Button>
@@ -712,7 +740,14 @@ export default function Clinic() {
                   <LowConfidenceBanner caution={analysis.caution} />
 
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
-                    <p className="text-xs text-gray-300">Top 1</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-gray-300">Top 1</p>
+                      {/* 어느 모델의 결과인지. 병명만 보고는 어느 분류기가 낸 답인지 알 수 없다.
+                          analysisType 이 없는 구버전 응답은 모델이 하나뿐이던 때의 결과라 skin_lesion 으로 본다. */}
+                      <span className="rounded border border-gray-700 bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-300">
+                        {ANALYSIS_TYPE_LABELS[analysis.analysisType ?? "skin_lesion"]}
+                      </span>
+                    </div>
                     <p className="mt-0.5 text-sm font-semibold text-white">
                       {analysis.top1.diseaseNameKo} ({analysis.top1.diseaseCode})
                     </p>

@@ -64,6 +64,10 @@ backend/src/main/resources/data/*.xlsx
 *.keras
 *.h5
 !fastapi/model.pth
+# 태스크별 가중치(fastapi/main.py TASKS 의 weights: models/facial.pth 등)도 model.pth 와 같은 이유로
+# 커밋한다 — 서버는 가중치가 있어야 그 태스크를 서빙하고, CI 는 이미지를 빌드해 실제로 띄운다.
+# 어떤 파일이 와야 하는지는 fastapi/models/README.md 에 적어 두었다.
+!fastapi/models/*.pth
 
 # === Frontend build output ===
 frontend/dist/

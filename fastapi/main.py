@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, File, Header, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import hashlib
@@ -23,17 +23,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CLASSES = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc", "inflammatory"]
-CLASS_NAMES_KO = {
-    "akiec": "광선각화증/상피내암",
-    "bcc":   "기저세포암",
-    "bkl":   "양성 각화증성 병변",
-    "df":    "피부섬유종",
-    "mel":   "악성 흑색종",
-    "nv":    "멜라닌세포모반",
-    "vasc":  "혈관성 병변",
-    "inflammatory": "염증성 피부질환",
+# =============================================
+# 태스크 레지스트리 — 어떤 가중치가 어떤 클래스를 내는가
+# =============================================
+# 2026-10 까지 이 서버는 모델 하나(피부 병변 8클래스)만 섬겼다. AI허브 안면부 피부질환
+# 데이터(71863)로 두 번째 모델이 들어오면서 "모델 + 클래스 목록 + 가중치 파일 + 락 + CAM
+# 레이어" 묶음을 태스크 단위로 등록한다. 계약은 docs/aihub-datasets-plan.md §3 이다.
+#
+# 규칙 — 어기면 서버는 멀쩡히 뜨고 병명만 조용히 틀린다(tests/test_model_contract.py 가 잡는다):
+#  - classes 의 순서는 학습 때의 출력 인덱스다. **바꾸지 말고 뒤에만 추가**한다.
+#  - 클래스 코드는 **모든 태스크를 통틀어 유일**해야 한다. 백엔드 disease 테이블을 태스크
+#    구분 없이 공유하기 때문이다(disease_code 가 키).
+#  - names_ko 는 DB 시드·Java 맵과 글자 단위로 같아야 한다. 원본은 계약 문서 §3-1 표.
+#  - 기본 태스크(skin_lesion)는 **기존 동작 그대로**다. 요청에 task 가 없으면 이것이다.
+DEFAULT_TASK = "skin_lesion"
+
+TASKS: dict[str, dict] = {
+    "skin_lesion": {
+        "classes": ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc", "inflammatory"],
+        "names_ko": {
+            "akiec": "광선각화증/상피내암",
+            "bcc":   "기저세포암",
+            "bkl":   "양성 각화증성 병변",
+            "df":    "피부섬유종",
+            "mel":   "악성 흑색종",
+            "nv":    "멜라닌세포모반",
+            "vasc":  "혈관성 병변",
+            "inflammatory": "염증성 피부질환",
+        },
+        "weights": "model.pth",
+        "input_size": 224,
+    },
+    "facial": {
+        # 코드는 알파벳순으로 고정했다(계약 §3-1). normal 은 KCD 가 없는 '정상 피부' 클래스다 —
+        # 데이터셋에 정상 폴더가 있고, 정상을 빼고 학습하면 정상 피부에도 병명을 붙이게 된다.
+        "classes": ["acne", "atopic", "normal", "psoriasis", "rosacea", "seb_derm"],
+        "names_ko": {
+            "acne":      "여드름",
+            "atopic":    "아토피피부염",
+            "normal":    "정상 피부",
+            "psoriasis": "건선",
+            "rosacea":   "주사(장미증)",
+            "seb_derm":  "지루피부염",
+        },
+        "weights": "models/facial.pth",
+        "input_size": 224,
+    },
 }
+
+# 하위호환 별칭 — tests/evaluate.py · evaluate_cam.py · test_model_contract.py 와 이 파일의
+# 기존 주석이 이 이름으로 기본 태스크를 가리킨다. 나머지 별칭(model, transform,
+# MODEL_VERSION, CAM_LAYERS, CAM_LAYER_NAMES, _model_lock)은 모델을 로드한 뒤 아래에서 묶는다.
+CLASSES = TASKS[DEFAULT_TASK]["classes"]
+CLASS_NAMES_KO = TASKS[DEFAULT_TASK]["names_ko"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 신뢰도 경고선 — 이 값 아래면 결과에 "확신 낮음" 등급이 붙는다. **막지는 않는다.**
@@ -112,41 +154,6 @@ def verify_internal_secret(x_internal_secret: str = Header(default="")) -> None:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=8)
-model.load_state_dict(torch.load("model.pth", map_location=device, weights_only=True))
-model.to(device)
-model.eval()
-
-# 가중치 파일 자체의 해시로 버전을 만든다 — 사람이 적는 문자열 상수는 파일을 바꿔도
-# 저절로 안 바뀌므로 언젠가 거짓말을 하게 된다. 해시는 model.pth 가 바뀌는 즉시,
-# 그리고 그럴 때만 바뀐다.
-with open("model.pth", "rb") as f:
-    _model_hash = hashlib.sha256(f.read()).hexdigest()
-MODEL_VERSION = f"efficientnet_b0-{_model_hash[:12]}"
-
-# 모델은 서버 전체가 하나를 공유한다. Grad-CAM 은 그 model 객체에 forward hook 을
-# 등록해 중간 activation 을 꺼내는 방식이라, A 요청이 hook 을 붙인 상태에서
-# B 요청이 forward 를 돌리면 **A 의 hook 이 B 의 activation 으로 발화**한다.
-# (B 의 forward 는 no_grad 라 "cannot register a hook on a tensor that doesn't
-#  require gradient" 로 터지거나, 조용히 서로의 히트맵을 뒤바꾼다)
-#
-# 저장 위치를 요청별로 분리하는 것(contextvars 등)으로는 해결되지 않는다.
-# hook 등록과 backward 자체가 공유 객체에 걸리므로, 모델을 건드리는 구간을
-# 통째로 직렬화하는 것이 유일한 해법이다.
-_model_lock = threading.Lock()
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225]),
-])
-
-
-class PredictRequest(BaseModel):
-    image_base64: str
-
-
 # =============================================
 # 히트맵 표시 기준 — 환경변수로 뺀 이유
 # =============================================
@@ -173,7 +180,9 @@ HEATMAP_ALPHA_MAX = float(os.getenv("HEATMAP_ALPHA_MAX", "0.60"))
 _CAM_NORM_LO = 0.50
 
 
-def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
+def _select_cam_layers(
+    model: torch.nn.Module, input_size: int,
+) -> list[tuple[str, torch.nn.Module]]:
     """
     CAM 을 뽑을 레이어를 서버 시작 시 한 번만 자동 선택한다.
 
@@ -224,7 +233,7 @@ def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
     ]
     try:
         with torch.no_grad():
-            model(torch.zeros(1, 3, 224, 224, device=device))
+            model(torch.zeros(1, 3, input_size, input_size, device=device))
     finally:
         for h in handles:
             h.remove()
@@ -244,9 +253,133 @@ def _select_cam_layers() -> list[tuple[str, torch.nn.Module]]:
     return layers
 
 
-CAM_LAYERS = _select_cam_layers()
-CAM_LAYER_NAMES = [name for name, _ in CAM_LAYERS]
-print(f"[GradCAM] CAM 레이어: {CAM_LAYER_NAMES}")
+class TaskModel:
+    """
+    로드된 태스크 하나 — 모델과, 그 모델을 안전하게 쓰기 위한 것들의 묶음.
+
+    태스크마다 model 객체가 하나씩이고 서버 전체가 그것을 공유한다. Grad-CAM 은 그 model
+    객체에 forward hook 을 등록해 중간 activation 을 꺼내는 방식이라, A 요청이 hook 을
+    붙인 상태에서 B 요청이 forward 를 돌리면 **A 의 hook 이 B 의 activation 으로 발화**한다.
+    (B 의 forward 는 no_grad 라 "cannot register a hook on a tensor that doesn't
+     require gradient" 로 터지거나, 조용히 서로의 히트맵을 뒤바꾼다)
+
+    저장 위치를 요청별로 분리하는 것(contextvars 등)으로는 해결되지 않는다.
+    hook 등록과 backward 자체가 공유 객체에 걸리므로, 모델을 건드리는 구간을
+    통째로 직렬화하는 것이 유일한 해법이다. 그 락(lock)은 **태스크마다 따로** 둔다 —
+    hook 과 backward 가 걸리는 것은 각 태스크의 model 객체이므로 다른 태스크의 요청까지
+    한 줄로 세울 이유가 없다. 교차오염 방지 규칙(락 안에서 forward+backward, hook 은
+    finally 에서 제거)은 태스크마다 동일하게 적용된다.
+    """
+
+    def __init__(self, name: str, spec: dict, weights_path: str) -> None:
+        self.name = name
+        self.classes: list[str] = spec["classes"]
+        self.names_ko: dict[str, str] = spec["names_ko"]
+        self.input_size: int = int(spec["input_size"])
+        self.weights_path = weights_path
+
+        self.model = timm.create_model(
+            "efficientnet_b0", pretrained=False, num_classes=len(self.classes))
+        self.model.load_state_dict(
+            torch.load(weights_path, map_location=device, weights_only=True))
+        self.model.to(device)
+        self.model.eval()
+
+        # 가중치 파일 자체의 해시로 버전을 만든다 — 사람이 적는 문자열 상수는 파일을 바꿔도
+        # 저절로 안 바뀌므로 언젠가 거짓말을 하게 된다. 해시는 가중치 파일이 바뀌는 즉시,
+        # 그리고 그럴 때만 바뀐다.
+        with open(weights_path, "rb") as f:
+            weights_hash = hashlib.sha256(f.read()).hexdigest()
+        self.model_version = f"efficientnet_b0-{weights_hash[:12]}"
+
+        self.lock = threading.Lock()
+
+        self.transform = transforms.Compose([
+            transforms.Resize((self.input_size, self.input_size)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406],
+                                 [0.229, 0.224, 0.225]),
+        ])
+
+        self.cam_layers = _select_cam_layers(self.model, self.input_size)
+        self.cam_layer_names = [layer_name for layer_name, _ in self.cam_layers]
+
+
+def _weights_path_for(name: str) -> str:
+    """
+    태스크의 가중치 경로. 환경변수 MODEL_PATH_<TASK 대문자>(예: MODEL_PATH_FACIAL)가 있으면
+    그것, 없으면 TASKS 에 등록된 상대경로다.
+
+    덮어쓰기를 두는 이유: 모델을 갈아끼워 비교할 때(tests/evaluate.py --compare) 저장소의
+    파일을 바꾸지 않고도 다른 가중치를 가리킬 수 있어야 한다. 상대경로는 작업 디렉터리
+    (fastapi/) 기준이다 — evaluate.py 와 test_model_contract.py 가 임포트 전에 그리로
+    chdir 하는 이유다.
+
+    **빈 문자열은 "덮어쓰기 없음"으로 본다.** docker compose 는 .env 에 `MODEL_PATH_FACIAL=` 처럼
+    값이 비어 있어도 변수를 빈 문자열로 넘긴다(GEMINI_MODEL 에서 이미 겪은 함정 — docker-compose.yml
+    주석 참고). 그걸 경로 "" 로 해석하면 저장소에 가중치가 있어도 그 태스크가 꺼지고, 기본 태스크면
+    기동이 막힌다. 에러 메시지에도 빈 경로만 찍혀 원인을 찾기 어렵다.
+    """
+    override = os.getenv(f"MODEL_PATH_{name.upper()}", "").strip()
+    return override or TASKS[name]["weights"]
+
+
+def _load_tasks() -> tuple[dict[str, TaskModel], dict[str, str]]:
+    """
+    등록된 태스크를 전부 로드해 본다. 반환: (로드된 것, 로드하지 못한 것의 사유).
+
+    기본 태스크는 지금까지처럼 가중치가 없거나 깨져 있으면 **기동 실패**다. 모델 없이
+    /health 가 ok 를 돌려주는 서버는 "조용히 무방비"(INTERNAL_API_SECRET 주석 참고)와
+    같은 종류의 상태라, 죽어서 배포가 실패하는 쪽이 낫다.
+
+    나머지 태스크는 파일이 없거나 state_dict 가 안 맞아도 서버를 죽이지 않는다 —
+    CI 에는 facial.pth 가 없고(가중치는 학습이 끝난 뒤 별도 커밋으로 들어온다), 키오스크가
+    기대는 기본 태스크를 새 모델 파일 하나가 깨뜨려서는 안 된다. 대신 **이유를 숨기지
+    않는다**: 로그 한 줄과 /health 의 tasks.<name>.error 로 드러내고, 그 태스크로 들어온
+    요청은 503 을 받는다. 미로드가 조용히 묻히면 "안면부 분석이 왜 안 되지"를 EC2 에
+    들어가 로그를 뒤져야만 알게 된다.
+    """
+    loaded: dict[str, TaskModel] = {}
+    errors: dict[str, str] = {}
+    for name, spec in TASKS.items():
+        path = _weights_path_for(name)
+        if not os.path.isfile(path):
+            if name == DEFAULT_TASK:
+                raise FileNotFoundError(
+                    f"기본 태스크 '{name}' 의 가중치 파일이 없습니다: {path}")
+            errors[name] = "가중치 파일 없음"
+            print(f"[TASKS] {name}: 가중치 파일이 없어 로드하지 않습니다 ({path})")
+            continue
+        try:
+            loaded[name] = TaskModel(name, spec, path)
+        except Exception as exc:                 # noqa: BLE001 — 사유를 그대로 노출한다
+            if name == DEFAULT_TASK:
+                raise
+            # size mismatch 메시지는 여러 줄이라 /health 에 넣기 전에 한 줄로 접는다.
+            errors[name] = f"{type(exc).__name__}: {' '.join(str(exc).split())[:300]}"
+            print(f"[TASKS] {name}: 가중치 로드 실패 — 이 태스크만 비활성 ({path}): {errors[name]}")
+            continue
+        print(f"[TASKS] {name}: 로드 {loaded[name].model_version} ({path})")
+        print(f"[GradCAM] {name}: CAM 레이어 {loaded[name].cam_layer_names}")
+    return loaded, errors
+
+
+TASK_MODELS, TASK_LOAD_ERRORS = _load_tasks()
+_DEFAULT_TASK_MODEL = TASK_MODELS[DEFAULT_TASK]
+
+# 하위호환 별칭(기본 태스크) — 위 CLASSES / CLASS_NAMES_KO 와 같은 이유.
+model = _DEFAULT_TASK_MODEL.model
+transform = _DEFAULT_TASK_MODEL.transform
+MODEL_VERSION = _DEFAULT_TASK_MODEL.model_version
+CAM_LAYERS = _DEFAULT_TASK_MODEL.cam_layers
+CAM_LAYER_NAMES = _DEFAULT_TASK_MODEL.cam_layer_names
+_model_lock = _DEFAULT_TASK_MODEL.lock
+
+
+class PredictRequest(BaseModel):
+    image_base64: str
+    # 생략하면 기본 태스크 — task 를 모르는 구버전 백엔드가 그대로 돈다.
+    task: str = DEFAULT_TASK
 
 
 def _norm01(t: torch.Tensor, lo: float = _CAM_NORM_LO) -> torch.Tensor:
@@ -360,6 +493,7 @@ def _cam_quality(cam: torch.Tensor) -> dict:
 
 def _compute_gradcam(
     tensor: torch.Tensor,
+    tm: TaskModel,
 ) -> tuple[torch.Tensor, torch.Tensor | None, dict | None]:
     """
     forward 1회 + backward 1회로 logits 와 CAM 을 **함께** 구한다.
@@ -369,7 +503,7 @@ def _compute_gradcam(
     (HEATMAP_DISPLAY_FLOOR)과 **같은 척도**여야 해서 _fuse_cams 가 0~1 로 맞춰 둔
     격자 해상도 CAM 을 봐야 하는데, 그 값이 살아 있는 곳은 이 함수 안뿐이다.
     업샘플 뒤에 재면 보간이 만든 값까지 면적에 섞인다.
-    반드시 _model_lock 을 잡은 채로 호출한다.
+    반드시 그 태스크의 락(tm.lock)을 잡은 채로 호출한다.
 
     예전에는 no_grad forward 1회(분류용) + CAM 용 forward 1회를 돌렸다. 같은 입력에
     같은 모델이므로 결과는 동일하고 비용만 두 배였다. CPU 전용 인스턴스에서는 이
@@ -383,20 +517,20 @@ def _compute_gradcam(
         layer.register_forward_hook(
             lambda _m, _i, out, name=name: store.__setitem__(name, out)
         )
-        for name, layer in CAM_LAYERS
+        for name, layer in tm.cam_layers
     ]
     try:
-        logits = model(tensor)
+        logits = tm.model(tensor)
     finally:
         # 예외가 나도 hook 은 반드시 떼어낸다.
-        # (안 떼면 전역 model 에 hook 이 남아 이후 모든 요청이 계속 터진다)
+        # (안 떼면 그 태스크의 model 에 hook 이 남아 이후 모든 요청이 계속 터진다)
         for h in handles:
             h.remove()
 
     cam = quality = None
     try:
         pred = int(logits.argmax(dim=1).item())
-        acts = [store[name] for name in CAM_LAYER_NAMES]
+        acts = [store[name] for name in tm.cam_layer_names]
         # logits 가 아니라 log_softmax 를 미분한다. 원시 logit 의 gradient 는 "이
         # 클래스 점수를 올리는 방향"만 보지만, log_softmax 의 gradient 는 거기서
         # 다른 클래스들의 기여를 뺀 값이라 **그 클래스에만 고유한 근거**를 가리킨다
@@ -418,7 +552,7 @@ def _compute_gradcam(
 def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str | None:
     """
     CAM 을 원본 해상도 오버레이 JPEG(base64)로 렌더링한다.
-    모델을 전혀 건드리지 않으므로 **_model_lock 밖에서** 실행한다 —
+    모델을 전혀 건드리지 않으므로 **태스크 락(TaskModel.lock) 밖에서** 실행한다 —
     원본 해상도가 클수록(키오스크 폰카메라 사진) 이 구간이 길어지는데,
     락 안에 두면 그만큼 다른 요청이 통째로 대기하게 된다.
 
@@ -464,8 +598,36 @@ def _render_gradcam_overlay(cam: torch.Tensor, orig_image: Image.Image) -> str |
         return None
 
 
-def run_inference(image_bytes: bytes) -> dict:
-    """EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 포함 결과 반환."""
+def get_task_model(task: str) -> TaskModel:
+    """
+    요청의 task 문자열을 로드된 TaskModel 로 바꾼다. 못 바꾸면 HTTP 오류로 끝낸다.
+
+    400 과 503 을 가른다 — 모르는 이름은 호출하는 쪽(백엔드)의 버그라 고쳐 보내야 하고,
+    등록은 됐는데 가중치가 없는 것은 이 서버의 배포 상태라 파일을 올리면 풀린다.
+    503 본문에 어떤 파일이 없는지 적는 이유: 그 메시지만 보고 무엇을 올려야 하는지
+    알 수 있어야 한다(/health 의 tasks.<name> 에도 같은 정보가 있다).
+    """
+    if task not in TASKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"알 수 없는 분석 태스크입니다: {task!r} (가능한 값: {', '.join(TASKS)})")
+    tm = TASK_MODELS.get(task)
+    if tm is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(f"분석 태스크 '{task}' 의 모델이 로드되지 않았습니다 "
+                    f"(가중치 파일: {_weights_path_for(task)}). "
+                    f"사유: {TASK_LOAD_ERRORS.get(task, '알 수 없음')}"))
+    return tm
+
+
+def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
+    """
+    EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 포함 결과 반환.
+
+    task 는 TASKS 의 키다. 생략하면 기본 태스크라 기존 호출은 한 글자도 안 바꿔도 된다.
+    """
+    tm = get_task_model(task)
     # EXIF 회전을 먼저 적용한다. 폰카 사진은 센서 방향 그대로 저장되고 회전 정보는
     # EXIF 태그에만 들어 있다. 이걸 무시하면 두 가지가 동시에 깨진다:
     #  (1) 모델이 누운 이미지를 본다 — 학습 증강은 ±15도 회전뿐이라 90도는 분포 밖이다.
@@ -473,20 +635,22 @@ def run_inference(image_bytes: bytes) -> dict:
     #      "히트맵 보기 ↔ 원본 이미지" 토글이 서로 다른 방향의 사진을 보여준다.
     # 모델 입력과 오버레이 베이스가 같은 이미지를 쓰게 되므로 둘 다 사라진다.
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
-    tensor = transform(image).unsqueeze(0).to(device)
+    tensor = tm.transform(image).unsqueeze(0).to(device)
 
-    # ── 모델을 만지는 구간은 한 번에 하나씩만 (위 _model_lock 주석 참고) ──
+    # ── 모델을 만지는 구간은 한 번에 하나씩만 (TaskModel 의 lock 설명 참고) ──
     # 분류와 Grad-CAM 이 같은 forward 를 공유하므로 호출 하나가 통째로 락 안에 있다.
-    with _model_lock:
-        logits, cam, heatmap_quality = _compute_gradcam(tensor)
+    with tm.lock:
+        logits, cam, heatmap_quality = _compute_gradcam(tensor, tm)
         probs = torch.softmax(logits, dim=1)[0]
 
-    top5 = torch.topk(probs, k=5)
+    # 상위 5개를 내보낸다. 클래스가 5개 미만인 태스크가 들어오면 topk 가 터지므로 min 으로
+    # 막아 둔다(지금의 두 태스크는 8·6 클래스라 그대로 5다).
+    top5 = torch.topk(probs, k=min(5, len(tm.classes)))
     results = [
         {
             "rank": i + 1,
-            "disease_code": CLASSES[idx.item()],
-            "disease_name_ko": CLASS_NAMES_KO[CLASSES[idx.item()]],
+            "disease_code": tm.classes[idx.item()],
+            "disease_name_ko": tm.names_ko[tm.classes[idx.item()]],
             "confidence": round(prob.item(), 4),
         }
         for i, (prob, idx) in enumerate(zip(top5.values, top5.indices))
@@ -511,7 +675,10 @@ def run_inference(image_bytes: bytes) -> dict:
         # 새 필드. Spring 은 FAIL_ON_UNKNOWN_PROPERTIES=false 가 기본이라
         # 백엔드 DTO 를 고치지 않아도 구버전 백엔드가 그대로 돈다.
         "heatmap_quality": heatmap_quality,
-        "model_version": MODEL_VERSION,
+        "model_version": tm.model_version,
+        # 어느 태스크의 답인지. 백엔드가 analysis_result.analysis_type 에 남긴다(계약 §3-3).
+        # 위와 같은 이유로 구버전 백엔드는 이 필드를 무시하므로 추가해도 안전하다.
+        "task": tm.name,
     }
 
 
@@ -530,15 +697,31 @@ def health():
         "heatmap_display_floor": HEATMAP_DISPLAY_FLOOR,
         "heatmap_alpha_max": HEATMAP_ALPHA_MAX,
         "cam_layers": CAM_LAYER_NAMES,
+        # 태스크별 상태. 위 최상위 키들은 기본 태스크의 값이고 기존 호출자(도커 헬스체크,
+        # 백엔드 로그)가 읽으므로 그대로 둔다. 새 태스크는 여기에만 나타난다.
+        # loaded=false 인 태스크의 error 가 "왜 503 인지"를 밖에서 볼 수 있는 유일한 창구다.
+        "tasks": {
+            name: {
+                "loaded": name in TASK_MODELS,
+                "model_version": (TASK_MODELS[name].model_version
+                                  if name in TASK_MODELS else None),
+                "classes": spec["classes"],
+                "weights": _weights_path_for(name),
+                "input_size": spec["input_size"],
+                "error": TASK_LOAD_ERRORS.get(name),
+            }
+            for name, spec in TASKS.items()
+        },
     }
 
 
 @app.post("/predict", dependencies=[Depends(verify_internal_secret)])
-def predict(file: UploadFile = File(...)):
+def predict(file: UploadFile = File(...), task: str = Form(DEFAULT_TASK)):
     """
     Swagger / curl 직접 테스트용 (multipart)
 
     직접 호출할 때는 `X-Internal-Secret` 헤더에 INTERNAL_API_SECRET 값을 넣어야 한다.
+    폼 필드 `task` 는 선택이다(기본 skin_lesion): `-F file=@x.jpg -F task=facial`
 
     `async def` 가 아니라 `def` 인 것이 중요하다. run_inference 는 동기 함수라
     `async def` 안에서 호출하면 추론이 끝날 때까지 이벤트 루프 전체가 멈춰
@@ -549,11 +732,11 @@ def predict(file: UploadFile = File(...)):
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="이미지 파일만 허용됩니다.")
     contents = file.file.read()
-    return run_inference(contents)
+    return run_inference(contents, task)
 
 
 @app.post("/predict-base64", dependencies=[Depends(verify_internal_secret)])
 def predict_base64(request: PredictRequest):
-    """Spring Boot 내부 호출용 (JSON base64)"""
+    """Spring Boot 내부 호출용 (JSON base64). 본문의 task 생략 시 기본 태스크."""
     image_bytes = base64.b64decode(request.image_base64)
-    return run_inference(image_bytes)
+    return run_inference(image_bytes, request.task)

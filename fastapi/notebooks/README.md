@@ -105,3 +105,14 @@ python3 tests/evaluate.py --holdout tests/baselines/holdout.csv \
 ```bash
 git show b455632:fastapi/notebooks/skin_lesion_training_colab.ipynb
 ```
+
+## facial_training_colab.ipynb
+
+`facial` 태스크(AI허브 안면부 피부질환 합성 데이터 71863, 6클래스)의 **Colab 래퍼**다. 위 노트북과 달리 계산을 직접 하지 않고
+`fastapi/training/aihub/` 의 스크립트(`facial/build_manifest.py → facial/make_holdout.py → train.py`)를 순서대로 부른다.
+같은 명령이 맥북(MPS)·안심존 GPU 서버에서도 그대로 돌게 하기 위해서다. 준비물·규칙·다음 단계는 노트북 첫 셀과
+[`../training/aihub/README.md`](../training/aihub/README.md) 에 있다.
+
+홀드아웃 규칙은 위와 같다 — 다만 이 데이터는 AI허브가 Training/Validation 을 나눠 주므로 Validation 1,200장을 그대로
+`tests/baselines/facial-holdout.csv` 로 고정한다(사람이 고를 여지가 없어 재현 가능). 클래스 리터럴(`TASK`, `CLASSES`)은
+`tests/test_model_contract.py` 가 `main.py` 와 순서까지 대조한다.

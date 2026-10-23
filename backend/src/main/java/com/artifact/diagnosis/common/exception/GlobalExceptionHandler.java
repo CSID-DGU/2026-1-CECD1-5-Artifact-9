@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,7 +25,7 @@ import java.util.NoSuchElementException;
 /**
  * 모든 컨트롤러 공통 예외 처리.
  *
- *   400  잘못된 요청 (DTO 검증 실패, 잘못된 인자)
+ *   400  잘못된 요청 (DTO 검증 실패, 본문 해석 실패, 잘못된 인자)
  *   403  직책 권한 부족
  *   404  리소스 없음 (Optional 빈 결과)
  *   409  상태 충돌 (Visit 상태 머신 위반 등)
@@ -135,6 +136,25 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException e) {
         return ResponseEntity.badRequest().body(error(400, e.getMessage(), null));
+    }
+
+    /**
+     * 요청 본문을 읽지 못함(JSON 문법 오류, 타입 불일치, 허용되지 않은 enum 코드) → 400.
+     *
+     * 이 핸들러가 없으면 맨 아래 {@code handleEtc} 로 떨어져 500 이 나간다. 잘못 쓴 본문은 클라이언트의
+     * 잘못이지 서버 장애가 아니고, 500 이면 프론트가 "잠시 후 다시 시도"를 안내해 같은 요청을 반복하게 된다.
+     *
+     * 메시지: {@code @JsonCreator} 가 던진 {@link IllegalArgumentException}(예: {@code AnalysisType} 의 모르는
+     * 코드)은 우리가 쓴 문구라 그대로 내보낸다 — {@link #handleBadRequest} 와 같은 규칙이다. 그 밖의 원인은
+     * Jackson 내부 메시지(필드 경로·클래스명)가 섞여 있어 {@code handleEtc} 와 같은 이유로 내보내지 않는다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleUnreadable(HttpMessageNotReadableException e) {
+        Throwable root = e.getMostSpecificCause();
+        String message = root instanceof IllegalArgumentException && root.getMessage() != null
+                ? root.getMessage()
+                : "요청 본문을 읽을 수 없습니다.";
+        return ResponseEntity.badRequest().body(error(400, message, null));
     }
 
     /**

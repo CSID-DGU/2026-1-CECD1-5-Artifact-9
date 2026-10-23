@@ -7,7 +7,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * 질병 마스터 (HAM10000 7-class). 초기 데이터는 init SQL이 적재.
+ * 질병 마스터 — AI 모델이 출력하는 클래스 코드의 합집합. 태스크별로 클래스 목록이 다르다.
+ *   skin_lesion: HAM10000 7종 + SCIN 염증성 1종 (V1 시드, V7 보강)
+ *   facial:      안면부 피부질환 6종 (V10 시드)
+ * 시드는 Flyway 마이그레이션이 적재하고, 모델 클래스와 어긋나지 않는지
+ * fastapi/tests/test_model_contract.py [6] 이 모든 마이그레이션의 disease INSERT 를 합쳐 대조한다.
  * DB 테이블: disease
  */
 @Entity
@@ -23,7 +27,11 @@ public class Disease {
     @Column(name = "disease_id")
     private Long id;
 
-    /** 모델 클래스 코드 — nv, mel, bkl, bcc, akiec, df, vasc, inflammatory */
+    /**
+     * 모델 클래스 코드 — {@code AnalysisResult.topKResults} 의 code 와 같은 값.
+     *   skin_lesion: nv, mel, bkl, bcc, akiec, df, vasc, inflammatory
+     *   facial:      acne, atopic, normal, psoriasis, rosacea, seb_derm
+     */
     @Column(name = "disease_code", nullable = false, length = 20, unique = true)
     private String diseaseCode;
 

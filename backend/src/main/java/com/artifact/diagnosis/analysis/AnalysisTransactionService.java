@@ -109,21 +109,26 @@ class AnalysisTransactionService {
      * 결과 행과 이미지 매핑은 반드시 같은 트랜잭션이어야 한다. 나눠 놓으면 결과만 저장되고
      * 매핑이 빠진 행이 생길 수 있는데, 그건 이 테이블이 3개월간 비어 있던 상태와 정확히 같다.
      *
-     * @param imageIds 모델에 실제로 넣은 이미지들 — {@link #beginAnalysis} 에 넘긴 것과 같은 목록
+     * @param imageIds     모델에 실제로 넣은 이미지들 — {@link #beginAnalysis} 에 넘긴 것과 같은 목록
+     * @param analysisType 어느 태스크(모델)의 결과인가. {@code analysis_result.analysis_type} 에 코드 문자열로 남는다
      */
     @Transactional
-    public AnalysisResult saveResult(Long visitId, List<Long> imageIds,
+    public AnalysisResult saveResult(Long visitId, List<Long> imageIds, AnalysisType analysisType,
                                      String modelVersion, String diseaseCode,
                                      double confidence, String confidenceLevel,
                                      List<TopKItem> topK,
                                      int inferenceMs, String heatmapKey) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
+        // 여기서 비면 모델과 disease 시드가 어긋난 것이다. facial 코드라면 V10__facial_task.sql 이 안 돈 DB 다
+        // (V7 머리말에 적힌 운영 장애가 정확히 이 경로였다 — 추론·히트맵은 끝났는데 저장만 롤백된다).
         Disease disease = diseaseRepository.findByDiseaseCode(diseaseCode)
-                .orElseThrow(() -> new IllegalStateException("알 수 없는 병명 코드: " + diseaseCode));
+                .orElseThrow(() -> new IllegalStateException(
+                        "알 수 없는 병명 코드: " + diseaseCode + " (task=" + analysisType.code() + ")"));
 
         AnalysisResult result = analysisResultRepository.save(AnalysisResult.builder()
                 .visitId(visitId)
+                .analysisType(analysisType.code())
                 .modelVersion(modelVersion)
                 .predictedDiseaseId(disease.getId())
                 .confidence(BigDecimal.valueOf(confidence))
