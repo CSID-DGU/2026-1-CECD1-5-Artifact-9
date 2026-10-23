@@ -25,7 +25,9 @@ NAMES_KO = {
 }
 
 # AI허브 zip/폴더 이름의 질환 토큰 → 클래스 코드. 예: VL_여드름_정면.zip, TS_정상_측면/
-# 라벨 JSON 의 키 이름은 아직 모르지만(§1-1) 폴더명만으로 클래스가 확정되므로 manifest 는 이 표로 만든다.
+# 라벨 JSON 의 annotations[0].diagnosis_info.diagnosis_name 값도 정확히 이 여섯 토큰이다
+# (2026-10-23 inspect_dataset.py 보고서로 확인, docs/aihub-datasets-plan.md §7-1). build_manifest.py 는
+# 폴더 토큰으로 클래스를 정하고 JSON 의 diagnosis_name 으로 교차검증한다 — 둘이 다르면 멈춘다.
 FOLDER_TOKEN_TO_CODE = {
     "건선":   "psoriasis",
     "아토피": "atopic",
@@ -50,3 +52,7 @@ PREFIX_TO_SPLIT = {
     "VS": "val",
     "VL": "val",
 }
+
+# 라벨 JSON 의 diagnosis_name → 코드. 폴더 토큰과 같은 표다(값이 같다는 것을 실데이터로 확인했다).
+# 따로 이름을 둔 이유: 나중에 JSON 쪽 표기만 바뀌어도(예: '지루피부염') 폴더 표는 건드리지 않고 여기만 늘리면 된다.
+DIAGNOSIS_NAME_TO_CODE = dict(FOLDER_TOKEN_TO_CODE)

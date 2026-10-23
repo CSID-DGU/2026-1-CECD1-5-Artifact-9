@@ -66,7 +66,19 @@ from pathlib import Path
 import contextlib
 
 import numpy as np
-import timm
+try:
+    import timm
+except ImportError:  # pragma: no cover — 외부망이 막힌 환경에서 가장 먼저 부딪히는 벽
+    # torchvision 의 efficientnet_b0 로 대체하지 않는다. 두 구현은 state_dict 키 이름이 달라서,
+    # 여기서 torchvision 으로 학습한 가중치는 fastapi/main.py(timm) 가 load_state_dict 로 읽지 못한다.
+    # 키를 리매핑해 맞추는 길도 있지만, 리매핑이 한 층이라도 어긋나면 서버는 뜨고 확률만 조용히 틀린다 —
+    # 이 저장소가 가장 피하려는 실패 방식이다. timm 은 순수 파이썬 wheel(수 MB) 이라 반입이 쉽다.
+    raise SystemExit(
+        "timm 이 없습니다. 서빙(fastapi/main.py)과 같은 구현으로 학습해야 가중치가 그대로 로드되므로 timm 이 필수입니다.\n"
+        "  인터넷이 되면 : pip install timm==1.0.11\n"
+        "  외부망 차단   : 다른 PC 에서 `pip download timm==1.0.11 --no-deps -d wheels/` 로 받은 wheel 을 반입한 뒤\n"
+        "                  pip install --no-index --find-links wheels/ timm   (timm 의 의존성 torch·torchvision·pyyaml·huggingface_hub·safetensors 도 같은 방식)"
+    )
 import torch
 import torch.nn as nn
 import torchvision
