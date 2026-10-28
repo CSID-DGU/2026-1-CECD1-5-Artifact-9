@@ -96,8 +96,8 @@ class LlmFallbackIntegrationTest {
 
     @DynamicPropertySource
     static void llmServers(DynamicPropertyRegistry registry) {
-        registry.add("gemini.base-url", GEMINI::baseUrl);
-        registry.add("anthropic.base-url", CLAUDE::baseUrl);
+        registry.add("llm.gemini-base-url", GEMINI::baseUrl);
+        registry.add("llm.claude-base-url", CLAUDE::baseUrl);
     }
 
     /** 약품·상병 xlsx 수십만 행을 백그라운드로 적재하는 초기화는 이 테스트와 무관하다. */

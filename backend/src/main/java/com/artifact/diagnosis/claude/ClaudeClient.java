@@ -54,6 +54,9 @@ public class ClaudeClient implements LlmProvider {
 
     static final String PROVIDER = "claude";
 
+    /** 모델명이 비어 있을 때 쓰는 모델. compose 기본값과 같다. */
+    static final String DEFAULT_MODEL = "claude-opus-5-5";
+
     /**
      * 생각(thinking)이 항상 켜진 모델이 있고, 생각한 토큰도 max_tokens 에 들어간다.
      * 답은 두세 줄(증명서는 한두 문단)이지만 상한을 그 길이에 맞추면 생각만 하다 잘린다.
@@ -85,9 +88,10 @@ public class ClaudeClient implements LlmProvider {
                         @Value("${anthropic.model:claude-opus-5-5}") String model,
                         @Value("${anthropic.timeout-seconds:15}") long timeoutSeconds,
                         @Value("${anthropic.max-attempts:2}") int maxAttempts,
-                        @Value("${anthropic.base-url:}") String baseUrl) {
+                        @Value("${llm.claude-base-url:}") String baseUrl) {
         this.apiKey = apiKey == null ? "" : apiKey.trim();
-        this.model = model == null ? "" : model.trim();
+        // 로컬 .env 에 ANTHROPIC_MODEL= 처럼 빈 값을 두면 Spring 기본값이 적용되지 않는다. 그때도 기본 모델을 쓴다.
+        this.model = model == null || model.isBlank() ? DEFAULT_MODEL : model.trim();
         this.timeout = Duration.ofSeconds(timeoutSeconds);
         this.maxAttempts = Math.max(1, maxAttempts);
         this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
@@ -277,7 +281,9 @@ public class ClaudeClient implements LlmProvider {
                 local = client;
                 if (local == null) {
                     // 재시도는 generate() 가 시간 예산 안에서 직접 한다. builder() 는 fromEnv() 와 달리
-                    // ANTHROPIC_BASE_URL 같은 셸 환경변수를 읽지 않는다 — 주소와 키는 Spring 설정으로만 정한다.
+                    // 셸 환경변수를 읽지 않는다. 주소는 llm.claude-base-url 로만 바꾼다 — Spring 은 OS 환경변수도
+                    // 설정으로 읽으므로, Claude Code 등이 흔히 설정해 두는 ANTHROPIC_BASE_URL 과 겹치는
+                    // anthropic.base-url 같은 이름을 쓰면 키와 진료 프롬프트가 그 주소로 나간다.
                     AnthropicOkHttpClient.Builder builder = AnthropicOkHttpClient.builder()
                             .apiKey(apiKey)
                             .timeout(timeout)

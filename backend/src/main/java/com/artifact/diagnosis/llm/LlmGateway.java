@@ -239,8 +239,14 @@ public class LlmGateway {
                     return result.withAttempts(trail);
                 }
 
-                log.warn("LLM [{}] {} 실패 {}({}): {}", request.purpose(), provider.name(),
-                        result.failure(), result.statusCode(), abbreviate(result.message()));
+                if (result.failure().isConfigurationProblem()) {
+                    // 키·모델명·결제 문제는 기다려도 풀리지 않는다. 운영자가 바로 보도록 ERROR 로 남긴다.
+                    log.error("LLM [{}] {} 설정 문제 {}({}) — 키·모델명·결제를 확인해야 한다: {}", request.purpose(),
+                            provider.name(), result.failure(), result.statusCode(), abbreviate(result.message()));
+                } else {
+                    log.warn("LLM [{}] {} 실패 {}({}): {}", request.purpose(), provider.name(),
+                            result.failure(), result.statusCode(), abbreviate(result.message()));
+                }
                 restIfNeeded(provider, result, wait);
                 if (result.failure().isTemporary() && firstTemporary == null) firstTemporary = result;
                 last = result;

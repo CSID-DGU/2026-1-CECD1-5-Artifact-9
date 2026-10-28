@@ -73,8 +73,12 @@ public class GeminiClient {
     @Value("${gemini.max-attempts:2}")
     private int maxAttempts;
 
-    /** 운영은 기본값 그대로다. 통합 테스트가 가짜 서버를 가리키게 할 때만 바꾼다. */
-    @Value("${gemini.base-url:https://generativelanguage.googleapis.com}")
+    /**
+     * 운영은 기본값 그대로다. 통합 테스트가 가짜 서버를 가리키게 할 때만 바꾼다.
+     * 이름을 gemini.base-url 로 하지 않은 이유: Spring 은 OS 환경변수도 설정으로 읽어서, 다른 도구가 쓰는
+     * GEMINI_BASE_URL 이 있으면 키와 진료 프롬프트가 그 주소로 나간다. 겹칠 일 없는 이름을 쓴다.
+     */
+    @Value("${llm.gemini-base-url:https://generativelanguage.googleapis.com}")
     private String baseUrl = "https://generativelanguage.googleapis.com";
 
     /**
@@ -118,8 +122,9 @@ public class GeminiClient {
                         .POST(HttpRequest.BodyPublishers.ofString(body))
                         .build();
                 response = exchange(httpRequest, timeout);
-                log.debug("Gemini 응답 (model={}, attempt={}, status={}): {}",
-                        model, attempt, response.statusCode(), response.body());
+                // 본문은 남기지 않는다. 생성된 진료 문장이 담겨 있고, 운영 밖에서는 로그 수준이 DEBUG 다.
+                log.debug("Gemini 응답 (model={}, attempt={}, status={}, {}자)", model, attempt,
+                        response.statusCode(), response.body() == null ? 0 : response.body().length());
                 if (response.statusCode() != 503 || attempt >= maxAttempts) break;
                 // 503 은 Google 쪽 용량 부족이라 잠깐 뒤에는 받아 주기도 한다. 쉬고 나서 응답 한 번 받을
                 // 시간도 안 남으면 여기서 멈추고, 남은 시간은 체인의 다음 모델에게 넘긴다.

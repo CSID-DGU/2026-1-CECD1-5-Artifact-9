@@ -192,22 +192,30 @@ export default function Clinic() {
   }
 
   // ── 상세 로드 ────────────────────────────────────────────────────
+  /**
+   * 처방 입력 상태를 비운다. 진행 중인 AI 코멘트 요청도 무효로 만든다 — 늦게 온 응답이 다른 진료에
+   * 들어가지 않게 하기 위해서다(요청 번호가 바뀌면 그 응답은 버려진다).
+   */
+  function resetVisitForm() {
+    setSelectedKcds([]);
+    setSelectedAnalysisCandidateCodes([]);
+    setAiComment(null);
+    setAiCommentError(null);
+    commentRequestSeq.current += 1;
+    setIsCommentLoading(false);
+    setSelectedDrug(null);
+    setDrugDosage("");
+    setDrugDays("");
+    setDoctorNotes("");
+  }
+
   async function loadVisitDetail(visitId: number) {
     setIsActionLoading(true);
     setErrorMessage(null);
     setMessage(null);
     setPrescription(null);
     setPreliminaryAnalysis(null);
-    setSelectedKcds([]);
-    setSelectedAnalysisCandidateCodes([]);
-    setAiComment(null);
-    setAiCommentError(null);
-    commentRequestSeq.current += 1; // 진행 중인 코멘트 요청의 응답은 이 진료에 넣지 않는다
-    setIsCommentLoading(false);
-    setSelectedDrug(null);
-    setDrugDosage("");
-    setDrugDays("");
-    setDoctorNotes("");
+    resetVisitForm();
 
     try {
       const visit = await getVisit(visitId);
@@ -225,6 +233,9 @@ export default function Clinic() {
           : null;
       const preliminary = await getPreliminaryAnalysis(visit.id).catch(() => null);
 
+      // 불러오는 동안에도 앞 진료 화면은 그대로 떠 있어 상병을 고르거나 코멘트를 요청할 수 있다.
+      // 화면이 실제로 바뀌는 이 지점에서 한 번 더 비워, 그사이 생긴 것이 새 진료로 넘어가지 않게 한다.
+      resetVisitForm();
       setSelectedVisit(visit);
       setSelectedPatient(patient);
       setImages(visitImages);
@@ -320,6 +331,10 @@ export default function Clinic() {
       setAnalysis(result);
       setSelectedAnalysisCandidateCodes([]);
       setSelectedKcds([]);
+      // 상병을 비웠으니, 앞 상병으로 요청해 둔 코멘트 응답도 받지 않는다.
+      commentRequestSeq.current += 1;
+      setAiComment(null);
+      setIsCommentLoading(false);
       setSelectedVisit((cur) => cur ? { ...cur, status: "ANALYZED" } : cur);
       await loadVisitLists();
       setMessage("AI 분석이 완료되었습니다. 결과를 확인하고 처방을 입력하세요.");
@@ -997,7 +1012,7 @@ export default function Clinic() {
                           }
                           finally { if (requestSeq === commentRequestSeq.current) setIsCommentLoading(false); }
                         }}
-                        disabled={selectedKcds.length === 0 || isCommentLoading}
+                        disabled={selectedKcds.length === 0 || isCommentLoading || isActionLoading}
                         className="w-full px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}

@@ -523,6 +523,7 @@ ANTHROPIC_API_KEY=
 
 - 로컬 개발에서는 `IMAGE_STORAGE_TYPE=local`로 설정하면 **실제 AWS 없이** 이미지 업로드/분석 흐름을 검증할 수 있다.
 - LLM 키(`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`)가 하나도 없으면 코멘트 API는 *"AI API 키가 설정되지 않았습니다."* 를 반환한다(앱은 정상 동작). 둘 중 하나만 있어도 그 공급자로 동작한다.
+- `ANTHROPIC_API_KEY` 를 넣으면 식별정보를 지운 프롬프트(상병·접수 메모·처방 정보)가 Anthropic(미국)에도 전송된다. 운영에 켜기 전에 개인정보 처리방침·국외 이전 고지를 함께 고친다.
 - **`JWT_SECRET`은 환경마다 다른 값을 쓴다.** 이 키를 아는 사람은 로그인 없이 임의의 사용자·권한으로 토큰을 위조할 수 있으므로, 저장소·이슈·메신저에 값을 남기지 않는다.
 
 ---
@@ -629,7 +630,7 @@ ANTHROPIC_API_KEY=
 | GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] CAM 계산 실패` 또는 `[GradCAM] 히트맵 렌더링 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
 | 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(표시 임계값을 넘는 면적 비율)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 표시 범위는 `HEATMAP_DISPLAY_FLOOR`(기본 0.35)·`HEATMAP_ALPHA_MAX`(기본 0.60) 로 조절하며, 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
 | AI 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY`(또는 `ANTHROPIC_API_KEY`) 환경변수 설정 후 재기동 |
-| AI 코멘트가 "일시적으로 혼잡합니다" | 체인의 모든 공급자가 일시 장애였다는 뜻이다. 백엔드 로그의 `LLM [...] 모든 공급자 실패:` 줄에 공급자별 결과가 남는다. Claude 키가 없으면 Google 쪽 장애가 길어질 때 대신 답할 곳이 없다 — `ANTHROPIC_API_KEY` 설정을 검토 |
+| AI 코멘트가 "일시적으로 혼잡합니다" | 모든 공급자가 실패했고, 그중 적어도 하나가 일시 장애(503·429·5xx·타임아웃)였다는 뜻이다. 나머지는 키·모델명 오류일 수 있으므로 백엔드 로그의 `LLM [...] 모든 공급자 실패:` 줄에서 공급자별 결과(AUTH·MODEL_NOT_FOUND·BILLING 등)를 확인한다. 설정 문제는 ERROR 로그로 따로 남는다. Claude 키가 없으면 Google 쪽 장애가 길어질 때 대신 답할 곳이 없다 — `ANTHROPIC_API_KEY` 설정을 검토 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
 | "확신 낮음" 경고가 너무 자주/드물게 뜸 | `LOW_CONFIDENCE_THRESHOLD` 조정 (올리면 경고가 잦아진다). 근거 수치는 `fastapi/tests/README.md` |
 
