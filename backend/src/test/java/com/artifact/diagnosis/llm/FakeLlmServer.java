@@ -29,7 +29,11 @@ public class FakeLlmServer implements AutoCloseable {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    public record Reply(int status, String body, long delayMs) {}
+    /**
+     * @param delayMs      응답 헤더를 보내기 전에 기다리는 시간.
+     * @param stallAfterMs 0 보다 크면 헤더와 본문 앞부분만 보내고 이만큼 멈춘다(본문이 멈추는 장애).
+     */
+    public record Reply(int status, String body, long delayMs, long stallAfterMs) {}
 
     public record Received(String path, String query, Map<String, List<String>> headers, String body) {
         public String header(String name) {
@@ -66,7 +70,13 @@ public class FakeLlmServer implements AutoCloseable {
     }
 
     public synchronized FakeLlmServer onDelayed(String pathContains, int status, String body, long delayMs) {
-        scripts.computeIfAbsent(pathContains, k -> new ArrayDeque<>()).add(new Reply(status, body, delayMs));
+        scripts.computeIfAbsent(pathContains, k -> new ArrayDeque<>()).add(new Reply(status, body, delayMs, 0));
+        return this;
+    }
+
+    /** 헤더와 본문 앞부분을 바로 보낸 뒤 본문이 멈춘다. 헤더까지만 재는 타임아웃이 이 경우를 놓친다. */
+    public synchronized FakeLlmServer onStalledBody(String pathContains, int status, String body, long stallMs) {
+        scripts.computeIfAbsent(pathContains, k -> new ArrayDeque<>()).add(new Reply(status, body, 0, stallMs));
         return this;
     }
 
@@ -102,10 +112,20 @@ public class FakeLlmServer implements AutoCloseable {
         try {
             exchange.sendResponseHeaders(reply.status(), out.length);
             try (OutputStream os = exchange.getResponseBody()) {
-                os.write(out);
+                if (reply.stallAfterMs() > 0) {
+                    int head = Math.min(10, out.length);
+                    os.write(out, 0, head);
+                    os.flush();
+                    Thread.sleep(reply.stallAfterMs());
+                    os.write(out, head, out.length - head);
+                } else {
+                    os.write(out);
+                }
             }
         } catch (IOException ignored) {
             // 클라이언트가 타임아웃으로 먼저 끊은 경우다. 테스트가 바로 그 상황을 보는 중일 수 있다.
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -115,7 +135,7 @@ public class FakeLlmServer implements AutoCloseable {
             Deque<Reply> queue = e.getValue();
             return queue.size() > 1 ? queue.poll() : queue.peek();
         }
-        return new Reply(500, "{\"error\":{\"code\":500,\"message\":\"no script for " + path + "\"}}", 0);
+        return new Reply(500, "{\"error\":{\"code\":500,\"message\":\"no script for " + path + "\"}}", 0, 0);
     }
 
     @Override
@@ -141,6 +161,11 @@ public class FakeLlmServer implements AutoCloseable {
         return geminiResponse(partialText, "MAX_TOKENS", null);
     }
 
+    /** 텍스트와 함께 주어진 finishReason 으로 끝난 Gemini 응답. */
+    public static String geminiFinished(String text, String finishReason) {
+        return geminiResponse(text, finishReason, null);
+    }
+
     private static String geminiResponse(String text, String finishReason, String modelVersion) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("candidates", List.of(Map.of(
@@ -164,6 +189,11 @@ public class FakeLlmServer implements AutoCloseable {
     /** max_tokens 에 걸려 잘린 Claude 응답. 텍스트는 있지만 끝까지 오지 않았다. */
     public static String claudeTruncated(String model, String partialText) {
         return claudeMessage(model, partialText, "max_tokens");
+    }
+
+    /** 텍스트와 함께 주어진 stop_reason 으로 끝난 Claude 응답. */
+    public static String claudeStopped(String model, String text, String stopReason) {
+        return claudeMessage(model, text, stopReason);
     }
 
     private static String claudeMessage(String model, String text, String stopReason) {

@@ -20,11 +20,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -58,7 +58,7 @@ class CertificateDraftServiceTest {
         // Gemini 하나만 있는 체인. 대체 경로는 LlmGatewayTest 가 따로 고정한다.
         LlmGateway gateway = new LlmGateway(
                 List.of(new GeminiModelProvider(geminiClient, "gemini-3.1-flash-lite")),
-                Duration.ofSeconds(60), Duration.ofSeconds(30), Clock.systemUTC());
+                Duration.ofSeconds(60), Duration.ofSeconds(30));
         draftService = new CertificateDraftService(new ObjectMapper(), gateway);
     }
 
@@ -77,7 +77,8 @@ class CertificateDraftServiceTest {
     @Test
     @DisplayName("타임아웃이 나도 예외가 위로 올라가지 않는다")
     void timeoutDoesNotPropagate() throws Exception {
-        when(httpClient.send(any(), any())).thenThrow(new HttpTimeoutException("request timed out"));
+        when(httpClient.sendAsync(any(), any()))
+                .thenReturn(CompletableFuture.failedFuture(new HttpTimeoutException("request timed out")));
 
         CertificateDraftResponse response = draftService.draft(facts(), request(CertificateType.DIAGNOSIS));
 
@@ -88,7 +89,7 @@ class CertificateDraftServiceTest {
     @Test
     @DisplayName("외부 서버가 무엇을 던지든 발급 화면은 막히지 않는다")
     void neverThrows() throws Exception {
-        when(httpClient.send(any(), any())).thenThrow(new RuntimeException("connection reset"));
+        when(httpClient.sendAsync(any(), any())).thenThrow(new RuntimeException("connection reset"));
 
         assertThatCode(() -> draftService.draft(facts(), request(CertificateType.MEDICAL_OPINION)))
                 .doesNotThrowAnyException();
@@ -122,7 +123,7 @@ class CertificateDraftServiceTest {
 
         assertThat(response.generated()).isFalse();
         assertThat(response.message()).contains("처방전");
-        org.mockito.Mockito.verify(httpClient, org.mockito.Mockito.never()).send(any(), any());
+        org.mockito.Mockito.verify(httpClient, org.mockito.Mockito.never()).sendAsync(any(), any());
     }
 
     @Test
@@ -144,12 +145,12 @@ class CertificateDraftServiceTest {
 
     /* ---------------------------------------------------------------- */
 
-    @SuppressWarnings("unchecked")
-    private void stubResponse(String body) throws Exception {
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void stubResponse(String body) {
         HttpResponse<Object> response = mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(200);
         when(response.body()).thenReturn(body);
-        when(httpClient.send(any(), any())).thenReturn(response);
+        when(httpClient.sendAsync(any(), any())).thenReturn((CompletableFuture) CompletableFuture.completedFuture(response));
     }
 
     private CertificateFacts facts() {

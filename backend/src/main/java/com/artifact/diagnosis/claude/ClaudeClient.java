@@ -4,6 +4,7 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.RequestOptions;
+import com.anthropic.errors.AnthropicInvalidDataException;
 import com.anthropic.errors.AnthropicIoException;
 import com.anthropic.errors.AnthropicServiceException;
 import com.anthropic.errors.BadRequestException;
@@ -28,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.time.Duration;
 import java.util.EnumSet;
@@ -61,7 +63,7 @@ public class ClaudeClient implements LlmProvider {
 
     /**
      * 안전 분류기에 걸려 거절된 요청을 서버가 다른 모델로 다시 돌려 주는 기능(fallbacks: "default").
-     * 이 파라미터를 받는 모델에만 보낸다 — 받지 않는 모델(예: Haiku)에 보내면 요청 자체가 400 이 된다.
+     * 이 기능의 지원 모델 목록에 있는 모델에만 보낸다. Haiku 등은 서버 측 대체 대상이 아니다.
      */
     private static final Set<String> SERVER_FALLBACK_MODELS =
             Set.of("claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5");
@@ -115,11 +117,19 @@ public class ClaudeClient implements LlmProvider {
         // 재시도는 SDK 에 맡기지 않고 여기서 한다. SDK 는 타임아웃도 다시 보내서, 받은 시간(maxWait)을
         // 두 배까지 넘길 수 있다. 여기서는 남은 시간 안에서만, 금방 돌아온 실패만 다시 보낸다.
         long deadline = System.nanoTime() + maxWait.toNanos();
+        AnthropicClient sdk;
+        try {
+            // 첫 호출이면 SDK 를 여기서 만든다(1~2초). 그 시간도 받은 시간 안에 넣으려고 시한을 정한 뒤에 만든다.
+            sdk = client();
+        } catch (RuntimeException e) {
+            log.error("Claude 클라이언트 생성 실패: {}", e.getMessage());
+            return LlmResult.failure(PROVIDER, model, LlmFailure.BAD_RESPONSE, 0, "AI 클라이언트를 준비하지 못했습니다.");
+        }
         LlmResult result = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             Duration wait = shorter(timeout, remaining(deadline));
             if (wait.isZero()) break;
-            result = callOnce(request, wait);
+            result = callOnce(sdk, request, wait);
             if (result.success() || !RETRYABLE.contains(result.failure()) || attempt == maxAttempts) break;
 
             long backoffMs = 1000L * attempt;
@@ -138,9 +148,9 @@ public class ClaudeClient implements LlmProvider {
         return result;
     }
 
-    private LlmResult callOnce(LlmRequest request, Duration wait) {
+    private LlmResult callOnce(AnthropicClient sdk, LlmRequest request, Duration wait) {
         try {
-            Message message = client().messages().create(params(request),
+            Message message = sdk.messages().create(params(request),
                     RequestOptions.builder().timeout(wait).build());
             return interpret(message);
 
@@ -159,11 +169,19 @@ public class ClaudeClient implements LlmProvider {
                     || e.errorType().filter(ErrorType.OVERLOADED_ERROR::equals).isPresent();
             return failure(overloaded ? LlmFailure.OVERLOADED : LlmFailure.SERVER_ERROR, e);
         } catch (AnthropicServiceException e) {
+            // 402 billing_error(크레딧 소진 등)는 SDK 에 전용 예외가 없어 여기로 온다. 결제를 고치기 전에는
+            // 계속 실패하므로 설정 문제로 분류한다 — 그래야 체인이 오래 쉬게 하고 Claude 몫을 떼어 두지 않는다.
+            if (e.statusCode() == 402 || e.errorType().filter(ErrorType.BILLING_ERROR::equals).isPresent()) {
+                return failure(LlmFailure.BILLING, e);
+            }
             return failure(e.statusCode() >= 500 ? LlmFailure.SERVER_ERROR : LlmFailure.BAD_REQUEST, e);
         } catch (AnthropicIoException e) {
-            boolean timedOut = e.getCause() instanceof InterruptedIOException;
-            return LlmResult.failure(PROVIDER, model, timedOut ? LlmFailure.TIMEOUT : LlmFailure.NETWORK, 0,
-                    timedOut ? "Claude 응답 시간 초과" : "Claude 연결 실패: " + e.getMessage());
+            return ioFailure(e);
+        } catch (AnthropicInvalidDataException e) {
+            // 헤더는 받았는데 본문을 읽다 끊기거나 시간이 다 된 경우도 SDK 는 이 예외로 감싼다.
+            // 원인이 입출력이면 응답 해석 실패가 아니라 타임아웃·연결 실패다.
+            return hasIoCause(e) ? ioFailure(e) : LlmResult.failure(PROVIDER, model, LlmFailure.BAD_RESPONSE, 0,
+                    "AI 응답을 해석하지 못했습니다.");
         } catch (RuntimeException e) {
             log.error("Claude 응답 처리 실패 (model={}): {}", model, e.getMessage());
             return LlmResult.failure(PROVIDER, model, LlmFailure.BAD_RESPONSE, 0, "AI 응답을 해석하지 못했습니다.");
@@ -204,14 +222,19 @@ public class ClaudeClient implements LlmProvider {
     }
 
     private LlmResult interpret(Message message) {
-        // 거절은 HTTP 200 으로 온다. content 를 읽기 전에 stop_reason 부터 본다.
-        if (message.stopReason().filter(StopReason.REFUSAL::equals).isPresent()) {
+        // 거절·잘림은 HTTP 200 으로 온다. content 를 읽기 전에 stop_reason 부터 본다. 정상 종료(end_turn·
+        // stop_sequence)가 아니면 텍스트가 있어도 쓰지 않는다 — 두 줄 코멘트가 첫 줄에서 끊기거나 증명서 JSON 이
+        // 닫히지 않은 채 저장되기 때문이다. 실패로 돌려 체인이 다음 공급자로 넘어가게 한다.
+        StopReason stop = message.stopReason().orElse(null);
+        if (StopReason.REFUSAL.equals(stop)) {
             return LlmResult.failure(PROVIDER, model, LlmFailure.BLOCKED, 200, "AI가 안전 정책상 응답을 거부했습니다.");
         }
-        // 길이 제한으로 잘린 답은 쓰지 않는다. 두 줄 코멘트가 첫 줄에서 끊기거나 증명서 JSON 이 닫히지 않은 채
-        // 저장되기 때문이다. 실패로 돌려 체인이 다음 공급자로 넘어가게 한다.
-        if (message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent()) {
+        if (StopReason.MAX_TOKENS.equals(stop) || StopReason.MODEL_CONTEXT_WINDOW_EXCEEDED.equals(stop)) {
             return LlmResult.failure(PROVIDER, model, LlmFailure.EMPTY, 200, "AI 응답이 길이 제한으로 잘렸습니다.");
+        }
+        if (stop != null && !StopReason.END_TURN.equals(stop) && !StopReason.STOP_SEQUENCE.equals(stop)) {
+            return LlmResult.failure(PROVIDER, model, LlmFailure.BAD_RESPONSE, 200,
+                    "AI 응답이 비정상적으로 끝났습니다. (" + stop + ")");
         }
         // 생각(thinking) 블록이 앞에 올 수 있다. 위치가 아니라 종류로 골라 text 블록만 잇는다.
         String text = message.content().stream()
@@ -228,6 +251,23 @@ public class ClaudeClient implements LlmProvider {
 
     private LlmResult failure(LlmFailure kind, AnthropicServiceException e) {
         return LlmResult.failure(PROVIDER, model, kind, e.statusCode(), e.getMessage());
+    }
+
+    private LlmResult ioFailure(Throwable e) {
+        boolean timedOut = causeOfType(e, InterruptedIOException.class);
+        return LlmResult.failure(PROVIDER, model, timedOut ? LlmFailure.TIMEOUT : LlmFailure.NETWORK, 0,
+                timedOut ? "Claude 응답 시간 초과" : "Claude 연결 실패: " + e.getMessage());
+    }
+
+    private static boolean hasIoCause(Throwable e) {
+        return causeOfType(e, IOException.class);
+    }
+
+    private static boolean causeOfType(Throwable e, Class<? extends Throwable> type) {
+        for (Throwable c = e.getCause(); c != null && c != c.getCause(); c = c.getCause()) {
+            if (type.isInstance(c)) return true;
+        }
+        return false;
     }
 
     private AnthropicClient client() {

@@ -26,6 +26,8 @@ public enum LlmFailure {
     BAD_REQUEST,
     /** 키가 틀렸거나 권한이 없다. 401·403. */
     AUTH,
+    /** 결제·크레딧 문제(Claude 402 billing_error). 결제를 고치기 전에는 계속 실패한다. */
+    BILLING,
     /** 모델 ID 가 없거나 이 계정에서 쓸 수 없다. 404. */
     MODEL_NOT_FOUND,
     /** 응답을 해석하지 못했다(요청한 JSON 형식이 아님, 응답 처리 중 오류). */
@@ -44,7 +46,7 @@ public enum LlmFailure {
     /** 설정을 고치기 전에는 계속 실패하는 경우. 같은 공급자를 오래 쉬게 한다. */
     public boolean isConfigurationProblem() {
         return switch (this) {
-            case AUTH, MODEL_NOT_FOUND -> true;
+            case AUTH, MODEL_NOT_FOUND, BILLING -> true;
             default -> false;
         };
     }

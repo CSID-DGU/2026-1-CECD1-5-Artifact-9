@@ -19,7 +19,7 @@ public final class LlmMessages {
             case OVERLOADED, RATE_LIMITED, SERVER_ERROR, TIMEOUT, NETWORK -> "AI 서버가 일시적으로 혼잡합니다.";
             case BLOCKED -> "AI가 안전 정책상 응답을 거부했습니다.";
             case EMPTY -> "AI 응답이 비어 있거나 중간에 잘렸습니다.";
-            case AUTH, MODEL_NOT_FOUND, BAD_REQUEST -> "AI 설정 오류로 응답을 받지 못했습니다. 관리자에게 알려 주세요.";
+            case AUTH, MODEL_NOT_FOUND, BILLING, BAD_REQUEST -> "AI 설정 오류로 응답을 받지 못했습니다. 관리자에게 알려 주세요.";
             case BAD_RESPONSE -> "AI 응답을 해석하지 못했습니다.";
             case INTERRUPTED -> "AI 호출이 중단되었습니다.";
         };

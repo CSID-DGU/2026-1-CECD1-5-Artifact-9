@@ -124,6 +124,39 @@ class ClaudeClientTest {
     }
 
     @Test
+    @DisplayName("컨텍스트 한도로 잘린 답과 비정상 종료(pause_turn)도 성공으로 치지 않는다")
+    void otherStopReasonsAreFailures() {
+        server.on(MESSAGES, 200, FakeLlmServer.claudeStopped("claude-opus-5-5", "일부", "model_context_window_exceeded"))
+              .on(MESSAGES, 200, FakeLlmServer.claudeStopped("claude-opus-5-5", "일부", "pause_turn"));
+        ClaudeClient client = client("claude-opus-5-5", 1);
+
+        assertThat(call(client).failure()).isEqualTo(LlmFailure.EMPTY);
+        assertThat(call(client).failure()).isEqualTo(LlmFailure.BAD_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("402 결제 오류는 설정 문제(BILLING)다 — 크레딧이 없으면 매번 같은 실패라 체인이 오래 쉬게 해야 한다")
+    void billingErrorIsAConfigurationProblem() {
+        server.on(MESSAGES, 402, FakeLlmServer.claudeError("billing_error", "Your credit balance is too low"));
+
+        LlmResult result = client("claude-opus-5-5", 2).generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.BILLING);
+        assertThat(result.failure().isConfigurationProblem()).isTrue();
+        assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("헤더 뒤에 본문이 멈추면 해석 실패가 아니라 타임아웃이다")
+    void stalledBodyIsATimeout() {
+        server.onStalledBody(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "늦게 끝나는 답"), 6000);
+
+        LlmResult result = client("claude-opus-5-5", 1).generate(LlmRequest.text("t", "질문"), Duration.ofMillis(1500));
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+    }
+
+    @Test
     @DisplayName("529 는 OVERLOADED, 429·404·401·500 은 각각 다른 실패로 가른다")
     void classifiesErrorStatuses() {
         server.on(MESSAGES, 529, FakeLlmServer.claudeError("overloaded_error", "Overloaded"))

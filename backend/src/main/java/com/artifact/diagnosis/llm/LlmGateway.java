@@ -11,9 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -41,14 +39,16 @@ import java.util.function.LongSupplier;
  *
  * <b>쉬게 하기(cooldown).</b> 일시 장애(503·429·5xx·타임아웃)를 낸 공급자는 일정 시간 동안
  * 첫 순서에서 뺀다. 과부하는 대개 몇 분씩 이어지는데, 그동안 매 요청이 같은 모델에서 재시도하며
- * 몇 초씩 버리지 않게 하기 위해서다. 키·모델명 오류(401·403·404)는 설정을 고치기 전까지 계속
- * 실패하므로 더 오래 쉬게 한다. 모든 공급자가 쉬는 중이면 무시하고 순서대로 다시 시도한다.
+ * 몇 초씩 버리지 않게 하기 위해서다. 키·모델명·결제 오류는 설정을 고치기 전까지 계속 실패하므로
+ * 더 오래 쉬게 한다. 모든 공급자가 쉬는 중이면 무시하고 순서대로 다시 시도한다.
  *
  * <b>시간 예산.</b> 한 요청이 체인 전체에서 쓸 수 있는 시간을 묶는다. 이 호출은 요청 스레드에서
  * 동기로 돌고 앞단 nginx 는 60초에 끊는다. 공급자마다 타임아웃이 있어도 차례로 다 기다리면 그 합이
- * 길어지므로, 남은 예산이 너무 적으면 다음 공급자를 시작하지 않는다. 또 뒤에 다른 회사 공급자가
- * 기다리고 있으면 그 몫을 남겨 둔다 — 같은 회사 모델들이 응답 없이 시간을 끌어도(타임아웃) 다른
- * 회사 공급자는 한 번은 시도해 보게 하기 위해서다.
+ * 길어지므로, 남은 예산이 너무 적으면 다음 공급자를 시작하지 않는다.
+ *
+ * <b>다른 회사 몫.</b> 뒤에 다른 회사 공급자가 기다리고 있으면 그 몫을 남겨 두고, 그 몫 때문에 시작하지
+ * 못한 공급자는 미뤄 둔다. 같은 회사 모델들이 응답 없이 시간을 끌어도 다른 회사 공급자는 한 번은
+ * 시도되고, 그쪽마저 실패하면 미뤄 둔 공급자가 남은 시간을 받는다.
  */
 @Slf4j
 @Service
@@ -66,10 +66,12 @@ public class LlmGateway {
     /**
      * 타임아웃을 "그 공급자가 지금 느리다"는 증거로 보려면 적어도 이만큼은 기다려 줬어야 한다.
      * 예산이 모자라 이보다 짧게 끊은 타임아웃은 공급자 탓이 아니므로 쉬게 하지 않는다.
+     * 키오스크 1차 모델이 받는 8초(20초 − Claude 몫 12초)와 겹치지 않게 그보다 넉넉히 작게 둔다 —
+     * 경계값이 같으면 나노초 차이로 쉬게 할지가 갈린다.
      */
-    private static final Duration FAIR_WAIT = Duration.ofSeconds(8);
+    private static final Duration FAIR_WAIT = Duration.ofSeconds(6);
 
-    /** 키·모델명 오류 뒤 쉬는 시간. 설정을 고치고 재기동하면 표가 비워지므로 길게 잡아도 된다. */
+    /** 키·모델명·결제 오류 뒤 쉬는 시간. 설정을 고치고 재기동하면 표가 비워지므로 길게 잡아도 된다. */
     private static final Duration CONFIG_REST = Duration.ofMinutes(10);
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -77,12 +79,17 @@ public class LlmGateway {
     private final List<LlmProvider> providers;
     private final Duration rest;
     private final Duration defaultBudget;
-    private final Clock clock;
-    /** 경과 시간을 재는 단조 시계. 벽시계(clock)는 NTP 보정으로 뒤로 갈 수 있어 따로 둔다. */
+    /**
+     * 시간을 재는 단조 시계(나노초). 경과 시간과 쉬는 시간 모두 이것으로 잰다 — 벽시계는 NTP 보정으로
+     * 뒤로 갈 수 있어, 그만큼 쉬는 시간이 늘어나거나 줄어든다.
+     */
     private final LongSupplier nanoTime;
 
-    /** 공급자 이름 → 다시 첫 순서에 넣을 시각. */
-    private final Map<String, Instant> restingUntil = new ConcurrentHashMap<>();
+    /** 공급자 이름 → 쉬는 중이면 그 기한. */
+    private final Map<String, Rest> resting = new ConcurrentHashMap<>();
+
+    /** @param untilNanos 이 시각까지 쉰다. @param setAtNanos 쉬게 한 시각 — 늦게 끝난 성공이 새 기록을 지우지 못하게 한다. */
+    private record Rest(long untilNanos, long setAtNanos) {}
 
     @Autowired
     public LlmGateway(GeminiClient gemini,
@@ -92,20 +99,19 @@ public class LlmGateway {
                       @Value("${llm.cooldown-seconds:60}") long cooldownSeconds,
                       @Value("${llm.total-budget-seconds:30}") long budgetSeconds) {
         this(chain(gemini, claude, primaryModel, fallbackModels),
-                Duration.ofSeconds(cooldownSeconds), Duration.ofSeconds(budgetSeconds), Clock.systemUTC());
+                Duration.ofSeconds(cooldownSeconds), Duration.ofSeconds(budgetSeconds));
     }
 
     /** 공급자 목록을 직접 넘겨 조립한다. 테스트와, 체인을 손으로 구성할 때 쓴다. */
-    public LlmGateway(List<LlmProvider> providers, Duration rest, Duration budget, Clock clock) {
-        this(providers, rest, budget, clock, System::nanoTime);
+    public LlmGateway(List<LlmProvider> providers, Duration rest, Duration budget) {
+        this(providers, rest, budget, System::nanoTime);
     }
 
-    /** 경과 시간까지 테스트가 흘려보낼 때 쓴다. */
-    LlmGateway(List<LlmProvider> providers, Duration rest, Duration budget, Clock clock, LongSupplier nanoTime) {
+    /** 시간까지 테스트가 흘려보낼 때 쓴다. */
+    LlmGateway(List<LlmProvider> providers, Duration rest, Duration budget, LongSupplier nanoTime) {
         this.providers = List.copyOf(providers);
         this.rest = rest;
         this.defaultBudget = budget;
-        this.clock = clock;
         this.nanoTime = nanoTime;
         log.info("LLM 체인: {}", describe());
     }
@@ -142,66 +148,27 @@ public class LlmGateway {
                     "사용할 수 있는 AI 키가 없습니다. (GEMINI_API_KEY / ANTHROPIC_API_KEY)");
         }
 
-        Instant now = clock.instant();
-        List<LlmProvider> awake = usable.stream().filter(p -> !isResting(p, now)).toList();
+        long start = nanoTime.getAsLong();
+        List<LlmProvider> awake = usable.stream().filter(p -> !isResting(p, start)).toList();
         // 모두 쉬는 중이면 그래도 순서대로 시도한다 — 해 보지도 않고 실패를 돌려주는 것보다 낫다.
         List<LlmProvider> order = awake.isEmpty() ? usable : awake;
 
-        List<String> trail = new ArrayList<>();
-        usable.stream().filter(p -> !order.contains(p)).forEach(p -> trail.add(p.name() + "=RESTING"));
+        Attempt attempt = new Attempt(request, limit, start);
+        usable.stream().filter(p -> !order.contains(p)).forEach(p -> attempt.trail.add(p.name() + "=RESTING"));
 
-        // 다른 회사 몫. 예산이 짧아도 첫 공급자는 MIN_ATTEMPT 를 받도록 그만큼은 덜 떼어 둔다.
-        Duration reserve = shorter(OTHER_FAMILY_RESERVE, nonNegative(limit.minus(MIN_ATTEMPT)));
+        List<LlmProvider> deferred = new ArrayList<>();
+        LlmResult answer = attempt.pass(order, deferred);
+        // 다른 회사 공급자까지 실패했으면, 그 몫 때문에 미뤘던 공급자가 남은 시간을 받는다.
+        if (answer == null && !deferred.isEmpty()) answer = attempt.pass(deferred, null);
+        if (answer != null) return answer;
 
-        long startNanos = nanoTime.getAsLong();
-        LlmResult firstTemporary = null;
-        LlmResult last = null;
-        for (int i = 0; i < order.size(); i++) {
-            LlmProvider provider = order.get(i);
-            Duration left = limit.minusNanos(nanoTime.getAsLong() - startNanos);
-            if (left.compareTo(MIN_ATTEMPT) < 0) {
-                trail.add(provider.name() + "=SKIPPED(budget)");
-                break;
-            }
-            Duration wait = otherFamilyLater(order, i) ? left.minus(reserve) : left;
-            if (wait.compareTo(MIN_ATTEMPT) < 0) {
-                // 이 공급자에게 시간을 주면 뒤의 다른 회사 공급자가 시도할 시간이 남지 않는다.
-                trail.add(provider.name() + "=SKIPPED(reserve)");
-                continue;
-            }
-
-            LlmResult result;
-            try {
-                result = provider.generate(request, wait);
-            } catch (RuntimeException e) {
-                // 공급자는 예외를 던지지 않기로 약속돼 있다. 그래도 구현 버그 하나가 체인 전체를 끊지 않게 막는다.
-                result = LlmResult.failure(provider.family(), provider.model(), LlmFailure.BAD_RESPONSE, 0, e.toString());
-            }
-            result = checkJson(request, result);
-            trail.add(result.summary());
-
-            if (result.success()) {
-                restingUntil.remove(provider.name());
-                if (trail.size() > 1) {
-                    log.info("LLM [{}] 대체 경로로 응답: {}", request.purpose(), String.join(" → ", trail));
-                }
-                return result.withAttempts(trail);
-            }
-
-            log.warn("LLM [{}] {} 실패 {}({}): {}", request.purpose(), provider.name(),
-                    result.failure(), result.statusCode(), abbreviate(result.message()));
-            restIfNeeded(provider, result, wait);
-            if (result.failure().isTemporary() && firstTemporary == null) firstTemporary = result;
-            last = result;
-        }
-
-        log.error("LLM [{}] 모든 공급자 실패: {}", request.purpose(), String.join(" → ", trail));
+        log.error("LLM [{}] 모든 공급자 실패: {}", request.purpose(), String.join(" → ", attempt.trail));
         // 한 곳이라도 일시 장애였다면 "잠시 후 다시"가 맞는 안내다. 그래서 그 결과를 대표로 돌려준다.
-        LlmResult representative = firstTemporary != null ? firstTemporary : last;
+        LlmResult representative = attempt.firstTemporary != null ? attempt.firstTemporary : attempt.last;
         if (representative == null) {
             representative = LlmResult.failure("none", null, LlmFailure.TIMEOUT, 0, "AI 응답 시간 예산을 모두 썼습니다.");
         }
-        return representative.withAttempts(trail);
+        return representative.withAttempts(attempt.trail);
     }
 
     /** 기동 로그용. 예: "gemini:gemini-3.1-flash-lite → gemini:gemini-3.5-flash-lite → claude:claude-opus-5-5(키 없음)". */
@@ -213,16 +180,102 @@ public class LlmGateway {
         return String.join(" → ", names);
     }
 
+    /** 요청 하나가 체인을 도는 동안의 상태. */
+    private final class Attempt {
+        private final LlmRequest request;
+        private final Duration limit;
+        private final long start;
+        /** 다른 회사 몫. 예산이 짧아도 첫 공급자는 MIN_ATTEMPT 를 받도록 그만큼은 덜 떼어 둔다. */
+        private final Duration reserve;
+        private final List<String> trail = new ArrayList<>();
+        private LlmResult firstTemporary;
+        private LlmResult last;
+
+        Attempt(LlmRequest request, Duration limit, long start) {
+            this.request = request;
+            this.limit = limit;
+            this.start = start;
+            this.reserve = shorter(OTHER_FAMILY_RESERVE, nonNegative(limit.minus(MIN_ATTEMPT)));
+        }
+
+        /**
+         * 목록을 차례로 시도해 처음 성공한 결과를 돌려준다. 없으면 null.
+         *
+         * @param deferOut 다른 회사 몫 때문에 시작하지 못한 공급자를 담을 곳. null 이면 몫을 떼지 않는다
+         *                 (미뤄 둔 공급자를 다시 돌 때 — 다른 회사 공급자는 이미 차례를 썼다).
+         */
+        LlmResult pass(List<LlmProvider> list, List<LlmProvider> deferOut) {
+            for (int i = 0; i < list.size(); i++) {
+                LlmProvider provider = list.get(i);
+                long now = nanoTime.getAsLong();
+                Duration left = limit.minusNanos(now - start);
+                if (left.compareTo(MIN_ATTEMPT) < 0) {
+                    trail.add(provider.name() + "=SKIPPED(budget)");
+                    return null;
+                }
+                Duration wait = deferOut != null && otherFamilyLater(list, i) ? left.minus(reserve) : left;
+                if (wait.compareTo(MIN_ATTEMPT) < 0) {
+                    // 이 공급자에게 시간을 주면 뒤의 다른 회사 공급자가 시도할 시간이 남지 않는다.
+                    trail.add(provider.name() + "=SKIPPED(reserve)");
+                    deferOut.add(provider);
+                    continue;
+                }
+
+                LlmResult result;
+                try {
+                    result = provider.generate(request, wait);
+                } catch (RuntimeException e) {
+                    // 공급자는 예외를 던지지 않기로 약속돼 있다. 그래도 구현 버그 하나가 체인 전체를 끊지 않게 막는다.
+                    result = LlmResult.failure(provider.family(), provider.model(), LlmFailure.BAD_RESPONSE, 0, e.toString());
+                }
+                result = checkJson(request, result);
+                trail.add(result.summary());
+
+                if (result.success()) {
+                    wake(provider, now);
+                    if (trail.size() > 1) {
+                        log.info("LLM [{}] 대체 경로로 응답: {}", request.purpose(), String.join(" → ", trail));
+                    }
+                    return result.withAttempts(trail);
+                }
+
+                log.warn("LLM [{}] {} 실패 {}({}): {}", request.purpose(), provider.name(),
+                        result.failure(), result.statusCode(), abbreviate(result.message()));
+                restIfNeeded(provider, result, wait);
+                if (result.failure().isTemporary() && firstTemporary == null) firstTemporary = result;
+                last = result;
+            }
+            return null;
+        }
+    }
+
     private void restIfNeeded(LlmProvider provider, LlmResult result, Duration wait) {
         LlmFailure failure = result.failure();
         if (failure == LlmFailure.TIMEOUT && wait.compareTo(FAIR_WAIT) < 0) {
             return; // 우리가 짧게 끊은 타임아웃이다. 다음 요청에서 제 시간을 받고 다시 시도한다.
         }
         if (failure.isTemporary()) {
-            restingUntil.put(provider.name(), clock.instant().plus(rest));
+            bench(provider, rest);
         } else if (failure.isConfigurationProblem()) {
-            restingUntil.put(provider.name(), clock.instant().plus(CONFIG_REST));
+            bench(provider, CONFIG_REST);
         }
+    }
+
+    /** 쉬게 한다. 이미 더 길게 쉬는 중이면 그대로 둔다 — 설정 오류의 10분을 동시 요청의 일시 장애가 줄이지 못한다. */
+    private void bench(LlmProvider provider, Duration duration) {
+        long now = nanoTime.getAsLong();
+        Rest fresh = new Rest(now + duration.toNanos(), now);
+        resting.merge(provider.name(), fresh, (old, neu) -> old.untilNanos() - neu.untilNanos() >= 0 ? old : neu);
+    }
+
+    /** 성공했으니 쉬는 표에서 뺀다. 단, 이 시도를 시작한 뒤에 다른 요청이 새로 쉬게 했다면 그 기록은 남긴다. */
+    private void wake(LlmProvider provider, long attemptStart) {
+        resting.computeIfPresent(provider.name(), (name, r) -> r.setAtNanos() - attemptStart < 0 ? null : r);
+    }
+
+    private boolean isResting(LlmProvider provider, long now) {
+        Rest r = resting.get(provider.name());
+        return r != null && r.untilNanos() - now > 0;
     }
 
     /**
@@ -244,17 +297,12 @@ public class LlmGateway {
                 "요청한 JSON 형식이 아닌 응답 (" + result.text().length() + "자)");
     }
 
-    private static boolean otherFamilyLater(List<LlmProvider> order, int index) {
-        String family = order.get(index).family();
-        for (int j = index + 1; j < order.size(); j++) {
-            if (!order.get(j).family().equals(family)) return true;
+    private static boolean otherFamilyLater(List<LlmProvider> list, int index) {
+        String family = list.get(index).family();
+        for (int j = index + 1; j < list.size(); j++) {
+            if (!list.get(j).family().equals(family)) return true;
         }
         return false;
-    }
-
-    private boolean isResting(LlmProvider provider, Instant now) {
-        Instant until = restingUntil.get(provider.name());
-        return until != null && now.isBefore(until);
     }
 
     private static Duration shorter(Duration a, Duration b) {

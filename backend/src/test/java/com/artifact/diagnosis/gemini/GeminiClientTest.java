@@ -81,6 +81,48 @@ class GeminiClientTest {
     }
 
     @Test
+    @DisplayName("정상 종료(STOP)가 아니면 텍스트가 있어도 쓰지 않는다 — 이어서 생성·정책·계정 제한·기타 종료")
+    void nonStopFinishReasonsAreFailures() {
+        server.on("cont", 200, FakeLlmServer.geminiFinished("가 연고를", "CONTINUATION"))
+              .on("safety", 200, FakeLlmServer.geminiFinished("일부 답", "SAFETY"))
+              .on("pup", 200, FakeLlmServer.geminiFinished("일부 답", "PUP_LIMITED_DISABLED"))
+              .on("other", 200, FakeLlmServer.geminiFinished("일부 답", "OTHER"));
+
+        assertThat(call("cont").failure()).isEqualTo(LlmFailure.EMPTY);
+        assertThat(call("safety").failure()).isEqualTo(LlmFailure.BLOCKED);
+        assertThat(call("pup").failure()).isEqualTo(LlmFailure.AUTH);
+        assertThat(call("other").failure()).isEqualTo(LlmFailure.BAD_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("JSON 이 아닌 오류 본문(HTML 503·404)도 상태코드로 가른다 — 연결 실패로 오인하지 않는다")
+    void nonJsonErrorBodiesAreClassifiedByStatus() {
+        server.on("m503", 503, "<html><body>Service Unavailable</body></html>")
+              .on("m404", 404, "<html>Not Found</html>")
+              .on("m200", 200, "<html>proxy login</html>");
+
+        LlmResult overloaded = call("m503");
+        assertThat(overloaded.failure()).isEqualTo(LlmFailure.OVERLOADED);
+        assertThat(overloaded.statusCode()).isEqualTo(503);
+        assertThat(call("m404").failure()).isEqualTo(LlmFailure.MODEL_NOT_FOUND);
+        assertThat(call("m200").failure()).isEqualTo(LlmFailure.BAD_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("헤더 뒤에 본문이 멈춰도 받은 시간 안에 끊는다 — 헤더까지만 재는 타임아웃이 놓치는 장애다")
+    void stalledBodyIsCutWithinBudget() {
+        server.onStalledBody("stall", 200, FakeLlmServer.geminiText("늦게 끝나는 답"), 6000);
+
+        long start = System.nanoTime();
+        LlmResult result = client.generate("stall", LlmRequest.text("t", "질문"), Duration.ofMillis(1500));
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+        // 서버는 본문을 6초 뒤에야 마저 보낸다. 받은 1.5초 근처에서 끊겨야 한다.
+        assertThat(elapsedMs).isLessThan(4000);
+    }
+
+    @Test
     @DisplayName("API 키는 URL 이 아니라 x-goog-api-key 헤더로 보낸다 — URL 은 로그에 남기 쉽다")
     void apiKeyTravelsInHeaderNotUrl() {
         server.on("gemini-a", 200, FakeLlmServer.geminiText("답"));
