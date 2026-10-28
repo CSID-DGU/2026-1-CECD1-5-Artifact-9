@@ -26,7 +26,10 @@ public enum LlmFailure {
     BAD_REQUEST,
     /** 키가 틀렸거나 권한이 없다. 401·403. */
     AUTH,
-    /** 결제·크레딧 문제(Claude 402 billing_error). 결제를 고치기 전에는 계속 실패한다. */
+    /**
+     * 결제·크레딧 문제. 결제를 고치기 전에는 계속 실패한다. Claude 는 402 billing_error 외에 크레딧 소진·직접 정한
+     * 지출 한도를 400, 등급의 월 지출 상한을 429 로 돌려준다 — 상태코드가 아니라 문구와 error_code 로 가른다.
+     */
     BILLING,
     /** 모델 ID 가 없거나 이 계정에서 쓸 수 없다. 404. */
     MODEL_NOT_FOUND,

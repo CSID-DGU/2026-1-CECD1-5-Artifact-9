@@ -135,15 +135,65 @@ class ClaudeClientTest {
     }
 
     @Test
-    @DisplayName("402 결제 오류는 설정 문제(BILLING)다 — 크레딧이 없으면 매번 같은 실패라 체인이 오래 쉬게 해야 한다")
+    @DisplayName("402 결제 오류는 설정 문제(BILLING)다 — 결제를 고치기 전에는 매번 같은 실패라 체인이 오래 쉬게 해야 한다")
     void billingErrorIsAConfigurationProblem() {
-        server.on(MESSAGES, 402, FakeLlmServer.claudeError("billing_error", "Your credit balance is too low"));
+        server.on(MESSAGES, 402, FakeLlmServer.claudeError("billing_error", "Payment required"));
 
         LlmResult result = client("claude-opus-5-5", 2).generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
 
         assertThat(result.failure()).isEqualTo(LlmFailure.BILLING);
         assertThat(result.failure().isConfigurationProblem()).isTrue();
         assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("크레딧 소진·직접 정한 지출 한도(400)와 등급 지출 상한(429)도 BILLING 이다 — 다시 보내지 않는다")
+    void creditAndSpendLimitsAreBilling() {
+        // 크레딧이 떨어지거나 지출 한도에 닿으면 402 가 아니라 400 invalid_request_error 가 온다. 문구로만 구별된다.
+        server.on(MESSAGES, 400, FakeLlmServer.claudeError("invalid_request_error",
+                      "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."))
+              .on(MESSAGES, 400, FakeLlmServer.claudeError("invalid_request_error",
+                      "You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."))
+              .on(MESSAGES, 400, FakeLlmServer.claudeError("invalid_request_error",
+                      "You have reached your specified workspace API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."))
+              // 등급의 월 지출 상한은 보통의 한도 초과와 같은 429 rate_limit_error 다. error_code 로 가른다.
+              .on(MESSAGES, 429, """
+                      {"type":"error","error":{"type":"rate_limit_error",
+                       "message":"You have reached your API usage limits: your organization has crossed its monthly API usage threshold, set based on your organization's API tier. You will regain access on 2026-11-01 at 00:00 UTC.",
+                       "details":{"error_code":"enforced_spend_limit_reached"}}}""")
+              // 요청 모양이 틀린 보통의 400 은 그대로 BAD_REQUEST 다.
+              .on(MESSAGES, 400, FakeLlmServer.claudeError("invalid_request_error", "max_tokens: Field required"));
+        ClaudeClient client = client("claude-opus-5-5", 2);
+
+        for (int i = 0; i < 4; i++) {
+            LlmResult result = call(client);
+            assertThat(result.failure()).as("응답 %d", i + 1).isEqualTo(LlmFailure.BILLING);
+            assertThat(result.failure().isConfigurationProblem()).isTrue();
+        }
+        assertThat(call(client).failure()).isEqualTo(LlmFailure.BAD_REQUEST);
+        // 429 를 RATE_LIMITED 로 보면 한 번 더 보내 6건이 된다. 지출 상한은 다음 달까지 같은 답이다.
+        assertThat(server.received()).hasSize(5);
+    }
+
+    @Test
+    @DisplayName("서버 측 대체 베타를 API 가 받지 않으면 그 기능만 빼고 바로 다시 보내고, 이후 요청에도 붙이지 않는다")
+    void rejectedServerFallbackIsDroppedAndResent() throws Exception {
+        server.on(MESSAGES, 400, FakeLlmServer.claudeError("invalid_request_error",
+                      "Unexpected value(s) `server-side-fallback-2026-07-01` for the `anthropic-beta` header."))
+              .on(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "답"));
+        // 시도 횟수를 1로 둔다. 다시 보내는 것이 재시도 횟수를 쓰면 이 요청은 400 으로 끝난다.
+        ClaudeClient client = client("claude-opus-5-5", 1);
+
+        assertThat(call(client).text()).isEqualTo("답");
+        assertThat(call(client).success()).isTrue();
+
+        List<FakeLlmServer.Received> sent = server.received();
+        assertThat(sent).hasSize(3);
+        assertThat(sent.get(0).header("anthropic-beta")).contains("server-side-fallback-2026-07-01");
+        for (FakeLlmServer.Received later : sent.subList(1, 3)) {
+            assertThat(later.header("anthropic-beta")).isNull();
+            assertThat(objectMapper.readTree(later.body()).has("fallbacks")).isFalse();
+        }
     }
 
     @Test
@@ -202,7 +252,7 @@ class ClaudeClientTest {
     }
 
     @Test
-    @DisplayName("응답이 늦으면 받은 시간 안에서 TIMEOUT 으로 끊고, 타임아웃은 다시 보내지 않는다")
+    @DisplayName("응답이 늦으면 받은 시간 안에서 TIMEOUT 으로 끊고, SDK 가 몰래 다시 보내지 않는다")
     void slowResponseTimesOutWithoutRetry() {
         server.onDelayed(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "늦은 답"), 6000);
 

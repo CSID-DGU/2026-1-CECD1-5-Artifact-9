@@ -24,6 +24,7 @@ import com.artifact.diagnosis.llm.LlmFailure;
 import com.artifact.diagnosis.llm.LlmProvider;
 import com.artifact.diagnosis.llm.LlmRequest;
 import com.artifact.diagnosis.llm.LlmResult;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,7 @@ import java.time.Duration;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -84,6 +86,9 @@ public class ClaudeClient implements LlmProvider {
 
     private volatile AnthropicClient client;
 
+    /** 서버 측 대체를 API 가 받지 않으면 끈다. 이후 요청에도 붙이지 않는다 — dropRejectedServerFallback 참고. */
+    private volatile boolean serverFallback = true;
+
     public ClaudeClient(@Value("${anthropic.api.key:}") String apiKey,
                         @Value("${anthropic.model:claude-opus-5-5}") String model,
                         @Value("${anthropic.timeout-seconds:15}") long timeoutSeconds,
@@ -130,10 +135,17 @@ public class ClaudeClient implements LlmProvider {
             return LlmResult.failure(PROVIDER, model, LlmFailure.BAD_RESPONSE, 0, "AI 클라이언트를 준비하지 못했습니다.");
         }
         LlmResult result = null;
+        boolean resent = false;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             Duration wait = shorter(timeout, remaining(deadline));
             if (wait.isZero()) break;
             result = callOnce(sdk, request, wait);
+            if (!resent && dropRejectedServerFallback(result)) {
+                // 고친 요청을 바로 다시 보낸다. 실패한 시도가 아니라 요청 모양을 바꾼 것이라 횟수에 넣지 않는다.
+                resent = true;
+                attempt--;
+                continue;
+            }
             if (result.success() || !RETRYABLE.contains(result.failure()) || attempt == maxAttempts) break;
 
             long backoffMs = 1000L * attempt;
@@ -165,15 +177,20 @@ public class ClaudeClient implements LlmProvider {
         } catch (UnauthorizedException | PermissionDeniedException e) {
             return failure(LlmFailure.AUTH, e);
         } catch (RateLimitException e) {
-            return failure(LlmFailure.RATE_LIMITED, e);
+            // 사용 등급의 월 지출 상한에 닿은 429 는 retry-after 없이 다음 달까지 계속 실패한다.
+            // 잠깐의 요청 한도 초과와 달리 다시 보내도 소용없어 결제 문제로 본다(재시도 대상도 아니다).
+            boolean spendCap = "enforced_spend_limit_reached".equals(errorField(e, "/error/details/error_code"));
+            return failure(spendCap ? LlmFailure.BILLING : LlmFailure.RATE_LIMITED, e);
         } catch (BadRequestException e) {
-            return failure(LlmFailure.BAD_REQUEST, e);
+            // 크레딧 소진과 직접 정한 지출 한도는 402 가 아니라 400 invalid_request_error 로 오고, 문구로만 구별된다.
+            // 요청 모양 탓이 아니라 결제를 고치기 전에는 매번 같은 실패라 결제 문제로 본다.
+            return failure(isBillingMessage(errorField(e, "/error/message")) ? LlmFailure.BILLING : LlmFailure.BAD_REQUEST, e);
         } catch (InternalServerException e) {
             boolean overloaded = e.statusCode() == 529
                     || e.errorType().filter(ErrorType.OVERLOADED_ERROR::equals).isPresent();
             return failure(overloaded ? LlmFailure.OVERLOADED : LlmFailure.SERVER_ERROR, e);
         } catch (AnthropicServiceException e) {
-            // 402 billing_error(크레딧 소진 등)는 SDK 에 전용 예외가 없어 여기로 온다. 결제를 고치기 전에는
+            // 402 billing_error(결제 정보 문제)는 SDK 에 전용 예외가 없어 여기로 온다. 결제를 고치기 전에는
             // 계속 실패하므로 설정 문제로 분류한다 — 그래야 체인이 오래 쉬게 하고 Claude 몫을 떼어 두지 않는다.
             if (e.statusCode() == 402 || e.errorType().filter(ErrorType.BILLING_ERROR::equals).isPresent()) {
                 return failure(LlmFailure.BILLING, e);
@@ -204,7 +221,7 @@ public class ClaudeClient implements LlmProvider {
                 .maxTokens(MAX_TOKENS)
                 .outputConfig(output.build())
                 .addUserMessage(request.prompt());
-        if (SERVER_FALLBACK_MODELS.contains(model)) {
+        if (sendsServerFallback()) {
             builder.putAdditionalHeader("anthropic-beta", SERVER_FALLBACK_BETA);
             builder.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"));
         }
@@ -251,6 +268,40 @@ public class ClaudeClient implements LlmProvider {
         }
         // 서버 측 대체가 일어나면 실제로 답한 모델이 요청한 모델과 다르다. 기록에는 실제 모델을 남긴다.
         return LlmResult.success(text, PROVIDER, message.model().asString());
+    }
+
+    private boolean sendsServerFallback() {
+        return serverFallback && SERVER_FALLBACK_MODELS.contains(model);
+    }
+
+    /**
+     * 서버 측 대체는 베타라, 베타가 끝나거나 이 계정에 열려 있지 않으면 요청 전체가 400 이 된다. 그대로 두면 모든
+     * Claude 호출이 같은 400 으로 실패하는데, 400 은 체인이 쉬게 하지도 않아 매 요청이 시간만 쓴다.
+     * 그 400 이면 이 기능만 끄고 다시 보내라고 알린다. Claude 호출 자체는 계속 쓴다.
+     */
+    private boolean dropRejectedServerFallback(LlmResult result) {
+        if (result.failure() != LlmFailure.BAD_REQUEST || !SERVER_FALLBACK_MODELS.contains(model)) return false;
+        String message = result.message() == null ? "" : result.message();
+        if (!message.contains("anthropic-beta") && !message.contains("fallbacks")) return false;
+        if (serverFallback) {
+            serverFallback = false;
+            log.warn("Claude 서버 측 대체(fallbacks)를 API 가 받지 않아 빼고 보낸다 (model={}): {}", model, message);
+        }
+        return true;
+    }
+
+    private static boolean isBillingMessage(String message) {
+        String m = message.toLowerCase(Locale.ROOT);
+        return m.contains("credit balance is too low") || m.contains("you have reached your specified");
+    }
+
+    /** 오류 본문의 한 필드. 본문 모양이 예상과 다르면 빈 문자열이다. */
+    private static String errorField(AnthropicServiceException e, String pointer) {
+        try {
+            return e.body().convert(JsonNode.class).at(pointer).asText("");
+        } catch (RuntimeException ignored) {
+            return "";
+        }
     }
 
     private LlmResult failure(LlmFailure kind, AnthropicServiceException e) {

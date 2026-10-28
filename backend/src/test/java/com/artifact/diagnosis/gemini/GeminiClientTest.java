@@ -231,6 +231,18 @@ class GeminiClientTest {
     }
 
     @Test
+    @DisplayName("본문이 멈출 때도 받은 시간이 아니라 자기 타임아웃에서 끊는다")
+    void ownTimeoutCapsAStalledBody() {
+        ReflectionTestUtils.setField(client, "timeoutSeconds", 1L);
+        server.onStalledBody("stall", 200, FakeLlmServer.geminiText("늦게 끝나는 답"), 4000);
+
+        LlmResult result = client.generate("stall", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        // 본문 시한을 받은 시간(10초)으로 걸면 4초 뒤 본문이 마저 와서 성공이 된다.
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+    }
+
+    @Test
     @DisplayName("503 뒤 쉬고 다시 보낼 시간이 남지 않으면 재시도하지 않고 다음 모델에게 시간을 넘긴다")
     void doesNotRetryWithoutTimeLeft() {
         ReflectionTestUtils.setField(client, "maxAttempts", 2);
