@@ -67,7 +67,13 @@ TASKS: dict[str, dict] = {
             "seb_derm":  "지루피부염",
         },
         "weights": "models/facial.pth",
-        "input_size": 224,
+        # 384 인 이유: 정면 사진은 1024x1024 얼굴 전체라 224 로 줄이면 작은 병변이 몇 픽셀로 뭉개진다.
+        # 같은 데이터·같은 설정에서 해상도만 바꿔 재 보니 홀드아웃 1,200장 기준
+        #   224: 전체 89.3% · 정면 79.8% · 측면 98.7%
+        #   384: 전체 92.3% · 정면 84.7% · 측면 100%   (tests/baselines/facial-train-2026-10-28.json)
+        # 학습 검증 전처리(training/aihub/train.py val_tf)가 이 값으로 Resize 하므로 **학습 때 쓴 크기와 같아야 한다.**
+        # 다르면 서버는 멀쩡히 뜨고 점수만 조용히 떨어진다. 가중치를 바꾸면 리포트의 args.image_size 를 보고 맞춘다.
+        "input_size": 384,
     },
 }
 

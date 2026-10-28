@@ -60,6 +60,7 @@ import re
 import shutil
 import sys
 import time
+import unicodedata
 import zipfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -110,6 +111,10 @@ def parse_group(name: str) -> Group | None:
 
     토큰은 부분 문자열로 찾는다 — AI허브가 'TS_01.여드름_정면' 처럼 번호를 끼워 넣어도 잡히게.
     """
+    # macOS 는 한글 파일명을 자모 분리형(NFD)으로 넘기는 경우가 많다. 맥에서 Google Drive 로 올린 zip 이
+    # 그 이름 그대로 저장되면 '여드름'(NFC) 토큰이 글자 단위로 일치하지 않아 이미지를 하나도 못 찾는다
+    # (2026-10-28 Colab 에서 실제로 겪었다). 비교 전에 NFC 로 맞춘다. src 열도 NFC 로 남아 make_holdout 과 일치한다.
+    name = unicodedata.normalize("NFC", name)
     stem = name[:-4] if name.lower().endswith(".zip") else name
     m = _PREFIX_RE.match(stem)
     if not m:

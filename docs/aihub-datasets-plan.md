@@ -338,7 +338,7 @@ ssh -i <경로>/temp.pem ubuntu@<터널링서버_공인IP> -p <터널링_PORT> -
 | FastAPI 태스크 레지스트리 (`fastapi/main.py`, `tests/*.py`, `fastapi/models/`, `.gitignore`) | 🟡 구현 완료 · **검증 전 스냅샷** | 클라우드 세션의 병렬 에이전트가 작성. 로컬에서 계약 테스트·스모크 재실행 필요 |
 | 백엔드 (`AnalysisType`, `V10__facial_task.sql`, 병명 맵, 엔티티·응답 필드, 테스트) | 🟡 구현 완료 · 검증 전 스냅샷 | `./gradlew test` 미실행 |
 | 프론트 (`api/analysis.ts`, `Clinic.tsx`, `Lookup.tsx`) | 🟡 구현 완료 · 검증 전 스냅샷 | `npm run lint && npm run build` 미실행 |
-| 학습 파이프라인 (`fastapi/training/aihub/train.py`, `facial/*`, README) | 🟡 작성 중이던 스냅샷 | 7-1 의 실제 스키마가 확정되기 **전** 에 범용으로 짜였다. `facial/build_manifest.py` 를 7-1 에 맞게 고정해야 한다 |
+| 학습 파이프라인 · 안면부 모델 | ✅ PR #109 머지, 가중치 적재(2026-10-28) | Colab T4 · 384 입력 · 홀드아웃 92.3%(정면 84.7%·측면 100%). `fastapi/models/README.md` |
 | 화상(`burn`) 태스크 | ⬜ 미착수 | §1-2·§1-3. 안심존 안에서만 가능 |
 
 ### 7-3. 로컬 세션이 할 일 (순서대로)
