@@ -1,6 +1,8 @@
 package com.artifact.diagnosis.certificate;
 
 import com.artifact.diagnosis.gemini.GeminiClient;
+import com.artifact.diagnosis.gemini.GeminiModelProvider;
+import com.artifact.diagnosis.llm.LlmGateway;
 import com.artifact.diagnosis.patient.Gender;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.visit.Visit;
@@ -18,6 +20,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +35,7 @@ import static org.mockito.Mockito.when;
 /**
  * AI 초안이 실패해도 발급은 계속돼야 한다는 것을 고정하는 테스트.
  *
- * 초안은 의사의 타자를 대신 쳐주는 편의 기능일 뿐이다. Gemini 키가 없거나, 응답이 늦거나,
+ * 초안은 의사의 타자를 대신 쳐주는 편의 기능일 뿐이다. AI 키가 없거나, 응답이 늦거나,
  * 외부 서버가 죽어도 예외가 위로 올라가면 안 된다 — 그러면 진단서를 손으로 써서 떼어줄 수도 없게 된다.
  * 모든 실패 경로가 {@code generated=false} 와 사람이 읽을 사유로 내려오는지 확인한다.
  */
@@ -49,9 +53,13 @@ class CertificateDraftServiceTest {
         geminiClient = new GeminiClient(new ObjectMapper(), httpClient);
         ReflectionTestUtils.setField(geminiClient, "apiKey", "test-key");
         ReflectionTestUtils.setField(geminiClient, "timeoutSeconds", 15L);
-        ReflectionTestUtils.setField(geminiClient, "model", "gemini-3.1-flash-lite");
+        ReflectionTestUtils.setField(geminiClient, "maxAttempts", 1);
 
-        draftService = new CertificateDraftService(new ObjectMapper(), geminiClient);
+        // Gemini 하나만 있는 체인. 대체 경로는 LlmGatewayTest 가 따로 고정한다.
+        LlmGateway gateway = new LlmGateway(
+                List.of(new GeminiModelProvider(geminiClient, "gemini-3.1-flash-lite")),
+                Duration.ofSeconds(60), Duration.ofSeconds(30), Clock.systemUTC());
+        draftService = new CertificateDraftService(new ObjectMapper(), gateway);
     }
 
     @Test

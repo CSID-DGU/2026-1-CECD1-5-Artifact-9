@@ -64,6 +64,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"image.storage.type=local",
 		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
 		// 테스트에서는 감열지 프린터를 부르지 않는다 — CI 에는 프린터도 print-agent 도 없다.
+		// 개발자 셸이나 backend/.env 에 실제 LLM 키가 있어도 테스트가 유료 외부 호출을 하지 않게 비워 둔다.
+		"gemini.api.key=",
+		"anthropic.api.key=",
 		"print.agent.enabled=false",
 		"fastapi.internal-secret=test-only-internal-secret"
 })

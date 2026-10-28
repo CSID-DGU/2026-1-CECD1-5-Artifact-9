@@ -3,36 +3,49 @@ package com.artifact.diagnosis.prescription;
 import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.drug.DrugMaster;
 import com.artifact.diagnosis.drug.DrugMasterRepository;
-import com.artifact.diagnosis.gemini.GeminiClient;
-import com.artifact.diagnosis.gemini.GeminiResult;
+import com.artifact.diagnosis.llm.LlmFailure;
+import com.artifact.diagnosis.llm.LlmGateway;
+import com.artifact.diagnosis.llm.LlmMessages;
+import com.artifact.diagnosis.llm.LlmRequest;
+import com.artifact.diagnosis.llm.LlmResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.List;
 
+/**
+ * 처방 코멘트(약품 추천 포함)와 키오스크 참고 소견을 LLM 으로 만든다.
+ *
+ * 예전 이름은 GeminiService 였다. 이제 {@link LlmGateway} 가 Gemini 1차 모델이 과부하일 때
+ * 다른 Gemini 모델과 Claude 로 넘겨 주므로, 특정 공급자 이름을 달고 있을 이유가 없다.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class GeminiService {
+public class AiCommentService {
+
+    /**
+     * 키오스크 소견의 LLM 시간 예산. 키오스크 요청은 FastAPI 추론(최대 fastapi.timeout-seconds, 기본 30초)을
+     * 먼저 기다린 뒤 이 소견을 만든다. 둘을 합쳐도 앞단 nginx 의 60초 안에 끝나도록 기본 예산(30초)보다 짧게 둔다.
+     * 넘기면 태블릿에는 오류가 뜨는데 백엔드는 결과를 저장해, 의사 화면과 어긋난다.
+     */
+    private static final Duration KIOSK_BUDGET = Duration.ofSeconds(20);
 
     private final DrugMasterRepository drugMasterRepository;
-    private final GeminiClient geminiClient;
+    private final LlmGateway llmGateway;
 
     /**
      * 처방 코멘트 생성.
      *
      * @param maskedMemo 식별정보를 지운 접수 메모. 없으면 null.
-     *                   <b>원문 메모를 그대로 넘기지 않는다</b> — 이 문자열은 그대로 외부(Google)
-     *                   서버로 나가고 그쪽 로그에 남는다. 마스킹은 호출 전에 끝나 있어야 하며,
+     *                   <b>원문 메모를 그대로 넘기지 않는다</b> — 이 문자열은 그대로 외부(Google,
+     *                   대체 경로에서는 Anthropic) 서버로 나가고 그쪽 로그에 남는다. 마스킹은 호출 전에 끝나 있어야 하며,
      *                   그 책임은 {@code PrescriptionService#maskedReceptionMemo} 에 있다.
      */
     public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req, String maskedMemo) {
-        if (!geminiClient.hasApiKey()) {
-            return new PrescriptionCommentResponse("Gemini API 키가 설정되지 않았습니다.", "");
-        }
-
         // 피부 치료 관련 약품 10개 조회
         List<DrugMaster> drugs = drugMasterRepository.findByNameKrContaining("연고", PageRequest.of(0, 5));
         drugs.addAll(drugMasterRepository.findByNameKrContaining("크림", PageRequest.of(0, 5)));
@@ -78,19 +91,19 @@ public class GeminiService {
                 drugList
         );
 
-        GeminiResult result = geminiClient.generate(prompt);
+        LlmResult result = llmGateway.generate(LlmRequest.text("prescription-comment", prompt));
         if (!result.success()) {
-            String message = result.isOverloaded()
+            String message = result.isTemporaryFailure()
                     ? "AI 서버가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요."
-                    : result.errorMessage();
-            return new PrescriptionCommentResponse(message, "");
+                    : LlmMessages.reason(result);
+            return PrescriptionCommentResponse.unavailable(message);
         }
 
         // \r\n, \r, \n 모두 처리
         String[] lines = result.text().split("\\r?\\n", 2);
         String line1 = lines[0].trim();
         String line2 = lines.length > 1 ? lines[1].trim() : "";
-        return new PrescriptionCommentResponse(line1, line2);
+        return new PrescriptionCommentResponse(line1, line2, result.model(), true);
     }
 
     /**
@@ -99,10 +112,6 @@ public class GeminiService {
      * 약품 추천 없이 AI 후보 목록만으로 짧은 안내 문구를 만든다.
      */
     public String generatePreliminaryComment(List<TopKItem> topK) {
-        if (!geminiClient.hasApiKey()) {
-            return "AI 참고 소견을 생성할 수 없습니다 (API 키 미설정).";
-        }
-
         String candidateList = topK.stream()
                 .map(item -> item.code() + " (" + String.format("%.1f", item.confidence() * 100) + "%)")
                 .reduce("", (a, b) -> a.isEmpty() ? b : a + ", " + b);
@@ -120,9 +129,12 @@ public class GeminiService {
                 - 번호, 레이블, 기호 없이 순수 텍스트로만 출력하세요.
                 """, candidateList);
 
-        GeminiResult result = geminiClient.generate(prompt);
+        LlmResult result = llmGateway.generate(LlmRequest.text("kiosk-comment", prompt), KIOSK_BUDGET);
         if (!result.success()) {
-            return result.isOverloaded()
+            if (result.failure() == LlmFailure.NOT_CONFIGURED) {
+                return "AI 참고 소견을 생성할 수 없습니다 (API 키 미설정).";
+            }
+            return result.isTemporaryFailure()
                     ? "AI 서버가 일시적으로 혼잡합니다. 의사의 확인 진료가 필요합니다."
                     : "AI 참고 소견 생성에 실패했습니다. 의사의 확인 진료가 필요합니다.";
         }

@@ -32,8 +32,13 @@ public class CertificateService {
     private final CertificateDraftService draftService;
     private final MemberRepository memberRepository;
 
-    /** LLM 초안 생성. 문서를 만들지도, 저장하지도 않는다 — 화면 입력칸을 미리 채워줄 뿐이다. */
-    @Transactional(readOnly = true)
+    /**
+     * LLM 초안 생성. 문서를 만들지도, 저장하지도 않는다 — 화면 입력칸을 미리 채워줄 뿐이다.
+     *
+     * 트랜잭션을 걸지 않는다. 사실 조회는 {@code loadFacts} 가 자기 트랜잭션 안에서 끝내고,
+     * 그 뒤의 LLM 호출은 대체 경로까지 돌면 수십 초가 걸릴 수 있다. 그동안 DB 커넥션을 쥐고 있으면
+     * 초안 몇 건이 겹치는 것만으로 풀이 바닥나 접수·조회 화면까지 멈춘다.
+     */
     public CertificateDraftResponse draft(Long visitId, AuthPrincipal principal, CertificateDraftRequest req) {
         CertificateFacts facts = assembler.loadFacts(visitId);
         requirePrescriptionIfNeeded(facts, req.type());

@@ -139,6 +139,8 @@ export default function Clinic() {
     edited: boolean;     // 의사가 저장 전 수정했으면 true
   } | null>(null);
   const [isCommentLoading, setIsCommentLoading] = useState(false);
+  // 코멘트를 못 받았을 때의 사유. 코멘트 칸과 따로 둔다 — 사유가 코멘트로 저장되면 처방 기록이 오염된다.
+  const [aiCommentError, setAiCommentError] = useState<string | null>(null);
 
   // 로딩 / 메시지
   const [isLoading, setIsLoading] = useState(false);
@@ -196,6 +198,7 @@ export default function Clinic() {
     setSelectedKcds([]);
     setSelectedAnalysisCandidateCodes([]);
     setAiComment(null);
+    setAiCommentError(null);
     setSelectedDrug(null);
     setDrugDosage("");
     setDrugDays("");
@@ -964,14 +967,25 @@ export default function Clinic() {
                               selectedVisit.id,
                               selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary }))
                             );
+                            if (result.available === false) {
+                              setAiComment(null);
+                              setAiCommentError(result.line1 || "AI 코멘트를 받지 못했습니다.");
+                              return;
+                            }
+                            setAiCommentError(null);
                             setAiComment({
-                              ...result,
-                              model: "gemini-3.1-flash-lite",
+                              line1: result.line1,
+                              line2: result.line2,
+                              // 모델명을 고정하지 않는다. 대체 경로로 다른 모델이 답할 수 있다.
+                              model: result.model ?? "AI",
                               // LocalDateTime은 Z(timezone) 없는 ISO 형식만 허용
                               generatedAt: new Date().toISOString().slice(0, 19),
                               edited: false,
                             });
-                          } catch { setAiComment(null); }
+                          } catch {
+                            setAiComment(null);
+                            setAiCommentError("AI 코멘트 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+                          }
                           finally { setIsCommentLoading(false); }
                         }}
                         disabled={selectedKcds.length === 0 || isCommentLoading}
@@ -979,6 +993,9 @@ export default function Clinic() {
                       >
                         {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}
                       </button>
+                      {aiCommentError && !aiComment && (
+                        <p className="text-[11px] text-amber-300">{aiCommentError}</p>
+                      )}
                       {aiComment && (
                         <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1.5 flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
