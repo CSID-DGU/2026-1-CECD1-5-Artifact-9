@@ -12,6 +12,12 @@ A 요청이 hook 을 붙인 상태에서 B 요청이 forward 를 돌리면
 따라서 "혼자 보냈을 때의 결과"를 기준값으로 잡고,
 동시에 보냈을 때 결과가 달라지면 오염된 것이다.
 
+히트맵은 바이트가 아니라 **화소**로 비교한다. 역전파(CAM)를 여러 스레드로 돌리면 합산 순서가
+실행마다 달라 값이 1e-7 수준으로 흔들리고(1스레드에서는 비트 단위로 같다), 그것이 JPEG 에서
+화소 몇 단계로 드러날 수 있다. 교차오염은 남의 사진의 히트맵이 오는 것이라 차이의 규모가 다르다 —
+이 스크립트의 두 이미지끼리는 화소 평균 44.6 단계가 차이 난다. 확대 보기(crops)도 같은 hook 을
+거치므로 개수·위치·그림을 함께 비교한다.
+
 추론 엔드포인트는 `X-Internal-Secret` 으로 보호돼 있다. 컨테이너 안에서 돌리면
 서버와 같은 `INTERNAL_API_SECRET` 환경변수를 그대로 읽으므로 따로 줄 것이 없다.
 밖에서 돌릴 때는 직접 넘겨야 한다.
@@ -35,7 +41,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 TARGET = os.getenv("TARGET", "http://127.0.0.1:8000")
 ROUNDS = int(os.getenv("ROUNDS", "20"))
@@ -81,6 +87,42 @@ def predict(image_b64: str) -> dict:
         return {"ok": False, "status": "EXC", "body": repr(e)[:200]}
 
 
+def _picture(b64: str, size: tuple[int, int] | None = None) -> Image.Image:
+    img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+    return img.resize(size) if size else img
+
+
+def same_picture(a_b64: str, b_b64: str, size: tuple[int, int] | None = None) -> bool:
+    """같은 그림인가 — 화소 평균 1 단계, 최대 32 단계까지는 같다고 본다(모듈 독스트링 참고).
+    size 를 주면 둘 다 그 크기로 줄여 비교한다(확대 영역은 상자가 한 칸 밀리면 크기가 1px 다를 수 있다)."""
+    a, b = _picture(a_b64, size), _picture(b_b64, size)
+    if a.size != b.size:
+        return False
+    diff = ImageChops.difference(a, b)
+    mean = sum(ImageStat.Stat(diff).mean) / 3
+    return mean <= 1.0 and max(hi for _, hi in diff.getextrema()) <= 32
+
+
+def mismatch(body: dict, base: dict) -> str | None:
+    """기준 응답과 다른 점. 같으면 None."""
+    if body.get("heatmap_base64") is None:
+        return "heatmap_none"
+    if body["top5"] != base["top5"]:
+        return "top5"
+    if not same_picture(body["heatmap_base64"], base["heatmap_base64"]):
+        return "heatmap"
+    crops, base_crops = body.get("crops") or [], base.get("crops") or []
+    if len(crops) != len(base_crops):
+        return "crops"
+    for c, b in zip(crops, base_crops):
+        # 위치는 64칸 격자에서 고르므로 흔들림으로 한 칸(1/64) 밀릴 수는 있다. 남의 사진이면 훨씬 멀다.
+        if max(abs(x - y) for x, y in zip(c["box_norm"], b["box_norm"])) > 0.05:
+            return "crops"
+        if not same_picture(c["heatmap_base64"], b["heatmap_base64"], size=(64, 64)):
+            return "crops"
+    return None
+
+
 def main() -> int:
     if not SECRET:
         print("✗ INTERNAL_API_SECRET 이 비어 있습니다 — 모든 요청이 401 로 떨어집니다.")
@@ -104,15 +146,21 @@ def main() -> int:
         if h is None:
             print(f"   ✗ 이미지 {i} 순차 요청에서 히트맵이 None — 서버 설정을 먼저 확인하세요")
             return 1
-        baseline.append(h)
+        baseline.append(r["body"])
         print(f"   이미지 {i}: top1={r['body']['top1']['disease_code']} "
-              f"히트맵 {len(h)}바이트")
+              f"히트맵 {len(h)}바이트, 확대 보기 {len(r['body'].get('crops') or [])}장")
+
+    # 두 이미지의 히트맵이 서로 구별되는지 — 같아 보이면 아래 비교가 오염을 못 잡는다
+    if same_picture(baseline[0]["heatmap_base64"], baseline[1]["heatmap_base64"]):
+        print("   ✗ 두 테스트 이미지의 히트맵이 같아 보여 오염을 구별할 수 없음 → 이 검증법 사용 불가")
+        return 1
 
     # 추론이 결정적인지 확인 (이 전제가 깨지면 아래 비교가 무의미)
     for i, img in enumerate(images):
-        again = predict(img)["body"]["heatmap_base64"]
-        if again != baseline[i]:
-            print(f"   ✗ 이미지 {i}: 같은 입력인데 순차 결과가 매번 다름 → 이 검증법 사용 불가")
+        again = predict(img)
+        why = mismatch(again["body"], baseline[i]) if again["ok"] else f"HTTP {again.get('status')}"
+        if why:
+            print(f"   ✗ 이미지 {i}: 같은 입력인데 순차 결과가 다름({why}) → 이 검증법 사용 불가")
             return 1
     print("   ✓ 순차 결과는 재현 가능(결정적)\n")
 
@@ -121,6 +169,7 @@ def main() -> int:
     http_error = 0
     heatmap_none = 0
     heatmap_mismatch = 0
+    crops_mismatch = 0
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         for _ in range(ROUNDS):
@@ -129,19 +178,22 @@ def main() -> int:
                 if not r["ok"]:
                     http_error += 1
                     continue
-                h = r["body"]["heatmap_base64"]
-                if h is None:
+                why = mismatch(r["body"], baseline[idx])
+                if why == "heatmap_none":
                     heatmap_none += 1
-                elif h != baseline[idx]:
+                elif why == "crops":
+                    crops_mismatch += 1
+                elif why:
                     heatmap_mismatch += 1
 
     total = ROUNDS * len(images)
-    corrupted = http_error + heatmap_none + heatmap_mismatch
+    corrupted = http_error + heatmap_none + heatmap_mismatch + crops_mismatch
 
     print(f"\n   총 요청           : {total}")
     print(f"   HTTP 실패         : {http_error}")
     print(f"   히트맵 None       : {heatmap_none}")
     print(f"   히트맵 내용 불일치 : {heatmap_mismatch}")
+    print(f"   확대 보기 불일치   : {crops_mismatch}")
     print(f"   ─────────────────────────────")
     print(f"   오염된 응답        : {corrupted} / {total}")
 

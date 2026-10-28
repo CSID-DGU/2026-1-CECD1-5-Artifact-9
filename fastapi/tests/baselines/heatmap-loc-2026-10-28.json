@@ -1,0 +1,35 @@
+{
+ "heatmap_style": "layercam-flip-jet-v2",
+ "model_version": "efficientnet_b0-03061a31e63f",
+ "cam_layers": [
+  "blocks.4"
+ ],
+ "images": 1100,
+ "lesion_area": 0.2788,
+ "full": {
+  "pointing": 0.9145,
+  "energy": 0.6218,
+  "pieces": 2.9273
+ },
+ "crops_per_image": 1.725,
+ "crop_hit_by_rank": {
+  "1": {
+   "n": 1100,
+   "hit10": 0.9509
+  },
+  "2": {
+   "n": 541,
+   "hit10": 0.8466
+  },
+  "3": {
+   "n": 256,
+   "hit10": 0.7539
+  }
+ },
+ "crop_heatmap": {
+  "n": 1364,
+  "pointing": 0.904,
+  "energy": 0.7761,
+  "pieces": 2.154
+ }
+}

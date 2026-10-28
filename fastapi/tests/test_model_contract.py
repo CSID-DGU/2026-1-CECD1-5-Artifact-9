@@ -218,6 +218,14 @@ check("run_inference 응답에 task 가 있다",
       "task" in inference_keys,
       f"현재 키: {sorted(inference_keys)}")
 
+# 확대 보기도 같은 종류다 — 백엔드가 crops 를 스토리지에 올리고 analysis_result.heatmap_crops 에,
+# heatmap_style 을 heatmap_style 에, full_image_top1 을 full_image_top1 에 남긴다(V11). 이름이
+# 바뀌면 백엔드는 모르는 필드를 무시하므로(FAIL_ON_UNKNOWN_PROPERTIES=false) 확대 보기가 조용히 사라진다.
+for key in ("crops", "heatmap_style", "full_image_top1"):
+    check(f"run_inference 응답에 {key} 필드가 있다",
+          key in inference_keys,
+          f"현재 키: {sorted(inference_keys)}")
+
 check("등급 문자열이 백엔드/마이그레이션과 약속한 값이다",
       (serving.CONFIDENCE_LOW, serving.CONFIDENCE_NORMAL) == ("low", "normal"),
       f"현재 값: {serving.CONFIDENCE_LOW!r} / {serving.CONFIDENCE_NORMAL!r} — "
