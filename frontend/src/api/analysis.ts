@@ -47,6 +47,29 @@ export type AnalysisResponse = {
   inferenceTimeMs: number;
   analyzedAt: string;
   heatmapImageUrl: string | null;
+  /** 히트맵을 그린 방식(FastAPI HEATMAP_STYLE). 이 기록 전의 분석·구버전 백엔드는 null 이거나 없다. */
+  heatmapStyle?: string | null;
+  /** 히트맵이 짚은 곳을 확대한 히트맵. 없으면 빈 배열이고, 구버전 백엔드는 필드 자체가 없다. */
+  heatmapCrops?: HeatmapCrop[];
+  /**
+   * 원본만으로는 신뢰도가 낮아 확대 영역까지 함께 보고 다시 판정했을 때만 온다 — 원본 사진만 본 1순위.
+   * 이때 top1·top5 는 다시 판정한 결과이고, confidenceLevel 은 원본 기준 그대로("low")다.
+   */
+  fullImageTop1?: {
+    diseaseCode: string;
+    diseaseNameKo: string;
+    confidence: number;
+  } | null;
+};
+
+/** 확대 히트맵 하나. boxNorm 은 원본 이미지 기준 [x0, y0, x1, y1] 이고 각 0~1 이다. */
+export type HeatmapCrop = {
+  rank: number;
+  /** 인증이 필요한 이미지 경로. 재분석해도 같으므로 화면은 analyzedAt 을 붙여 캐시를 피한다. */
+  imageUrl: string;
+  boxNorm: number[];
+  /** 그 영역의 히트맵 최댓값(0~1). */
+  peak: number | null;
 };
 
 /**
