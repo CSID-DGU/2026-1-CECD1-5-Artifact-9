@@ -66,7 +66,7 @@ class ClaudeClientTest {
 
         JsonNode body = objectMapper.readTree(server.received().get(0).body());
         assertThat(body.path("model").asText()).isEqualTo("claude-opus-5-5");
-        assertThat(body.path("max_tokens").asInt()).isEqualTo(2048);
+        assertThat(body.path("max_tokens").asInt()).isEqualTo(4096);
         // 최신 모델은 temperature 를 받으면 400 이다. 증명서 요청의 0.2 는 Gemini 에만 간다.
         assertThat(body.has("temperature")).isFalse();
         assertThat(body.at("/output_config/effort").asText()).isEqualTo("low");
@@ -107,6 +107,19 @@ class ClaudeClientTest {
         assertThat(result.failure()).isEqualTo(LlmFailure.BLOCKED);
         assertThat(result.statusCode()).isEqualTo(200);
         // 거절은 다시 보내도 같다. 재시도하지 않는다.
+        assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("max_tokens 에 걸려 잘린 답은 텍스트가 있어도 실패로 본다 — 반쪽 코멘트나 닫히지 않은 JSON 이 저장되면 안 된다")
+    void truncatedAnswerIsAFailure() {
+        server.on(MESSAGES, 200, FakeLlmServer.claudeTruncated("claude-opus-5-5", "{\"opinion\":\"아토피"));
+
+        LlmResult result = client("claude-opus-5-5", 2).generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failure()).isEqualTo(LlmFailure.EMPTY);
+        // 잘림은 일시 장애가 아니다. 같은 곳에 다시 보내지 않고 다음 공급자로 넘긴다.
         assertThat(server.received()).hasSize(1);
     }
 
@@ -158,14 +171,15 @@ class ClaudeClientTest {
     @Test
     @DisplayName("응답이 늦으면 받은 시간 안에서 TIMEOUT 으로 끊고, 타임아웃은 다시 보내지 않는다")
     void slowResponseTimesOutWithoutRetry() {
-        server.onDelayed(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "늦은 답"), 3000);
+        server.onDelayed(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "늦은 답"), 6000);
 
         long start = System.nanoTime();
         LlmResult result = client("claude-opus-5-5", 2).generate(LlmRequest.text("t", "질문"), Duration.ofMillis(800));
         long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
 
         assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
-        assertThat(elapsedMs).isLessThan(2500);
+        // 서버는 6초 뒤에 답한다. 상한을 넉넉히 둔 것은 SDK 첫 초기화(1~2초)가 이 측정에 섞일 수 있어서다.
+        assertThat(elapsedMs).isLessThan(4000);
         assertThat(server.received()).hasSize(1);
     }
 

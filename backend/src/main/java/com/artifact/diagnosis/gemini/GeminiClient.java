@@ -147,11 +147,17 @@ public class GeminiClient {
                     "AI 서버가 HTTP " + response.statusCode() + " 를 반환했습니다.");
         }
 
+        String finishReason = root.at("/candidates/0/finishReason").asText("");
+        // 길이 제한으로 잘린 답은 텍스트가 있어도 쓰지 않는다 — ClaudeClient 와 같은 이유다.
+        if ("MAX_TOKENS".equals(finishReason)) {
+            return LlmResult.failure(PROVIDER, model, LlmFailure.EMPTY, response.statusCode(),
+                    "AI 응답이 길이 제한으로 잘렸습니다.");
+        }
+
         // parts 는 여러 개로 쪼개져 올 수 있고, 생각(thought) 파트가 섞이기도 한다.
         // parts[0] 만 읽으면 그런 응답이 통째로 빈 응답으로 보인다.
         String text = extractText(root);
         if (text.isEmpty()) {
-            String finishReason = root.at("/candidates/0/finishReason").asText("");
             String blockReason = root.at("/promptFeedback/blockReason").asText("");
             log.warn("Gemini 응답 텍스트가 비어있음 (model={}, finishReason={}, blockReason={})",
                     model, finishReason, blockReason);
@@ -160,7 +166,10 @@ public class GeminiClient {
             return LlmResult.failure(PROVIDER, model, blocked ? LlmFailure.BLOCKED : LlmFailure.EMPTY,
                     response.statusCode(), emptyResponseMessage(finishReason, blockReason));
         }
-        return LlmResult.success(text, PROVIDER, model);
+        // 별칭(gemini-flash-lite-latest 등)으로 불렀으면 실제로 답한 모델은 modelVersion 에 있다.
+        // 처방·증명서 기록에 남는 값이라 별칭보다 실제 모델이 낫다.
+        String answered = root.path("modelVersion").asText("");
+        return LlmResult.success(text, PROVIDER, answered.isBlank() ? model : answered);
     }
 
     /**
@@ -196,7 +205,6 @@ public class GeminiClient {
         return switch (finishReason) {
             case "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII" -> "AI가 안전 정책상 응답을 거부했습니다.";
             case "RECITATION" -> "AI 응답이 인용 정책에 걸려 중단됐습니다.";
-            case "MAX_TOKENS" -> "AI 응답이 길이 제한으로 잘렸습니다. 다시 시도해주세요.";
             default -> "AI가 빈 응답을 반환했습니다. 다시 시도해주세요.";
         };
     }

@@ -9,8 +9,19 @@ import java.time.Duration;
  */
 public interface LlmProvider {
 
+    /**
+     * 같은 회사 — 같은 장애에 함께 걸리는 묶음 — 의 이름. 예: "gemini", "claude".
+     * 체인은 앞 공급자가 시간을 끌어도 다른 회사 공급자가 시도할 시간을 남겨 두는 데 쓴다.
+     */
+    String family();
+
+    /** 부르는 모델 ID. 예: "gemini-3.1-flash-lite". */
+    String model();
+
     /** 로그와 쿨다운 표에 쓰는 이름. 예: "gemini:gemini-3.1-flash-lite". */
-    String name();
+    default String name() {
+        return family() + ":" + model();
+    }
 
     /** 키·모델명이 있어 호출할 수 있는 상태인지. 아니면 체인에서 빠진다. */
     boolean isConfigured();

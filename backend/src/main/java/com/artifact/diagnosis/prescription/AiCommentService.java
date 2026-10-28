@@ -31,6 +31,7 @@ public class AiCommentService {
      * 키오스크 소견의 LLM 시간 예산. 키오스크 요청은 FastAPI 추론(최대 fastapi.timeout-seconds, 기본 30초)을
      * 먼저 기다린 뒤 이 소견을 만든다. 둘을 합쳐도 앞단 nginx 의 60초 안에 끝나도록 기본 예산(30초)보다 짧게 둔다.
      * 넘기면 태블릿에는 오류가 뜨는데 백엔드는 결과를 저장해, 의사 화면과 어긋난다.
+     * 기본 예산(llm.total-budget-seconds)을 이보다 줄이면 그쪽이 우선한다 — LlmGateway#generate 참고.
      */
     private static final Duration KIOSK_BUDGET = Duration.ofSeconds(20);
 

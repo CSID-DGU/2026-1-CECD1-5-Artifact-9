@@ -20,7 +20,7 @@ public enum LlmFailure {
     NETWORK,
     /** 안전 정책으로 거절됐다(Gemini SAFETY·blockReason, Claude stop_reason=refusal). */
     BLOCKED,
-    /** 성공 응답인데 쓸 텍스트가 없다(빈 응답, 길이 제한으로 잘림, JSON 파싱 불가). */
+    /** 성공 응답인데 쓸 수 있는 답이 없다(빈 응답, 길이 제한으로 잘림). */
     EMPTY,
     /** 요청 형식 오류. 400. 우리 코드의 문제라 다른 공급자로 가도 같을 수 있지만, 문법이 달라 시도는 한다. */
     BAD_REQUEST,
@@ -28,7 +28,7 @@ public enum LlmFailure {
     AUTH,
     /** 모델 ID 가 없거나 이 계정에서 쓸 수 없다. 404. */
     MODEL_NOT_FOUND,
-    /** 응답을 해석하지 못했다. */
+    /** 응답을 해석하지 못했다(요청한 JSON 형식이 아님, 응답 처리 중 오류). */
     BAD_RESPONSE,
     /** 요청 스레드가 중단됐다. */
     INTERRUPTED;

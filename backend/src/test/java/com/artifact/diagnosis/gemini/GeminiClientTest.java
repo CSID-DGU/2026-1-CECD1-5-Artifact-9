@@ -59,6 +59,28 @@ class GeminiClientTest {
     }
 
     @Test
+    @DisplayName("별칭으로 불렀으면 실제로 답한 모델(modelVersion)을 기록한다")
+    void recordsTheModelThatActuallyAnswered() {
+        server.on("gemini-flash-lite-latest", 200, FakeLlmServer.geminiText("답", "gemini-3.5-flash-lite"));
+
+        LlmResult result = client.generate("gemini-flash-lite-latest", LlmRequest.text("t", "질문"),
+                Duration.ofSeconds(10));
+
+        assertThat(result.model()).isEqualTo("gemini-3.5-flash-lite");
+    }
+
+    @Test
+    @DisplayName("길이 제한으로 잘린 답은 텍스트가 있어도 실패로 본다 — 반쪽 코멘트가 저장되면 안 된다")
+    void truncatedAnswerIsAFailure() {
+        server.on("gemini-a", 200, FakeLlmServer.geminiTruncated("가 연고를 하루"));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failure()).isEqualTo(LlmFailure.EMPTY);
+    }
+
+    @Test
     @DisplayName("API 키는 URL 이 아니라 x-goog-api-key 헤더로 보낸다 — URL 은 로그에 남기 쉽다")
     void apiKeyTravelsInHeaderNotUrl() {
         server.on("gemini-a", 200, FakeLlmServer.geminiText("답"));
@@ -143,14 +165,15 @@ class GeminiClientTest {
     @Test
     @DisplayName("응답이 늦으면 TIMEOUT — 남은 시간 예산이 설정 타임아웃보다 짧으면 그 예산이 우선한다")
     void slowResponseTimesOutWithinBudget() {
-        server.onDelayed("slow", 200, FakeLlmServer.geminiText("늦은 답"), 3000);
+        server.onDelayed("slow", 200, FakeLlmServer.geminiText("늦은 답"), 6000);
 
         long start = System.nanoTime();
         LlmResult result = client.generate("slow", LlmRequest.text("t", "질문"), Duration.ofMillis(800));
         long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
 
         assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
-        assertThat(elapsedMs).isLessThan(2500);
+        // 서버는 6초 뒤에 답한다. 느린 CI 에서도 '기다리지 않았다'만 가르도록 상한을 넉넉히 둔다.
+        assertThat(elapsedMs).isLessThan(4000);
     }
 
     @Test

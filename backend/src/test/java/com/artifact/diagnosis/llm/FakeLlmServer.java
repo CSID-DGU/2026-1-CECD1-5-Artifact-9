@@ -128,11 +128,28 @@ public class FakeLlmServer implements AutoCloseable {
 
     /** Gemini 성공 응답. 생각(thought) 파트를 앞에 하나 끼워, 파트를 종류로 고르는지까지 본다. */
     public static String geminiText(String text) {
-        return json(Map.of("candidates", List.of(Map.of(
+        return geminiResponse(text, "STOP", null);
+    }
+
+    /** 실제로 답한 모델(modelVersion)이 실린 Gemini 성공 응답. 별칭으로 불렀을 때의 모양이다. */
+    public static String geminiText(String text, String modelVersion) {
+        return geminiResponse(text, "STOP", modelVersion);
+    }
+
+    /** 길이 제한으로 잘린 Gemini 응답. 텍스트는 있지만 끝까지 오지 않았다. */
+    public static String geminiTruncated(String partialText) {
+        return geminiResponse(partialText, "MAX_TOKENS", null);
+    }
+
+    private static String geminiResponse(String text, String finishReason, String modelVersion) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("candidates", List.of(Map.of(
                 "content", Map.of("parts", List.of(
                         Map.of("text", "생각 중", "thought", true),
                         Map.of("text", text))),
-                "finishReason", "STOP"))));
+                "finishReason", finishReason)));
+        if (modelVersion != null) body.put("modelVersion", modelVersion);
+        return json(body);
     }
 
     public static String geminiError(int code, String status, String message) {
@@ -141,6 +158,15 @@ public class FakeLlmServer implements AutoCloseable {
 
     /** Claude 성공 응답. 앞에 빈 thinking 블록이 오는 실제 모양을 그대로 흉내 낸다. */
     public static String claudeText(String model, String text) {
+        return claudeMessage(model, text, "end_turn");
+    }
+
+    /** max_tokens 에 걸려 잘린 Claude 응답. 텍스트는 있지만 끝까지 오지 않았다. */
+    public static String claudeTruncated(String model, String partialText) {
+        return claudeMessage(model, partialText, "max_tokens");
+    }
+
+    private static String claudeMessage(String model, String text, String stopReason) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", "msg_test");
         body.put("type", "message");
@@ -149,7 +175,7 @@ public class FakeLlmServer implements AutoCloseable {
         body.put("content", List.of(
                 Map.of("type", "thinking", "thinking", "", "signature", "sig"),
                 Map.of("type", "text", "text", text)));
-        body.put("stop_reason", "end_turn");
+        body.put("stop_reason", stopReason);
         body.put("stop_sequence", null);
         body.put("usage", Map.of("input_tokens", 10, "output_tokens", 5));
         return json(body);

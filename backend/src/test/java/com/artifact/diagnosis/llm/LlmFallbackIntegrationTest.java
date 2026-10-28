@@ -226,6 +226,21 @@ class LlmFallbackIntegrationTest {
     }
 
     @Test
+    @DisplayName("증명서 초안: Gemini 가 JSON 이 아닌 답을 주면 성공으로 치지 않고 다음 공급자로 넘어간다")
+    void certificateDraftSkipsNonJsonAnswer() {
+        GEMINI.on("gemini-primary", 200, FakeLlmServer.geminiText("소견: 아토피피부염으로 보입니다."))
+              .on("gemini-backup", 200, FakeLlmServer.geminiText("{\"opinion\":\"대체 모델 소견\",\"treatmentPlan\":\"보습\"}"));
+
+        CertificateDraftResponse response = certificateDraftService.draft(certificateFacts(),
+                new CertificateDraftRequest(CertificateType.DIAGNOSIS, "보험 청구", "○○화재", null));
+
+        assertThat(response.generated()).isTrue();
+        assertThat(response.model()).isEqualTo("gemini-backup");
+        assertThat(response.opinion()).isEqualTo("대체 모델 소견");
+        assertThat(CLAUDE.received()).isEmpty();
+    }
+
+    @Test
     @DisplayName("키오스크 소견: 1차가 503 이어도 대체 모델의 소견을 보여 준다")
     void kioskCommentFallsBack() {
         GEMINI.on("gemini-primary", 503, HIGH_DEMAND)

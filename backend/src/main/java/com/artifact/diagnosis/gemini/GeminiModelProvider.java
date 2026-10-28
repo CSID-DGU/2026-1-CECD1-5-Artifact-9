@@ -21,8 +21,13 @@ public class GeminiModelProvider implements LlmProvider {
     }
 
     @Override
-    public String name() {
-        return GeminiClient.PROVIDER + ":" + model;
+    public String family() {
+        return GeminiClient.PROVIDER;
+    }
+
+    @Override
+    public String model() {
+        return model;
     }
 
     @Override
@@ -33,9 +38,5 @@ public class GeminiModelProvider implements LlmProvider {
     @Override
     public LlmResult generate(LlmRequest request, Duration maxWait) {
         return client.generate(model, request, maxWait);
-    }
-
-    public String model() {
-        return model;
     }
 }

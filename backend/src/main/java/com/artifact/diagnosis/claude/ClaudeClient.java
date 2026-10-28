@@ -54,9 +54,10 @@ public class ClaudeClient implements LlmProvider {
 
     /**
      * 생각(thinking)이 항상 켜진 모델이 있고, 생각한 토큰도 max_tokens 에 들어간다.
-     * 답은 두세 줄이지만 상한을 그 길이에 맞추면 생각만 하다 잘린다.
+     * 답은 두세 줄(증명서는 한두 문단)이지만 상한을 그 길이에 맞추면 생각만 하다 잘린다.
+     * 상한은 쓴 만큼만 과금되므로 넉넉히 둔다. 그래도 잘리면 실패로 본다 — interpret 참고.
      */
-    private static final long MAX_TOKENS = 2048L;
+    private static final long MAX_TOKENS = 4096L;
 
     /**
      * 안전 분류기에 걸려 거절된 요청을 서버가 다른 모델로 다시 돌려 주는 기능(fallbacks: "default").
@@ -91,8 +92,13 @@ public class ClaudeClient implements LlmProvider {
     }
 
     @Override
-    public String name() {
-        return PROVIDER + ":" + model;
+    public String family() {
+        return PROVIDER;
+    }
+
+    @Override
+    public String model() {
+        return model;
     }
 
     @Override
@@ -202,6 +208,11 @@ public class ClaudeClient implements LlmProvider {
         if (message.stopReason().filter(StopReason.REFUSAL::equals).isPresent()) {
             return LlmResult.failure(PROVIDER, model, LlmFailure.BLOCKED, 200, "AI가 안전 정책상 응답을 거부했습니다.");
         }
+        // 길이 제한으로 잘린 답은 쓰지 않는다. 두 줄 코멘트가 첫 줄에서 끊기거나 증명서 JSON 이 닫히지 않은 채
+        // 저장되기 때문이다. 실패로 돌려 체인이 다음 공급자로 넘어가게 한다.
+        if (message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent()) {
+            return LlmResult.failure(PROVIDER, model, LlmFailure.EMPTY, 200, "AI 응답이 길이 제한으로 잘렸습니다.");
+        }
         // 생각(thinking) 블록이 앞에 올 수 있다. 위치가 아니라 종류로 골라 text 블록만 잇는다.
         String text = message.content().stream()
                 .flatMap(block -> block.text().stream())
@@ -209,9 +220,7 @@ public class ClaudeClient implements LlmProvider {
                 .collect(Collectors.joining())
                 .trim();
         if (text.isEmpty()) {
-            boolean truncated = message.stopReason().filter(StopReason.MAX_TOKENS::equals).isPresent();
-            return LlmResult.failure(PROVIDER, model, LlmFailure.EMPTY, 200,
-                    truncated ? "AI 응답이 길이 제한으로 잘렸습니다." : "AI가 빈 응답을 반환했습니다.");
+            return LlmResult.failure(PROVIDER, model, LlmFailure.EMPTY, 200, "AI가 빈 응답을 반환했습니다.");
         }
         // 서버 측 대체가 일어나면 실제로 답한 모델이 요청한 모델과 다르다. 기록에는 실제 모델을 남긴다.
         return LlmResult.success(text, PROVIDER, message.model().asString());
