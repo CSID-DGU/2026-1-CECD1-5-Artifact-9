@@ -87,4 +87,24 @@ public class AnalysisResult {
     @Column(name = "heatmap_image_url", length = 500)
     private String heatmapImageUrl;
 
+    /**
+     * 확대 히트맵들 — 이미지는 스토리지에, 여기에는 키·위치만 남긴다(V11).
+     * 이 기능 전의 행과 확대 보기가 없는 분석은 null 이다.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "heatmap_crops", columnDefinition = "json")
+    private List<HeatmapCrop> heatmapCrops;
+
+    /** 히트맵을 그린 방식(fastapi/main.py HEATMAP_STYLE). 이 기록 전의 행은 null — V11 주석 참고. */
+    @Column(name = "heatmap_style", length = 40)
+    private String heatmapStyle;
+
+    /**
+     * 확대 재판정을 했을 때만 채운다: 원본 사진만 보고 낸 1순위(V11).
+     * 이때 predicted_disease_id·confidence 는 확대 영역까지 섞은 최종 판정이다.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "full_image_top1", columnDefinition = "json")
+    private TopKItem fullImageTop1;
+
 }

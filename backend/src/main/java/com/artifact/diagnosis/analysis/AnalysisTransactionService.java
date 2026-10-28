@@ -56,6 +56,15 @@ class AnalysisTransactionService {
     }
 
     /**
+     * 스토리지에 올린 히트맵들. 업로드는 트랜잭션 밖에서 끝내고 키만 이리로 넘긴다.
+     *
+     * @param key   전체 히트맵 키. 히트맵이 없으면 null
+     * @param style 히트맵을 그린 방식(FastAPI HEATMAP_STYLE). 구버전 FastAPI 는 null
+     * @param crops 올리는 데 성공한 확대 히트맵들. 없으면 빈 목록(null 아님)
+     */
+    record StoredHeatmap(String key, String style, List<HeatmapCrop> crops) {}
+
+    /**
      * @param imageIds 모델에 실제로 넣을 이미지들. 화면에서 고른 것 전부가 아니라
      *                 {@code AnalysisService.selectInferenceTargets} 가 추려낸 결과다.
      */
@@ -109,15 +118,17 @@ class AnalysisTransactionService {
      * 결과 행과 이미지 매핑은 반드시 같은 트랜잭션이어야 한다. 나눠 놓으면 결과만 저장되고
      * 매핑이 빠진 행이 생길 수 있는데, 그건 이 테이블이 3개월간 비어 있던 상태와 정확히 같다.
      *
-     * @param imageIds     모델에 실제로 넣은 이미지들 — {@link #beginAnalysis} 에 넘긴 것과 같은 목록
-     * @param analysisType 어느 태스크(모델)의 결과인가. {@code analysis_result.analysis_type} 에 코드 문자열로 남는다
+     * @param imageIds      모델에 실제로 넣은 이미지들 — {@link #beginAnalysis} 에 넘긴 것과 같은 목록
+     * @param analysisType  어느 태스크(모델)의 결과인가. {@code analysis_result.analysis_type} 에 코드 문자열로 남는다
+     * @param heatmap       스토리지에 올린 히트맵들(트랜잭션 밖에서 이미 올렸다)
+     * @param fullImageTop1 확대 재판정을 했을 때만: 원본 사진만 본 1순위. 아니면 null
      */
     @Transactional
     public AnalysisResult saveResult(Long visitId, List<Long> imageIds, AnalysisType analysisType,
                                      String modelVersion, String diseaseCode,
                                      double confidence, String confidenceLevel,
                                      List<TopKItem> topK,
-                                     int inferenceMs, String heatmapKey) {
+                                     int inferenceMs, StoredHeatmap heatmap, TopKItem fullImageTop1) {
         Visit visit = visitRepository.findById(visitId)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다: " + visitId));
         // 여기서 비면 모델과 disease 시드가 어긋난 것이다. facial 코드라면 V10__facial_task.sql 이 안 돈 DB 다
@@ -135,7 +146,10 @@ class AnalysisTransactionService {
                 .confidenceLevel(confidenceLevel)
                 .topKResults(topK)
                 .inferenceTimeMs(inferenceMs)
-                .heatmapImageUrl(heatmapKey)
+                .heatmapImageUrl(heatmap.key())
+                .heatmapCrops(heatmap.crops().isEmpty() ? null : heatmap.crops())
+                .heatmapStyle(heatmap.style())
+                .fullImageTop1(fullImageTop1)
                 .build());
 
         // 어느 사진에서 나온 결과인지 남긴다.
