@@ -1,0 +1,437 @@
+{
+  "task": "facial",
+  "classes": [
+    "acne",
+    "atopic",
+    "normal",
+    "psoriasis",
+    "rosacea",
+    "seb_derm"
+  ],
+  "names_ko": {
+    "acne": "여드름",
+    "atopic": "아토피피부염",
+    "normal": "정상 피부",
+    "psoriasis": "건선",
+    "rosacea": "주사(장미증)",
+    "seb_derm": "지루피부염"
+  },
+  "args": {
+    "manifest": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run/manifest.csv",
+    "task": "facial",
+    "out_dir": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run384",
+    "epochs": 15,
+    "batch_size": 32,
+    "image_size": 384,
+    "lr": 0.0003,
+    "weight_decay": 0.0001,
+    "label_smoothing": 0.0,
+    "init": "repo",
+    "init_weights": null,
+    "device": "cuda",
+    "num_workers": 2,
+    "holdout_csv": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run/facial-holdout.csv",
+    "seed": 42,
+    "w_cap": 5.0,
+    "patience": 5,
+    "limit": null,
+    "amp": "auto"
+  },
+  "env": {
+    "python": "3.13.16",
+    "torch": "2.11.0+cu130",
+    "torchvision": "0.26.0+cu130",
+    "timm": "1.0.11",
+    "device": "cuda",
+    "gpu": "Tesla T4",
+    "cpu_count": 2,
+    "platform": "Linux-6.6.159+-x86_64-with-glibc2.39"
+  },
+  "init": {
+    "requested": "repo",
+    "source": "/content/artifact/fastapi/model.pth",
+    "inherited_tensors": 358,
+    "reinitialized": [
+      "classifier.weight",
+      "classifier.bias"
+    ]
+  },
+  "amp": true,
+  "data": {
+    "manifest": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run/manifest.csv",
+    "train_count": 9600,
+    "val_count": 1200,
+    "train_per_class": {
+      "acne": 1600,
+      "atopic": 1600,
+      "normal": 1600,
+      "psoriasis": 1600,
+      "rosacea": 1600,
+      "seb_derm": 1600
+    },
+    "val_per_class": {
+      "acne": 200,
+      "atopic": 200,
+      "normal": 200,
+      "psoriasis": 200,
+      "rosacea": 200,
+      "seb_derm": 200
+    },
+    "class_weights": {
+      "acne": 1.0,
+      "atopic": 1.0,
+      "normal": 1.0,
+      "psoriasis": 1.0,
+      "rosacea": 1.0,
+      "seb_derm": 1.0
+    },
+    "holdout_csv": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run/facial-holdout.csv",
+    "val_source": "holdout_csv",
+    "holdout_count": 1200,
+    "holdout_found": 1200,
+    "holdout_missing": 0
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.46441,
+      "val_loss": 0.35155,
+      "macro_recall": 0.87917,
+      "lr": 0.0003,
+      "seconds": 407.7,
+      "per_class_recall": {
+        "acne": 0.9,
+        "atopic": 0.935,
+        "normal": 1.0,
+        "psoriasis": 0.86,
+        "rosacea": 0.73,
+        "seb_derm": 0.85
+      }
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.23936,
+      "val_loss": 0.39375,
+      "macro_recall": 0.8475,
+      "lr": 0.0002967221401100708,
+      "seconds": 396.6,
+      "per_class_recall": {
+        "acne": 0.76,
+        "atopic": 0.82,
+        "normal": 0.98,
+        "psoriasis": 0.975,
+        "rosacea": 0.795,
+        "seb_derm": 0.755
+      }
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.18459,
+      "val_loss": 0.33409,
+      "macro_recall": 0.88917,
+      "lr": 0.0002870318186463901,
+      "seconds": 395.3,
+      "per_class_recall": {
+        "acne": 0.93,
+        "atopic": 0.895,
+        "normal": 0.995,
+        "psoriasis": 0.915,
+        "rosacea": 0.79,
+        "seb_derm": 0.81
+      }
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.14539,
+      "val_loss": 0.37116,
+      "macro_recall": 0.8675,
+      "lr": 0.0002713525491562421,
+      "seconds": 391.2,
+      "per_class_recall": {
+        "acne": 0.875,
+        "atopic": 0.88,
+        "normal": 0.98,
+        "psoriasis": 0.825,
+        "rosacea": 0.735,
+        "seb_derm": 0.91
+      }
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.11391,
+      "val_loss": 0.38459,
+      "macro_recall": 0.88167,
+      "lr": 0.00025036959095382875,
+      "seconds": 393.0,
+      "per_class_recall": {
+        "acne": 0.815,
+        "atopic": 0.905,
+        "normal": 1.0,
+        "psoriasis": 0.93,
+        "rosacea": 0.815,
+        "seb_derm": 0.825
+      }
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.09875,
+      "val_loss": 0.37354,
+      "macro_recall": 0.8825,
+      "lr": 0.00022500000000000002,
+      "seconds": 389.3,
+      "per_class_recall": {
+        "acne": 0.78,
+        "atopic": 0.94,
+        "normal": 1.0,
+        "psoriasis": 0.885,
+        "rosacea": 0.805,
+        "seb_derm": 0.885
+      }
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.07297,
+      "val_loss": 0.37239,
+      "macro_recall": 0.88833,
+      "lr": 0.00019635254915624213,
+      "seconds": 385.3,
+      "per_class_recall": {
+        "acne": 0.75,
+        "atopic": 0.875,
+        "normal": 1.0,
+        "psoriasis": 0.92,
+        "rosacea": 0.93,
+        "seb_derm": 0.855
+      }
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.05255,
+      "val_loss": 0.31759,
+      "macro_recall": 0.9025,
+      "lr": 0.00016567926949014806,
+      "seconds": 384.5,
+      "per_class_recall": {
+        "acne": 0.895,
+        "atopic": 0.905,
+        "normal": 1.0,
+        "psoriasis": 0.875,
+        "rosacea": 0.83,
+        "seb_derm": 0.91
+      }
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.03721,
+      "val_loss": 0.36212,
+      "macro_recall": 0.89667,
+      "lr": 0.00013432073050985205,
+      "seconds": 390.8,
+      "per_class_recall": {
+        "acne": 0.795,
+        "atopic": 0.92,
+        "normal": 0.99,
+        "psoriasis": 0.91,
+        "rosacea": 0.94,
+        "seb_derm": 0.825
+      }
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.02756,
+      "val_loss": 0.34486,
+      "macro_recall": 0.91,
+      "lr": 0.00010364745084375793,
+      "seconds": 389.1,
+      "per_class_recall": {
+        "acne": 0.885,
+        "atopic": 0.92,
+        "normal": 1.0,
+        "psoriasis": 0.92,
+        "rosacea": 0.89,
+        "seb_derm": 0.845
+      }
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.02131,
+      "val_loss": 0.40312,
+      "macro_recall": 0.90083,
+      "lr": 7.500000000000006e-05,
+      "seconds": 391.7,
+      "per_class_recall": {
+        "acne": 0.795,
+        "atopic": 0.935,
+        "normal": 1.0,
+        "psoriasis": 0.92,
+        "rosacea": 0.885,
+        "seb_derm": 0.87
+      }
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.01617,
+      "val_loss": 0.35851,
+      "macro_recall": 0.91083,
+      "lr": 4.963040904617133e-05,
+      "seconds": 392.8,
+      "per_class_recall": {
+        "acne": 0.85,
+        "atopic": 0.935,
+        "normal": 1.0,
+        "psoriasis": 0.91,
+        "rosacea": 0.88,
+        "seb_derm": 0.89
+      }
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.01083,
+      "val_loss": 0.33132,
+      "macro_recall": 0.92333,
+      "lr": 2.8647450843757904e-05,
+      "seconds": 403.1,
+      "per_class_recall": {
+        "acne": 0.91,
+        "atopic": 0.93,
+        "normal": 1.0,
+        "psoriasis": 0.905,
+        "rosacea": 0.89,
+        "seb_derm": 0.905
+      }
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.00966,
+      "val_loss": 0.3422,
+      "macro_recall": 0.91583,
+      "lr": 1.2968181353609857e-05,
+      "seconds": 400.3,
+      "per_class_recall": {
+        "acne": 0.885,
+        "atopic": 0.935,
+        "normal": 1.0,
+        "psoriasis": 0.915,
+        "rosacea": 0.88,
+        "seb_derm": 0.88
+      }
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.00879,
+      "val_loss": 0.3419,
+      "macro_recall": 0.91917,
+      "lr": 3.2778598899291478e-06,
+      "seconds": 394.2,
+      "per_class_recall": {
+        "acne": 0.885,
+        "atopic": 0.925,
+        "normal": 1.0,
+        "psoriasis": 0.91,
+        "rosacea": 0.925,
+        "seb_derm": 0.87
+      }
+    }
+  ],
+  "best_epoch": 13,
+  "best_macro_recall": 0.92333,
+  "epochs_run": 15,
+  "stopped_early": false,
+  "weights": {
+    "path": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run384/facial.pth",
+    "sha256_12": "2d3a2141c3d2",
+    "model_version": "efficientnet_b0-2d3a2141c3d2",
+    "bytes": 16331777
+  },
+  "interrupted": false,
+  "best": {
+    "epoch": 13,
+    "macro_recall": 0.92333,
+    "accuracy": 0.92333,
+    "per_class": {
+      "acne": {
+        "recall": 0.91,
+        "precision": 0.943,
+        "support": 200
+      },
+      "atopic": {
+        "recall": 0.93,
+        "precision": 0.9442,
+        "support": 200
+      },
+      "normal": {
+        "recall": 1.0,
+        "precision": 0.9901,
+        "support": 200
+      },
+      "psoriasis": {
+        "recall": 0.905,
+        "precision": 0.9141,
+        "support": 200
+      },
+      "rosacea": {
+        "recall": 0.89,
+        "precision": 0.9519,
+        "support": 200
+      },
+      "seb_derm": {
+        "recall": 0.905,
+        "precision": 0.8117,
+        "support": 200
+      }
+    },
+    "confusion": [
+      [
+        182,
+        1,
+        1,
+        5,
+        0,
+        11
+      ],
+      [
+        4,
+        186,
+        0,
+        4,
+        3,
+        3
+      ],
+      [
+        0,
+        0,
+        200,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        8,
+        0,
+        181,
+        1,
+        9
+      ],
+      [
+        0,
+        0,
+        1,
+        2,
+        178,
+        19
+      ],
+      [
+        6,
+        2,
+        0,
+        6,
+        5,
+        181
+      ]
+    ],
+    "confusion_note": "행=실제, 열=예측, 순서=classes"
+  },
+  "val_predictions": "/content/drive/MyDrive/artifact_medical_ai (1)/facial/run384/facial-val-predictions.csv",
+  "elapsed_seconds": 5933.6
+}

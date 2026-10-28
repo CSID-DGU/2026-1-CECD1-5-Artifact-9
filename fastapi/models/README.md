@@ -8,6 +8,14 @@
 |---|---|:---:|---|
 | `facial.pth` | `facial` | 6 (`acne, atopic, normal, psoriasis, rosacea, seb_derm`) | AI허브 안면부 피부질환 이미지 합성 데이터(71863) — 만드는 방법은 `fastapi/training/aihub/README.md` |
 
+### 현재 `facial.pth` (2026-10-28)
+
+- `model_version`: `efficientnet_b0-2d3a2141c3d2`, 입력 **384×384** (`main.py` `TASKS["facial"]["input_size"]` 와 같아야 한다)
+- 학습: Colab T4, `train.py --init repo --image-size 384 --batch-size 32 --epochs 15`, best epoch 13. 리포트 `tests/baselines/facial-train-2026-10-28.json`
+- 홀드아웃(`tests/baselines/facial-holdout.csv`, AI허브 Validation 1,200장): 전체 92.3% · 정면 84.7% · 측면 100%. 정상 피부 재현율 100%, 가장 약한 쪽은 주사(89.0%)·지루피부염(90.5%, 정밀도 81.2%) — 주로 서로 헷갈린다
+- 224 로 학습한 첫 모델은 전체 89.3% · 정면 79.8% 였다. 정면 사진(1024² 얼굴 전체)을 224 로 줄이면 작은 병변이 뭉개져서 384 로 올렸다
+- **합성 이미지끼리의 평가다.** 실제 환자 사진에서의 성능은 재지 않았다
+
 ## 규칙
 
 - **형식**: `timm` `efficientnet_b0` 의 `state_dict` 를 `torch.save` 한 파일. `num_classes` 는 그 태스크의
