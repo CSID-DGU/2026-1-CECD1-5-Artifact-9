@@ -43,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -74,13 +75,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "print.agent.enabled=false",
         "fastapi.internal-secret=test-only-internal-secret",
 
-        // 체인: gemini-primary → gemini-backup → claude-opus-5-5
+        // 체인: gemini-primary → gemini-backup → claude-haiku-5-5 (운영 기본값과 같은 모델)
         "gemini.api.key=test-gemini-key",
         "gemini.model=gemini-primary",
         "gemini.fallback-models=gemini-backup",
         "gemini.max-attempts=1",
         "anthropic.api.key=test-claude-key",
-        "anthropic.model=claude-opus-5-5",
+        "anthropic.model=claude-haiku-5-5",
         "anthropic.max-attempts=1",
         // 일시 장애 뒤 쉬게 하기를 끈다. 설정 오류(10분)는 이 값과 무관하므로 @BeforeEach 에서 표를 비운다.
         // 쉬게 하기 자체는 LlmGatewayTest 가 본다.
@@ -173,18 +174,20 @@ class LlmFallbackIntegrationTest {
     void commentFallsBackToClaude() throws Exception {
         GEMINI.on("gemini-primary", 503, HIGH_DEMAND)
               .on("gemini-backup", 503, HIGH_DEMAND);
-        CLAUDE.on("/v1/messages", 200, FakeLlmServer.claudeText("claude-opus-5-5", COMMENT));
+        CLAUDE.on("/v1/messages", 200, FakeLlmServer.claudeText("claude-haiku-5-5", COMMENT));
 
         JsonNode body = requestComment();
 
         assertThat(body.path("available").asBoolean()).isTrue();
-        assertThat(body.path("model").asText()).isEqualTo("claude-opus-5-5");
+        assertThat(body.path("model").asText()).isEqualTo("claude-haiku-5-5");
         assertThat(body.path("line1").asText()).startsWith("가 연고(A1)");
 
         FakeLlmServer.Received sent = CLAUDE.received().get(0);
         JsonNode request = objectMapper.readTree(sent.body());
-        assertThat(request.path("fallbacks").asText()).isEqualTo("default");
-        assertThat(sent.header("anthropic-beta")).contains("server-side-fallback-2026-07-01");
+        // Haiku 5.5 는 생각을 끄고 보낸다(토큰·지연 절감). 서버 측 대체는 이 모델에 없어 붙이지 않는다.
+        assertThat(request.at("/thinking/type").asText()).isEqualTo("disabled");
+        assertThat(request.has("fallbacks")).isFalse();
+        assertThat(sent.header("anthropic-beta")).isNull();
         // 공급자가 늘어도 개인정보 경계는 그대로여야 한다 — 전화번호·이름이 Anthropic 으로 나가면 안 된다.
         String prompt = request.at("/messages/0/content").toString();
         assertThat(prompt).contains("가려움").doesNotContain("010-4321-8765").doesNotContain("한체인");
@@ -216,14 +219,14 @@ class LlmFallbackIntegrationTest {
     void certificateDraftFallsBackToClaudeWithStructuredOutput() throws Exception {
         GEMINI.on("gemini-primary", 503, HIGH_DEMAND)
               .on("gemini-backup", 503, HIGH_DEMAND);
-        CLAUDE.on("/v1/messages", 200, FakeLlmServer.claudeText("claude-opus-5-5",
+        CLAUDE.on("/v1/messages", 200, FakeLlmServer.claudeText("claude-haiku-5-5",
                 "{\"opinion\":\"아토피피부염 소견입니다.\",\"treatmentPlan\":\"보습과 국소 스테로이드 도포\"}"));
 
         CertificateDraftResponse response = certificateDraftService.draft(certificateFacts(),
                 new CertificateDraftRequest(CertificateType.DIAGNOSIS, "보험 청구", "○○화재", null));
 
         assertThat(response.generated()).isTrue();
-        assertThat(response.model()).isEqualTo("claude-opus-5-5");
+        assertThat(response.model()).isEqualTo("claude-haiku-5-5");
         assertThat(response.opinion()).isEqualTo("아토피피부염 소견입니다.");
         assertThat(response.treatmentPlan()).isEqualTo("보습과 국소 스테로이드 도포");
 
@@ -266,7 +269,8 @@ class LlmFallbackIntegrationTest {
               .on("gemini-backup", 200, FakeLlmServer.geminiText(
                       "촬영하신 부위는 여드름 가능성이 있는 것으로 보입니다.\n정확한 판단을 위해 의사의 확인 진료가 필요합니다."));
 
-        String comment = aiCommentService.generatePreliminaryComment(List.of(new TopKItem("acne", 0.82)));
+        String comment = aiCommentService.generatePreliminaryComment(
+                List.of(new TopKItem("acne", 0.82)), Map.of("acne", "여드름"));
 
         assertThat(comment).startsWith("촬영하신 부위는 여드름");
         assertThat(CLAUDE.received()).isEmpty();

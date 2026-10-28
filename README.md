@@ -340,7 +340,7 @@ erDiagram
 | **Backend** | Java 21, Spring Boot 3.5.14, Spring Web, Spring Data JPA, **Spring Security**, **jjwt 0.12.6**, Springdoc OpenAPI 2.8.8, AWS S3 SDK 2.31, Apache POI 5.2 (대용량 Excel SAX 스트리밍), Lombok |
 | **AI Server** | FastAPI 0.115, PyTorch 2.5, torchvision 0.20, timm 1.0.11, Pillow 11, NumPy |
 | **AI Explainability** | GradCAM (순수 PyTorch + Pillow 구현, cv2 불필요) |
-| **LLM** | Google Gemini API (`gemini-3.1-flash-lite`, 대체 `gemini-3.5-flash-lite`·`gemini-flash-lite-latest`) + 보조 Anthropic Claude API (`claude-opus-5-5`, 공식 Java SDK) — 처방 코멘트·증명서 초안·키오스크 소견 |
+| **LLM** | Google Gemini API (`gemini-3.1-flash-lite`, 대체 `gemini-3.5-flash-lite`·`gemini-flash-lite-latest`) + 보조 Anthropic Claude API (`claude-haiku-5-5`, 공식 Java SDK) — 처방 코멘트·증명서 초안·키오스크 소견 |
 | **Database** | MySQL 8.0 (utf8mb4_unicode_ci) |
 | **Infra / Dev** | Docker, Docker Compose, Local Image Storage / AWS S3, Git / GitHub, Gradle |
 

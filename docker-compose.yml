@@ -109,7 +109,7 @@ services:
       GEMINI_FALLBACK_MODELS: ${GEMINI_FALLBACK_MODELS:-gemini-3.5-flash-lite,gemini-flash-lite-latest}
       # 보조 LLM(Claude). 키가 비어 있으면 이 단계만 빠진다. 키는 .env 에만 적는다.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
 
       # 제증명(진단서·처방전 등) 문서 머리말에 찍히는 의료기관 정보.
       # 여기 나열하지 않으면 .env 에 적어도 컨테이너 안으로 전달되지 않는다.

@@ -98,6 +98,27 @@ class ClaudeClientTest {
     }
 
     @Test
+    @DisplayName("Haiku 5.5 는 생각을 끄고 보내고, 생각이 항상 켜진 Opus 5.5 에는 thinking 을 보내지 않는다")
+    void thinkingDisabledOnlyWhereTheModelAllowsIt() throws Exception {
+        server.on(MESSAGES, 200, FakeLlmServer.claudeText("claude-haiku-5-5", "답"));
+        client("claude-haiku-5-5", 1).generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+        assertThat(objectMapper.readTree(server.received().get(0).body()).at("/thinking/type").asText())
+                .isEqualTo("disabled");
+
+        server.reset();
+        server.on(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "답"));
+        client("claude-opus-5-5", 1).generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+        // Opus 5.5 에 disabled 를 보내면 400 이다.
+        assertThat(objectMapper.readTree(server.received().get(0).body()).has("thinking")).isFalse();
+    }
+
+    @Test
+    @DisplayName("모델명이 비면 Haiku 5.5 를 쓴다 — .env 에 ANTHROPIC_MODEL= 처럼 빈 값을 둔 경우")
+    void blankModelFallsBackToHaiku() {
+        assertThat(new ClaudeClient("test-key", " ", 5, 1, server.baseUrl()).model()).isEqualTo("claude-haiku-5-5");
+    }
+
+    @Test
     @DisplayName("거절은 HTTP 200 으로 온다 — stop_reason 으로 BLOCKED 를 가른다")
     void refusalIsBlocked() {
         server.on(MESSAGES, 200, FakeLlmServer.claudeRefusal("claude-opus-5-5"));

@@ -171,7 +171,7 @@ public class LlmGateway {
         return representative.withAttempts(attempt.trail);
     }
 
-    /** 기동 로그용. 예: "gemini:gemini-3.1-flash-lite → gemini:gemini-3.5-flash-lite → claude:claude-opus-5-5(키 없음)". */
+    /** 기동 로그용. 예: "gemini:gemini-3.1-flash-lite → gemini:gemini-3.5-flash-lite → claude:claude-haiku-5-5(키 없음)". */
     public String describe() {
         List<String> names = new ArrayList<>();
         for (LlmProvider p : providers) {

@@ -143,6 +143,7 @@ public class CertificateDraftService {
                 - 치료 기간이나 완치 시점을 단정하지 말고 "경과에 따라", "추적 관찰이 필요함" 같은 표현을 쓰세요.
                 - 환자 이름, 연락처, 주민등록번호를 문장에 넣지 마세요.
                 - 진단서 문어체(~함, ~됨, ~필요함)로 쓰고, 각 항목은 3문장을 넘기지 마세요.
+                - 한글로 쓰고 한자는 쓰지 마세요.
                 %s
                 """.formatted(type.getLabel(), String.join("\n", lines), fieldGuide(type));
     }

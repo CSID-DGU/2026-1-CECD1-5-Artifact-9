@@ -83,6 +83,7 @@ public class KioskService {
      * disease.name_ko 컬럼은 과거 초기 적재 시 인코딩이 깨져 있어(mojibake) 재조회 시 사용하지 않는다.
      * AnalysisService.DISEASE_NAME_KO 와 동일한 값 — 모델 클래스 코드 → 한글 병명 하드코딩 매핑.
      * 두 사본의 코드 집합과 값이 같은지는 fastapi/tests/test_model_contract.py [7] 이 대조한다.
+     * 키오스크 참고 소견 프롬프트에도 이 이름을 넘긴다 — 코드(nv, mel)를 그대로 주면 환자 화면에 영문 약어가 섞인다.
      *
      * 키오스크는 skin_lesion 모델만 부르므로(아래 callFastApi) facial 6종이 여기서 조회될 일은 아직 없지만,
      * 계약 테스트가 두 맵을 통째로 비교하므로 같은 14쌍을 둔다.
@@ -194,7 +195,7 @@ public class KioskService {
             gradcamKey = imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
         }
 
-        String aiComment = aiCommentService.generatePreliminaryComment(topK);
+        String aiComment = aiCommentService.generatePreliminaryComment(topK, DISEASE_NAME_KO);
 
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
         PreliminaryAnalysis entity = kioskTransactionService.saveResult(

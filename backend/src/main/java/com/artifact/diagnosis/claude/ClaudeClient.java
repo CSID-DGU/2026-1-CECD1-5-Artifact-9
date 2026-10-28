@@ -20,6 +20,7 @@ import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.StopReason;
 import com.anthropic.models.messages.TextBlock;
+import com.anthropic.models.messages.ThinkingConfigDisabled;
 import com.artifact.diagnosis.llm.LlmFailure;
 import com.artifact.diagnosis.llm.LlmProvider;
 import com.artifact.diagnosis.llm.LlmRequest;
@@ -56,8 +57,11 @@ public class ClaudeClient implements LlmProvider {
 
     static final String PROVIDER = "claude";
 
-    /** 모델명이 비어 있을 때 쓰는 모델. compose 기본값과 같다. */
-    static final String DEFAULT_MODEL = "claude-opus-5-5";
+    /**
+     * 모델명이 비어 있을 때 쓰는 모델. compose 기본값과 같다.
+     * Haiku 5.5 인 이유: 두세 줄 안내문과 짧은 서술이라 큰 모델이 필요 없고, 입력·출력 단가가 가장 낮다.
+     */
+    static final String DEFAULT_MODEL = "claude-haiku-5-5";
 
     /**
      * 생각(thinking)이 항상 켜진 모델이 있고, 생각한 토큰도 max_tokens 에 들어간다.
@@ -73,6 +77,13 @@ public class ClaudeClient implements LlmProvider {
     private static final Set<String> SERVER_FALLBACK_MODELS =
             Set.of("claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5");
     private static final String SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01";
+
+    /**
+     * 생각(thinking)을 끄는 모델. Haiku 5.5 는 effort 를 low 로 둬도 처방 코멘트에 300토큰 넘게 생각해,
+     * 끄면 출력 토큰이 약 3분의 1, 지연이 약 3분의 1로 줄고 문장은 같았다(실측). 끌 수 있는 모델에만 보낸다 —
+     * Opus 5.5 는 생각이 항상 켜져 있어 disabled 를 보내면 400 이고, Sonnet 5.5 는 between_tools 를 받는다.
+     */
+    private static final Set<String> THINKING_OFF_MODELS = Set.of("claude-haiku-5-5");
 
     /** 금방 돌아오는 일시 실패. 한 번 더 보내 볼 만하다. 타임아웃은 이미 기다릴 만큼 기다렸으므로 넣지 않는다. */
     private static final Set<LlmFailure> RETRYABLE =
@@ -90,7 +101,7 @@ public class ClaudeClient implements LlmProvider {
     private volatile boolean serverFallback = true;
 
     public ClaudeClient(@Value("${anthropic.api.key:}") String apiKey,
-                        @Value("${anthropic.model:claude-opus-5-5}") String model,
+                        @Value("${anthropic.model:claude-haiku-5-5}") String model,
                         @Value("${anthropic.timeout-seconds:15}") long timeoutSeconds,
                         @Value("${anthropic.max-attempts:2}") int maxAttempts,
                         @Value("${llm.claude-base-url:}") String baseUrl) {
@@ -224,6 +235,9 @@ public class ClaudeClient implements LlmProvider {
         if (sendsServerFallback()) {
             builder.putAdditionalHeader("anthropic-beta", SERVER_FALLBACK_BETA);
             builder.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"));
+        }
+        if (THINKING_OFF_MODELS.contains(model)) {
+            builder.thinking(ThinkingConfigDisabled.builder().build());
         }
         return builder.build();
     }

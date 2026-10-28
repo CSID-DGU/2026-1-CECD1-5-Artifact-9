@@ -1,8 +1,6 @@
 package com.artifact.diagnosis.prescription;
 
 import com.artifact.diagnosis.analysis.TopKItem;
-import com.artifact.diagnosis.drug.DrugMaster;
-import com.artifact.diagnosis.drug.DrugMasterRepository;
 import com.artifact.diagnosis.llm.LlmFailure;
 import com.artifact.diagnosis.llm.LlmGateway;
 import com.artifact.diagnosis.llm.LlmMessages;
@@ -10,11 +8,14 @@ import com.artifact.diagnosis.llm.LlmRequest;
 import com.artifact.diagnosis.llm.LlmResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 처방 코멘트(약품 추천 포함)와 키오스크 참고 소견을 LLM 으로 만든다.
@@ -35,7 +36,16 @@ public class AiCommentService {
      */
     private static final Duration KIOSK_BUDGET = Duration.ofSeconds(20);
 
-    private final DrugMasterRepository drugMasterRepository;
+    /**
+     * 줄 앞의 번호·글머리·"1줄:" 표시. 출력 규칙으로 막아도 가끔 붙어 나온다.
+     * 번호 뒤에 공백을 요구해 "0.1% 연고를…" 같은 문장 첫머리의 숫자는 건드리지 않는다.
+     */
+    private static final Pattern LINE_MARKER = Pattern.compile("^(?:[-*•·]\\s+|\\d+[.)]\\s+|\\d+\\s*줄\\s*[:：]\\s*)");
+
+    /** 한 줄에 두 문장을 이어 쓴 답을 첫 문장 끝에서 나눈다. */
+    private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?。])\\s+");
+
+    private final DrugCandidates drugCandidates;
     private final LlmGateway llmGateway;
 
     /**
@@ -47,16 +57,26 @@ public class AiCommentService {
      *                   그 책임은 {@code PrescriptionService#maskedReceptionMemo} 에 있다.
      */
     public PrescriptionCommentResponse generateComment(PrescriptionCommentRequest req, String maskedMemo) {
-        // 피부 치료 관련 약품 10개 조회
-        List<DrugMaster> drugs = drugMasterRepository.findByNameKrContaining("연고", PageRequest.of(0, 5));
-        drugs.addAll(drugMasterRepository.findByNameKrContaining("크림", PageRequest.of(0, 5)));
+        // 상병에 맞는 외용제만 후보로 준다. 주상병의 약이 먼저 들어가도록 주상병을 앞에 둔다.
+        List<String> kcdCodes = Stream.concat(
+                        req.diseases().stream().filter(PrescriptionCommentRequest.DiseaseInfo::isPrimary),
+                        req.diseases().stream().filter(d -> !d.isPrimary()))
+                .map(PrescriptionCommentRequest.DiseaseInfo::kcdCode)
+                .toList();
+        List<String> drugs = drugCandidates.forDiseases(kcdCodes);
 
-        // 약품 목록 문자열 생성
-        String drugList = drugs.stream()
-                .map(d -> d.getNameKr() + "(" + d.getCode() + ")")
-                .distinct()
-                .limit(10)
-                .reduce("", (a, b) -> a.isEmpty() ? b : a + ", " + b);
+        // 권할 약이 없을 때는 목록 이야기를 아예 꺼내지 않는다. "목록이 '없음'이면…" 같은 규칙을 주면
+        // 모델이 "참고 약품 목록이 없어 약품명은 쓰지 않습니다"처럼 규칙을 코멘트에 되풀이한다(Haiku 5.5 실측).
+        String drugSection = drugs.isEmpty() ? "" : """
+
+                참고 약품 (상병에 맞춰 고른 외용제. 이 중에서 골라 약품명과 코드를 적힌 그대로 쓰세요):
+                %s
+                """.formatted(String.join(", ", drugs));
+        String line1Rule = drugs.isEmpty()
+                ? "- 1줄: 약품명 없이 처방 방향 (조직검사·절제·경과 관찰·전문 진료 의뢰·생활 관리 등)"
+                : """
+                - 1줄: 참고 약품 중 하나를 골라 약품명(코드)과 용법을 넣은 처방 방향 (예: ○○겔(코드)을 하루 1회 저녁에 얇게 도포하는 것을 권장합니다.)
+                - 참고 약품에 없는 약품명이나 코드는 쓰지 마세요.""";
 
         // 주상병/부상병 정리
         String primaryDisease = req.diseases().stream()
@@ -77,19 +97,19 @@ public class AiCommentService {
                 진단 정보:
                 - 주상병: %s
                 - 부상병: %s%s
-
-                참고 약품 목록 (이 중에서 적합한 것을 선택하여 약품명과 코드를 포함):
                 %s
-
                 출력 규칙:
-                - 정확히 2줄만 출력하세요 (번호, 레이블, 기호 없이)
-                - 1줄: 추천 처방 약품명(코드) 포함하여 처방 방향 (예: ○○연고(코드)를 하루 2회 도포하는 것을 권장합니다.)
+                - 정확히 2줄만 출력하세요. 번호·레이블·기호·마크다운 없이, 빈 줄 없이 씁니다. 각 줄은 한 문장입니다.
+                %s
+                - 주상병이 악성 종양·모반처럼 약보다 조직검사·절제·경과 관찰이 먼저인 병변이면 1줄에 그 방향을 쓰세요.
                 - 2줄: 환자 주의사항 (자외선 차단, 재방문 시기 등)
+                - 모든 단어를 한글로 쓰세요(예: 환부, 도포). 한자는 쓰지 마세요.
                 """,
                 primaryDisease,
                 secondaryDiseases.isEmpty() ? "없음" : secondaryDiseases,
                 memo,
-                drugList
+                drugSection,
+                line1Rule
         );
 
         LlmResult result = llmGateway.generate(LlmRequest.text("prescription-comment", prompt));
@@ -100,21 +120,21 @@ public class AiCommentService {
             return PrescriptionCommentResponse.unavailable(message);
         }
 
-        // \r\n, \r, \n 모두 처리
-        String[] lines = result.text().split("\\r?\\n", 2);
-        String line1 = lines[0].trim();
-        String line2 = lines.length > 1 ? lines[1].trim() : "";
-        return new PrescriptionCommentResponse(line1, line2, result.model(), true);
+        List<String> lines = twoLines(result.text());
+        return new PrescriptionCommentResponse(lines.get(0), lines.get(1), result.model(), true);
     }
 
     /**
      * 대기실 키오스크 예비분석용 참고 소견 생성.
      * 처방 코멘트(generateComment)와 달리 진단 확정이 아닌 "참고용" 톤을 강제하고,
      * 약품 추천 없이 AI 후보 목록만으로 짧은 안내 문구를 만든다.
+     *
+     * @param namesKo 모델 클래스 코드 → 한글 병명. 코드(nv, mel)를 그대로 주면 환자 화면에 영문 약어가 섞여 나온다.
      */
-    public String generatePreliminaryComment(List<TopKItem> topK) {
+    public String generatePreliminaryComment(List<TopKItem> topK, Map<String, String> namesKo) {
         String candidateList = topK.stream()
-                .map(item -> item.code() + " (" + String.format("%.1f", item.confidence() * 100) + "%)")
+                .map(item -> namesKo.getOrDefault(item.code(), item.code())
+                        + " " + String.format("%.1f", item.confidence() * 100) + "%")
                 .reduce("", (a, b) -> a.isEmpty() ? b : a + ", " + b);
 
         String prompt = String.format("""
@@ -125,9 +145,11 @@ public class AiCommentService {
 
                 출력 규칙:
                 - 정확히 2줄로, 진단을 단정하지 말고 참고 소견 톤으로 작성하세요.
-                - 1줄: 후보 소견에 대한 부드러운 안내 (예: 촬영하신 부위는 ○○ 가능성이 있는 것으로 보입니다.)
+                - 병명은 목록의 한글 이름을 그대로 쓰고, 영문 약어나 코드는 쓰지 마세요.
+                - 1줄: 후보 소견에 대한 부드러운 안내 (예: 촬영하신 부위는 ○○ 가능성이 있는 것으로 보입니다.) 1순위가 '정상 피부'면 뚜렷한 이상 소견은 보이지 않는다고 안내하세요.
                 - 2줄: 반드시 의사의 확인 진료가 필요하다는 안내
                 - 번호, 레이블, 기호 없이 순수 텍스트로만 출력하세요.
+                - 한글로 쓰고 한자는 쓰지 마세요.
                 """, candidateList);
 
         LlmResult result = llmGateway.generate(LlmRequest.text("kiosk-comment", prompt), KIOSK_BUDGET);
@@ -139,6 +161,26 @@ public class AiCommentService {
                     ? "AI 서버가 일시적으로 혼잡합니다. 의사의 확인 진료가 필요합니다."
                     : "AI 참고 소견 생성에 실패했습니다. 의사의 확인 진료가 필요합니다.";
         }
-        return result.text();
+        return String.join("\n", twoLines(result.text())).trim();
+    }
+
+    /**
+     * 답을 화면이 기대하는 두 줄로 맞춘다. 공급자마다 버릇이 달라 같은 규칙을 줘도 모양이 조금씩 다르다 —
+     * 빈 줄을 끼우거나, 번호·글머리를 붙이거나, 두 문장을 한 줄에 잇는다(Claude Haiku 5.5 실측).
+     * 화면과 처방 기록은 1줄(처방 방향)·2줄(주의사항)을 따로 쓰므로 여기서 한 번 정리한다.
+     * 셋째 줄부터는 버리지 않고 2줄 뒤에 붙인다.
+     */
+    static List<String> twoLines(String text) {
+        List<String> lines = new ArrayList<>(text.lines()
+                .map(line -> LINE_MARKER.matcher(line.replace("**", "").trim()).replaceFirst("").trim())
+                .filter(line -> !line.isEmpty())
+                .toList());
+        if (lines.size() == 1) {
+            String[] sentences = SENTENCE_END.split(lines.get(0), 2);
+            if (sentences.length == 2) return List.of(sentences[0].trim(), sentences[1].trim());
+        }
+        if (lines.isEmpty()) return List.of("", "");
+        String rest = String.join(" ", lines.subList(1, lines.size()));
+        return List.of(lines.get(0), rest);
     }
 }
