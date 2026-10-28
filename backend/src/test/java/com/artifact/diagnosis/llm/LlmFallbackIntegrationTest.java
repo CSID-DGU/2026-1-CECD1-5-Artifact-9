@@ -17,6 +17,7 @@ import com.artifact.diagnosis.patient.Gender;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.patient.PatientRepository;
 import com.artifact.diagnosis.prescription.AiCommentService;
+import com.artifact.diagnosis.prescription.Prescription;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
 import com.artifact.diagnosis.visit.VisitStatus;
@@ -81,7 +82,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "anthropic.api.key=test-claude-key",
         "anthropic.model=claude-opus-5-5",
         "anthropic.max-attempts=1",
-        // 테스트마다 체인이 처음 상태에서 시작하도록 쉬게 하기를 끈다. 쉬게 하기는 LlmGatewayTest 가 본다.
+        // 일시 장애 뒤 쉬게 하기를 끈다. 설정 오류(10분)는 이 값과 무관하므로 @BeforeEach 에서 표를 비운다.
+        // 쉬게 하기 자체는 LlmGatewayTest 가 본다.
         "llm.cooldown-seconds=0"
 })
 class LlmFallbackIntegrationTest {
@@ -112,6 +114,7 @@ class LlmFallbackIntegrationTest {
     @Autowired JwtUtil jwtUtil;
     @Autowired AiCommentService aiCommentService;
     @Autowired CertificateDraftService certificateDraftService;
+    @Autowired LlmGateway llmGateway;
 
     private String doctorToken;
     private Long visitId;
@@ -142,18 +145,22 @@ class LlmFallbackIntegrationTest {
     void resetServers() {
         GEMINI.reset();
         CLAUDE.reset();
+        // 한 Spring 컨텍스트의 게이트웨이를 모든 테스트가 나눠 쓴다. 앞 테스트의 쉬기가 넘어오지 않게 한다.
+        llmGateway.clearRests();
     }
 
     @Test
     @DisplayName("처방 코멘트: 1차 Gemini 가 503 이면 대체 Gemini 모델의 답과 그 모델명을 돌려준다")
     void commentFallsBackToSecondGeminiModel() throws Exception {
+        // 실제로 답한 모델(modelVersion)이 처방 기록까지 그대로 가야 한다 — 별칭·설정값이 아니다.
         GEMINI.on("gemini-primary", 503, HIGH_DEMAND)
-              .on("gemini-backup", 200, FakeLlmServer.geminiText(COMMENT));
+              .on("gemini-backup", 200, FakeLlmServer.geminiText(COMMENT, "gemini-3.5-flash-lite-001"));
 
         JsonNode body = requestComment();
 
-        assertThat(body.path("available").asBoolean()).isTrue();
-        assertThat(body.path("model").asText()).isEqualTo("gemini-backup");
+        assertThat(body.get("available").isBoolean()).isTrue();
+        assertThat(body.get("available").booleanValue()).isTrue();
+        assertThat(body.path("model").asText()).isEqualTo("gemini-3.5-flash-lite-001");
         assertThat(body.path("line1").asText()).isEqualTo("가 연고(A1)를 하루 2회 도포하는 것을 권장합니다.");
         assertThat(body.path("line2").asText()).isEqualTo("자외선 차단에 유의하세요.");
         assertThat(GEMINI.receivedFor("gemini-primary")).hasSize(1);
@@ -192,7 +199,11 @@ class LlmFallbackIntegrationTest {
 
         JsonNode body = requestComment();
 
-        assertThat(body.path("available").asBoolean()).isFalse();
+        // 필드가 빠져도 asBoolean() 은 false 다. 화면은 available === false 일 때만 실패로 보므로, 값이 실제로
+        // false 로 내려오는지 본다 — 빠지면 실패 문구가 코멘트로 저장된다.
+        assertThat(body.has("available")).isTrue();
+        assertThat(body.get("available").isBoolean()).isTrue();
+        assertThat(body.get("available").booleanValue()).isFalse();
         assertThat(body.path("line1").asText()).contains("혼잡");
         // 실패 안내가 코멘트처럼 저장되지 않도록, 프론트가 모델명 없이 받는다.
         assertThat(body.hasNonNull("model")).isFalse();
@@ -223,6 +234,14 @@ class LlmFallbackIntegrationTest {
         assertThat(claudeRequest.has("temperature")).isFalse();
         assertThat(claudeRequest.at("/output_config/format/schema/required").toString())
                 .isEqualTo("[\"opinion\",\"treatmentPlan\"]");
+
+        // 접수 메모·의사 메모는 자유 서술이라 이름·전화번호가 섞인다. 어느 공급자로 가든 지운 뒤에 나가야 한다.
+        String geminiPrompt = geminiRequest.at("/contents/0/parts/0/text").asText();
+        String claudePrompt = claudeRequest.at("/messages/0/content").toString();
+        for (String prompt : List.of(geminiPrompt, claudePrompt)) {
+            assertThat(prompt).contains("가려움").contains("보습")
+                    .doesNotContain("010-1234-5678").doesNotContain("010-9876-5432").doesNotContain("홍길동");
+        }
     }
 
     @Test
@@ -271,9 +290,15 @@ class LlmFallbackIntegrationTest {
         Visit visit = Visit.builder()
                 .patientId(1L)
                 .visitDate(LocalDateTime.of(2026, 10, 28, 9, 30))
+                .receptionMemo("홍길동 님 010-1234-5678 가려움이 심함")
                 .status(VisitStatus.DIAGNOSED)
                 .build();
-        return new CertificateFacts(visit, patient, null, null,
+        Prescription prescription = Prescription.builder()
+                .visitId(1L)
+                .memberId(1L)
+                .doctorNotes("보습 강조. 보호자 연락처 010-9876-5432")
+                .build();
+        return new CertificateFacts(visit, patient, prescription, null,
                 List.of(new CertificateDocument.DiseaseLine("L20.9", "아토피피부염", true)),
                 List.of());
     }

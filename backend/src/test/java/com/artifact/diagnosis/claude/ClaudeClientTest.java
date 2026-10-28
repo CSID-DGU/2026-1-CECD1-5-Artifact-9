@@ -217,6 +217,19 @@ class ClaudeClientTest {
     }
 
     @Test
+    @DisplayName("받은 시간이 넉넉해도 자기 타임아웃에서 끊고, 타임아웃은 시간이 남아도 다시 보내지 않는다")
+    void ownTimeoutCapsEachAttemptAndTimeoutIsNotRetried() {
+        server.onDelayed(MESSAGES, 200, FakeLlmServer.claudeText("claude-opus-5-5", "늦은 답"), 4000);
+        ClaudeClient client = new ClaudeClient("test-key", "claude-opus-5-5", 1, 2, server.baseUrl());
+
+        LlmResult result = client.generate(LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        // 자기 타임아웃(1초)을 무시하면 4초 뒤 답이 성공이 되고, 타임아웃을 다시 보내면 요청이 2건이 된다.
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+        assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("키가 없으면 체인에서 빠지고, 불려도 호출하지 않는다")
     void notConfiguredWithoutKey() {
         ClaudeClient client = new ClaudeClient("", "claude-opus-5-5", 5, 2, server.baseUrl());

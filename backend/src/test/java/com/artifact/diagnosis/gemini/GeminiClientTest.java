@@ -219,6 +219,31 @@ class GeminiClientTest {
     }
 
     @Test
+    @DisplayName("받은 시간이 넉넉해도 자기 타임아웃(gemini.timeout-seconds)에서 끊는다 — 한 모델이 예산을 다 쓰면 대체 모델이 못 돈다")
+    void ownTimeoutCapsTheWait() {
+        ReflectionTestUtils.setField(client, "timeoutSeconds", 1L);
+        server.onDelayed("slow", 200, FakeLlmServer.geminiText("늦은 답"), 4000);
+
+        LlmResult result = client.generate("slow", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        // 자기 타임아웃을 무시하면 4초 뒤 답이 받은 10초 안에 와서 성공이 된다.
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+    }
+
+    @Test
+    @DisplayName("503 뒤 쉬고 다시 보낼 시간이 남지 않으면 재시도하지 않고 다음 모델에게 시간을 넘긴다")
+    void doesNotRetryWithoutTimeLeft() {
+        ReflectionTestUtils.setField(client, "maxAttempts", 2);
+        server.on("gemini-a", 503, FakeLlmServer.geminiError(503, "UNAVAILABLE", "overloaded"))
+              .on("gemini-a", 200, FakeLlmServer.geminiText("늦은 성공"));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofMillis(2500));
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.OVERLOADED);
+        assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("키가 없거나 모델명이 비면 호출하지 않는다")
     void notConfigured() {
         ReflectionTestUtils.setField(client, "apiKey", "");

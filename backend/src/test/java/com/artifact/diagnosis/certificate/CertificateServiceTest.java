@@ -246,4 +246,17 @@ class CertificateServiceTest {
                 null, null, null, null, null, null, null,
                 null, null);
     }
+
+    @Test
+    @DisplayName("초안 생성은 트랜잭션 밖에서 LLM 을 부른다 — 대체 경로를 도는 수십 초 동안 DB 커넥션을 쥐지 않기 위해서다")
+    void draftHoldsNoTransaction() throws Exception {
+        java.lang.reflect.Method draft = CertificateService.class.getMethod(
+                "draft", Long.class, AuthPrincipal.class, CertificateDraftRequest.class);
+
+        // 사실 조회(loadFacts)는 자기 트랜잭션 안에서 끝난다. draft 에 다시 걸면 LLM 을 기다리는 내내 커넥션을 쥔다.
+        assertThat(org.springframework.core.annotation.AnnotatedElementUtils.hasAnnotation(
+                draft, org.springframework.transaction.annotation.Transactional.class)).isFalse();
+        assertThat(org.springframework.core.annotation.AnnotatedElementUtils.hasAnnotation(
+                CertificateService.class, org.springframework.transaction.annotation.Transactional.class)).isFalse();
+    }
 }

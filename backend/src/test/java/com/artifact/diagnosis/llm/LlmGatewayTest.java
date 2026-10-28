@@ -330,6 +330,18 @@ class LlmGatewayTest {
     }
 
     @Test
+    @DisplayName("예산이 짧으면 Claude 몫을 줄여서라도 1차가 최소 시도 시간(5초)은 받는다")
+    void reserveShrinksForShortBudgets() {
+        Ticker t = new Ticker();
+        FakeProvider g1 = gemini("a", t).then(ok("응답"));
+        FakeProvider fallback = claude("b", t).then(ok("대체 응답"));
+
+        gateway(t, g1, fallback).generate(REQUEST, Duration.ofSeconds(15));
+
+        assertThat(g1.lastMaxWait).isEqualTo(Duration.ofSeconds(5));
+    }
+
+    @Test
     @DisplayName("Claude 가 없으면 몫을 떼어 두지 않는다 — Gemini 모델들이 예산을 모두 쓴다")
     void noReserveWithoutAnotherFamily() {
         Ticker t = new Ticker();

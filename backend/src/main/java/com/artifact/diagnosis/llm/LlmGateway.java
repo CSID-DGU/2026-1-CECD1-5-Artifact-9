@@ -279,6 +279,11 @@ public class LlmGateway {
         resting.computeIfPresent(provider.name(), (name, r) -> r.setAtNanos() - attemptStart < 0 ? null : r);
     }
 
+    /** 쉬는 표를 비운다. 같은 게이트웨이를 여러 테스트가 나눠 쓸 때, 앞 테스트의 쉬기가 넘어오지 않게 한다. */
+    void clearRests() {
+        resting.clear();
+    }
+
     private boolean isResting(LlmProvider provider, long now) {
         Rest r = resting.get(provider.name());
         return r != null && r.untilNanos() - now > 0;
