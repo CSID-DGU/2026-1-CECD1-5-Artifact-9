@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
-    private final GeminiService geminiService;
+    private final AiCommentService aiCommentService;
 
     @Operation(summary = "처방 저장",
                description = "의사가 KCD 상병코드 확정 + 약품 처방을 저장합니다. "
@@ -53,6 +53,6 @@ public class PrescriptionController {
             @RequestBody PrescriptionCommentRequest request) {
         // 메모를 클라이언트에게 받지 않는다 — PrescriptionService 의 해당 메서드 주석 참고.
         String maskedMemo = prescriptionService.maskedReceptionMemo(visitId);
-        return geminiService.generateComment(request, maskedMemo);
+        return aiCommentService.generateComment(request, maskedMemo);
     }
 }

@@ -534,6 +534,7 @@ ADMIN_LOGIN_ID=admin
 ADMIN_PASSWORD=        ← 직접 정한다. 최소 12자 이상, 로컬에서 쓰던 짧은 값 재사용 금지
 
 GEMINI_API_KEY=        ← 처방 코멘트 기능을 쓸 거면 입력. 비워도 나머지는 정상 동작
+ANTHROPIC_API_KEY=     ← 선택. Gemini 가 과부하로 모두 실패할 때 대신 답할 Claude 키
 ```
 
 나머지(`IMAGE_STORAGE_TYPE=local`, `KIOSK_AUTO_PENDING=false` 등)는 **그대로 둔다.**

@@ -68,6 +68,10 @@ export function getPrescription(visitId: number) {
 export type PrescriptionCommentResponse = {
   line1: string;
   line2: string;
+  /** 실제로 답한 모델. 1차 모델이 과부하면 대체 모델(Gemini 다른 모델·Claude)이 답한다. */
+  model?: string | null;
+  /** false 면 line1 은 코멘트가 아니라 실패 사유다. 코멘트 칸에 넣으면 그대로 저장되므로 경고로 띄운다. */
+  available?: boolean;
 };
 
 /**

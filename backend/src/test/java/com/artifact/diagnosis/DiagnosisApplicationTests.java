@@ -69,6 +69,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 		"jwt.secret=test-only-dummy-signing-key-not-used-anywhere-else-0123456789",
 		// fastapi.internal-secret 도 기본값이 없다(같은 이유). 테스트는 FastAPI를 부르지 않으므로 값은 아무거나.
 		// 테스트에서는 감열지 프린터를 부르지 않는다 — CI 에는 프린터도 print-agent 도 없다.
+		// 개발자 셸이나 backend/.env 에 실제 LLM 키가 있어도 테스트가 유료 외부 호출을 하지 않게 비워 둔다.
+		"gemini.api.key=",
+		"anthropic.api.key=",
 		"print.agent.enabled=false",
 		"fastapi.internal-secret=test-only-internal-secret"
 })
@@ -450,7 +453,7 @@ class DiagnosisApplicationTests {
 	 * AI 코멘트 버튼이 죽는다. 모르는 필드는 조용히 버리고 정상 응답해야 한다 —
 	 * 그리고 버려지는 것이 핵심이다. 그 값은 더 이상 프롬프트로 가지 않는다.
 	 *
-	 * 이 테스트 환경에는 gemini.api.key 가 없어 실제 외부 호출은 일어나지 않는다.
+	 * 이 테스트 환경은 LLM 키(gemini.api.key·anthropic.api.key)를 비워 두어 실제 외부 호출이 일어나지 않는다.
 	 * 검증 대상은 요청 파싱과 인가이지 모델 응답이 아니다.
 	 */
 	@Test

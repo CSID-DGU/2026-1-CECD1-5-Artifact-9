@@ -1,0 +1,273 @@
+package com.artifact.diagnosis.gemini;
+
+import com.artifact.diagnosis.llm.FakeLlmServer;
+import com.artifact.diagnosis.llm.LlmFailure;
+import com.artifact.diagnosis.llm.LlmRequest;
+import com.artifact.diagnosis.llm.LlmResult;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Gemini 응답을 실패 종류로 정확히 가르는지 본다. 체인은 이 분류로 다음 모델로 넘어갈지,
+ * 그 모델을 얼마나 쉬게 할지를 정한다 — 분류가 틀리면 대체 경로 전체가 엉뚱하게 돈다.
+ * 가짜 서버에 실제 HTTP 로 보내므로 URL·본문 조립까지 운영과 같은 경로를 탄다.
+ */
+class GeminiClientTest {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private FakeLlmServer server;
+    private GeminiClient client;
+
+    @BeforeEach
+    void setUp() {
+        server = new FakeLlmServer();
+        client = new GeminiClient(objectMapper, HttpClient.newHttpClient());
+        ReflectionTestUtils.setField(client, "apiKey", "test-key");
+        ReflectionTestUtils.setField(client, "timeoutSeconds", 5L);
+        ReflectionTestUtils.setField(client, "maxAttempts", 1);
+        ReflectionTestUtils.setField(client, "baseUrl", server.baseUrl());
+    }
+
+    @AfterEach
+    void tearDown() {
+        server.close();
+    }
+
+    @Test
+    @DisplayName("호출마다 받은 모델로 URL 을 만들고, 생각(thought) 파트는 답에서 뺀다")
+    void callsTheGivenModelAndSkipsThoughtParts() {
+        server.on("gemini-backup", 200, FakeLlmServer.geminiText("대체 모델 답"));
+
+        LlmResult result = client.generate("gemini-backup", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.text()).isEqualTo("대체 모델 답");
+        assertThat(result.model()).isEqualTo("gemini-backup");
+        assertThat(server.received()).singleElement()
+                .satisfies(r -> assertThat(r.path()).isEqualTo("/v1beta/models/gemini-backup:generateContent"));
+    }
+
+    @Test
+    @DisplayName("별칭으로 불렀으면 실제로 답한 모델(modelVersion)을 기록한다")
+    void recordsTheModelThatActuallyAnswered() {
+        server.on("gemini-flash-lite-latest", 200, FakeLlmServer.geminiText("답", "gemini-3.5-flash-lite"));
+
+        LlmResult result = client.generate("gemini-flash-lite-latest", LlmRequest.text("t", "질문"),
+                Duration.ofSeconds(10));
+
+        assertThat(result.model()).isEqualTo("gemini-3.5-flash-lite");
+    }
+
+    @Test
+    @DisplayName("길이 제한으로 잘린 답은 텍스트가 있어도 실패로 본다 — 반쪽 코멘트가 저장되면 안 된다")
+    void truncatedAnswerIsAFailure() {
+        server.on("gemini-a", 200, FakeLlmServer.geminiTruncated("가 연고를 하루"));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.failure()).isEqualTo(LlmFailure.EMPTY);
+    }
+
+    @Test
+    @DisplayName("정상 종료(STOP)가 아니면 텍스트가 있어도 쓰지 않는다 — 이어서 생성·정책·계정 제한·기타 종료")
+    void nonStopFinishReasonsAreFailures() {
+        server.on("cont", 200, FakeLlmServer.geminiFinished("가 연고를", "CONTINUATION"))
+              .on("safety", 200, FakeLlmServer.geminiFinished("일부 답", "SAFETY"))
+              .on("pup", 200, FakeLlmServer.geminiFinished("일부 답", "PUP_LIMITED_DISABLED"))
+              .on("other", 200, FakeLlmServer.geminiFinished("일부 답", "OTHER"));
+
+        assertThat(call("cont").failure()).isEqualTo(LlmFailure.EMPTY);
+        assertThat(call("safety").failure()).isEqualTo(LlmFailure.BLOCKED);
+        assertThat(call("pup").failure()).isEqualTo(LlmFailure.AUTH);
+        assertThat(call("other").failure()).isEqualTo(LlmFailure.BAD_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("JSON 이 아닌 오류 본문(HTML 503·404)도 상태코드로 가른다 — 연결 실패로 오인하지 않는다")
+    void nonJsonErrorBodiesAreClassifiedByStatus() {
+        server.on("m503", 503, "<html><body>Service Unavailable</body></html>")
+              .on("m404", 404, "<html>Not Found</html>")
+              .on("m200", 200, "<html>proxy login</html>");
+
+        LlmResult overloaded = call("m503");
+        assertThat(overloaded.failure()).isEqualTo(LlmFailure.OVERLOADED);
+        assertThat(overloaded.statusCode()).isEqualTo(503);
+        assertThat(call("m404").failure()).isEqualTo(LlmFailure.MODEL_NOT_FOUND);
+        assertThat(call("m200").failure()).isEqualTo(LlmFailure.BAD_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("헤더 뒤에 본문이 멈춰도 받은 시간 안에 끊는다 — 헤더까지만 재는 타임아웃이 놓치는 장애다")
+    void stalledBodyIsCutWithinBudget() {
+        server.onStalledBody("stall", 200, FakeLlmServer.geminiText("늦게 끝나는 답"), 6000);
+
+        long start = System.nanoTime();
+        LlmResult result = client.generate("stall", LlmRequest.text("t", "질문"), Duration.ofMillis(1500));
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+        // 서버는 본문을 6초 뒤에야 마저 보낸다. 받은 1.5초 근처에서 끊겨야 한다.
+        assertThat(elapsedMs).isLessThan(4000);
+    }
+
+    @Test
+    @DisplayName("API 키는 URL 이 아니라 x-goog-api-key 헤더로 보낸다 — URL 은 로그에 남기 쉽다")
+    void apiKeyTravelsInHeaderNotUrl() {
+        server.on("gemini-a", 200, FakeLlmServer.geminiText("답"));
+
+        client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        FakeLlmServer.Received request = server.received().get(0);
+        assertThat(request.header("x-goog-api-key")).isEqualTo("test-key");
+        assertThat(request.query()).isNull();
+    }
+
+    @Test
+    @DisplayName("JSON 요청이면 필드 목록을 Gemini 스키마(OBJECT/STRING)로 바꿔 보낸다")
+    void jsonRequestBecomesGeminiSchema() throws Exception {
+        server.on("gemini-a", 200, FakeLlmServer.geminiText("{\"opinion\":\"소견\"}"));
+
+        client.generate("gemini-a", LlmRequest.json("t", "질문", List.of("opinion", "treatmentPlan"), 0.2),
+                Duration.ofSeconds(10));
+
+        JsonNode body = objectMapper.readTree(server.received().get(0).body());
+        JsonNode config = body.path("generationConfig");
+        assertThat(config.path("responseMimeType").asText()).isEqualTo("application/json");
+        assertThat(config.at("/responseSchema/type").asText()).isEqualTo("OBJECT");
+        assertThat(config.at("/responseSchema/properties/treatmentPlan/type").asText()).isEqualTo("STRING");
+        assertThat(config.at("/responseSchema/required/1").asText()).isEqualTo("treatmentPlan");
+        assertThat(config.path("temperature").asDouble()).isEqualTo(0.2);
+    }
+
+    @Test
+    @DisplayName("503 은 OVERLOADED — 이번 장애의 원인 응답이다")
+    void unavailableIsOverloaded() {
+        server.on("gemini-a", 503, FakeLlmServer.geminiError(503, "UNAVAILABLE",
+                "The model is overloaded. Please try again later."));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.OVERLOADED);
+        assertThat(result.statusCode()).isEqualTo(503);
+        assertThat(result.message()).contains("UNAVAILABLE").contains("overloaded");
+        assertThat(result.isTemporaryFailure()).isTrue();
+    }
+
+    @Test
+    @DisplayName("503 이면 설정한 횟수만큼만 같은 모델에 다시 보낸다")
+    void retriesOverloadOnlyUpToMaxAttempts() {
+        ReflectionTestUtils.setField(client, "maxAttempts", 2);
+        server.on("gemini-a", 503, FakeLlmServer.geminiError(503, "UNAVAILABLE", "overloaded"))
+              .on("gemini-a", 200, FakeLlmServer.geminiText("두 번째에 성공"));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        assertThat(result.text()).isEqualTo("두 번째에 성공");
+        assertThat(server.received()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("429·404·5xx·잘못된 키(400)를 각각 다른 실패로 가른다")
+    void classifiesErrorStatuses() {
+        server.on("m429", 429, FakeLlmServer.geminiError(429, "RESOURCE_EXHAUSTED", "quota"))
+              .on("m404", 404, FakeLlmServer.geminiError(404, "NOT_FOUND", "models/m404 is not found"))
+              .on("m500", 500, FakeLlmServer.geminiError(500, "INTERNAL", "internal"))
+              .on("mkey", 400, FakeLlmServer.geminiError(400, "INVALID_ARGUMENT", "API key not valid. Please pass a valid API key."))
+              .on("mbad", 400, FakeLlmServer.geminiError(400, "INVALID_ARGUMENT", "Invalid JSON payload"));
+
+        assertThat(call("m429").failure()).isEqualTo(LlmFailure.RATE_LIMITED);
+        assertThat(call("m404").failure()).isEqualTo(LlmFailure.MODEL_NOT_FOUND);
+        assertThat(call("m500").failure()).isEqualTo(LlmFailure.SERVER_ERROR);
+        assertThat(call("mkey").failure()).isEqualTo(LlmFailure.AUTH);
+        assertThat(call("mbad").failure()).isEqualTo(LlmFailure.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("안전 정책으로 빈 응답이 오면 BLOCKED, 그냥 비었으면 EMPTY")
+    void blockedAndEmptyResponses() {
+        server.on("blocked", 200, "{\"promptFeedback\":{\"blockReason\":\"SAFETY\"}}")
+              .on("empty", 200, "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}]},\"finishReason\":\"STOP\"}]}");
+
+        assertThat(call("blocked").failure()).isEqualTo(LlmFailure.BLOCKED);
+        assertThat(call("empty").failure()).isEqualTo(LlmFailure.EMPTY);
+    }
+
+    @Test
+    @DisplayName("응답이 늦으면 TIMEOUT — 남은 시간 예산이 설정 타임아웃보다 짧으면 그 예산이 우선한다")
+    void slowResponseTimesOutWithinBudget() {
+        server.onDelayed("slow", 200, FakeLlmServer.geminiText("늦은 답"), 6000);
+
+        long start = System.nanoTime();
+        LlmResult result = client.generate("slow", LlmRequest.text("t", "질문"), Duration.ofMillis(800));
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - start).toMillis();
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+        // 서버는 6초 뒤에 답한다. 느린 CI 에서도 '기다리지 않았다'만 가르도록 상한을 넉넉히 둔다.
+        assertThat(elapsedMs).isLessThan(4000);
+    }
+
+    @Test
+    @DisplayName("받은 시간이 넉넉해도 자기 타임아웃(gemini.timeout-seconds)에서 끊는다 — 한 모델이 예산을 다 쓰면 대체 모델이 못 돈다")
+    void ownTimeoutCapsTheWait() {
+        ReflectionTestUtils.setField(client, "timeoutSeconds", 1L);
+        server.onDelayed("slow", 200, FakeLlmServer.geminiText("늦은 답"), 4000);
+
+        LlmResult result = client.generate("slow", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        // 자기 타임아웃을 무시하면 4초 뒤 답이 받은 10초 안에 와서 성공이 된다.
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+    }
+
+    @Test
+    @DisplayName("본문이 멈출 때도 받은 시간이 아니라 자기 타임아웃에서 끊는다")
+    void ownTimeoutCapsAStalledBody() {
+        ReflectionTestUtils.setField(client, "timeoutSeconds", 1L);
+        server.onStalledBody("stall", 200, FakeLlmServer.geminiText("늦게 끝나는 답"), 4000);
+
+        LlmResult result = client.generate("stall", LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+
+        // 본문 시한을 받은 시간(10초)으로 걸면 4초 뒤 본문이 마저 와서 성공이 된다.
+        assertThat(result.failure()).isEqualTo(LlmFailure.TIMEOUT);
+    }
+
+    @Test
+    @DisplayName("503 뒤 쉬고 다시 보낼 시간이 남지 않으면 재시도하지 않고 다음 모델에게 시간을 넘긴다")
+    void doesNotRetryWithoutTimeLeft() {
+        ReflectionTestUtils.setField(client, "maxAttempts", 2);
+        server.on("gemini-a", 503, FakeLlmServer.geminiError(503, "UNAVAILABLE", "overloaded"))
+              .on("gemini-a", 200, FakeLlmServer.geminiText("늦은 성공"));
+
+        LlmResult result = client.generate("gemini-a", LlmRequest.text("t", "질문"), Duration.ofMillis(2500));
+
+        assertThat(result.failure()).isEqualTo(LlmFailure.OVERLOADED);
+        assertThat(server.received()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("키가 없거나 모델명이 비면 호출하지 않는다")
+    void notConfigured() {
+        ReflectionTestUtils.setField(client, "apiKey", "");
+        assertThat(call("any").failure()).isEqualTo(LlmFailure.NOT_CONFIGURED);
+
+        ReflectionTestUtils.setField(client, "apiKey", "test-key");
+        assertThat(client.generate(" ", LlmRequest.text("t", "질문"), Duration.ofSeconds(5)).failure())
+                .isEqualTo(LlmFailure.NOT_CONFIGURED);
+        assertThat(server.received()).isEmpty();
+    }
+
+    private LlmResult call(String model) {
+        return client.generate(model, LlmRequest.text("t", "질문"), Duration.ofSeconds(10));
+    }
+}
