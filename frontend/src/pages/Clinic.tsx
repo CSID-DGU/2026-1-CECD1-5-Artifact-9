@@ -14,6 +14,7 @@ import { completeVisit, getVisit, listVisits, startVisit, type Visit, type Visit
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
+import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
@@ -114,6 +115,11 @@ export default function Clinic() {
   const [expandedReason, setExpandedReason] = useState<number | null>(null);
   // 이미지 뷰 모드: none → original → heatmap → original ...
   const [imageViewMode, setImageViewMode] = useState<"none" | "original" | "heatmap">("none");
+  // 확대 히트맵 칸에 올린 번호 — 전체 이미지의 같은 번호 상자를 노랗게 표시한다.
+  const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
+  // 다 받아진 이미지의 주소. 상자는 이미지 크기에 대한 비율이라, 이미지가 뜨기 전(높이 0)에 그리면
+  // 상자가 납작하게 아래 범례 위로 겹친다. 받아진 주소가 지금 주소와 같을 때만 상자를 그린다.
+  const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
 
   // 처방 폼
   type AnalysisCandidate = AnalysisResponse["top5"][number];
@@ -255,7 +261,7 @@ export default function Clinic() {
 
   useEffect(() => { loadVisitLists(); }, []);
 
-  useEffect(() => { setImageViewMode("none"); }, [analysis]);
+  useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); }, [analysis]);
 
   useEffect(() => {
     if (!selectedFile) { setPreviewUrl(null); return; }
@@ -600,7 +606,8 @@ export default function Clinic() {
                   {preliminaryAnalysis.topK.map((item, idx) => (
                     <div key={item.diseaseCode} className="grid grid-cols-[34px_72px_1fr_64px] items-center border-t border-gray-800 px-2 py-1.5 text-xs">
                       <span className="text-gray-400">{idx + 1}</span>
-                      <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                      {/* 72px 칸에 inflammatory(12자)가 넘쳐 옆 칸 병명과 겹쳤다 — 자르고 전체 코드는 title 로 */}
+                      <span className="truncate font-mono text-blue-300" title={item.diseaseCode}>{item.diseaseCode}</span>
                       <span className="text-white">{item.diseaseNameKo}</span>
                       <span className="text-right text-gray-200">{formatConfidence(item.confidence)}</span>
                     </div>
@@ -777,6 +784,18 @@ export default function Clinic() {
                     <p className="mt-0.5 text-xs text-blue-100">
                       신뢰도 {formatConfidence(analysis.top1.confidence)}
                     </p>
+                    {/* 확대 재판정을 했다는 사실과 원본만 본 답을 숨기지 않는다 — 병명이 바뀌었을 수도 있다.
+                        신뢰도가 올라가도 확신 낮음 경고는 그대로 남는다(confidenceLevel 은 원본 기준). */}
+                    {analysis.fullImageTop1 && (
+                      <p className="mt-1 text-[11px] leading-snug text-amber-200">
+                        원본 사진만으로는 {analysis.fullImageTop1.diseaseNameKo} {formatConfidence(analysis.fullImageTop1.confidence)}
+                        로 판단이 어려워, 히트맵이 짚은 곳을 확대해 함께 보고 다시 판정했습니다.
+                        {/* 1순위가 바뀌면 서버는 히트맵과 확대 영역을 새 1순위로 다시 그린다 — 화면의 상자가
+                            판정을 바꾼 바로 그 영역이라고 읽히지 않게 적는다. */}
+                        {analysis.fullImageTop1.diseaseCode !== analysis.top1.diseaseCode
+                          && " 1순위가 바뀌어, 아래 히트맵과 확대 영역은 바뀐 1순위 기준으로 다시 그린 것입니다."}
+                      </p>
+                    )}
                   </div>
 
                   {/* 분석 이미지 / 히트맵 토글
@@ -786,6 +805,8 @@ export default function Clinic() {
                       images.find((img) => img.imageId === selectedImageIds[0])?.imageUrl
                       ?? images[0]?.imageUrl;
                     const hasHeatmap = !!analysis.heatmapImageUrl;
+                    // 구버전 백엔드는 필드가 없고, 이 기능 전의 분석은 빈 배열이다 — 둘 다 확대 보기 없이 전처럼 보인다.
+                    const heatmapCrops = analysis.heatmapCrops ?? [];
 
                     const buttonLabel =
                       imageViewMode === "none" ? "분석 이미지" :
@@ -835,20 +856,35 @@ export default function Clinic() {
                         >
                           {displayUrl && (
                             <>
-                              <AuthedImage
-                                src={displayUrl}
-                                alt={imageViewMode === "heatmap" ? "GradCAM 히트맵" : "분석 이미지"}
-                                className="w-full"
-                                style={{ display: "block", transition: "opacity 0.15s ease" }}
-                              />
+                              {/* 상자 좌표가 이미지 크기에 대한 비율이라, 이 relative 상자가 이미지와 같은 크기여야 한다 */}
+                              <div className="relative">
+                                <AuthedImage
+                                  src={displayUrl}
+                                  alt={imageViewMode === "heatmap" ? "AI 판단 근거 히트맵" : "분석 이미지"}
+                                  className="w-full"
+                                  style={{ display: "block", transition: "opacity 0.15s ease" }}
+                                  onLoad={() => setLoadedImageUrl(displayUrl)}
+                                />
+                                {imageViewMode === "heatmap" && loadedImageUrl === displayUrl && (
+                                  <CropBoxes crops={heatmapCrops} activeRank={activeCropRank} />
+                                )}
+                              </div>
                               {imageViewMode === "heatmap" && (
-                                <p className="px-2 py-1 text-[10px] text-gray-400">
-                                  🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · GradCAM 기반
-                                </p>
+                                <HeatmapLegend hasCrops={heatmapCrops.length > 0} heatmapStyle={analysis.heatmapStyle ?? null} />
                               )}
                             </>
                           )}
                         </div>
+
+                        {imageViewMode === "heatmap" && heatmapCrops.length > 0 && (
+                          <CropGallery
+                            crops={heatmapCrops}
+                            cacheKey={analysis.analyzedAt}
+                            activeRank={activeCropRank}
+                            onActiveChange={setActiveCropRank}
+                            zoomOnly={analysis.analysisType === "facial"}
+                          />
+                        )}
                       </div>
                     );
                   })()}
@@ -874,7 +910,8 @@ export default function Clinic() {
                               />
                             </span>
                             <span className="text-gray-400">{item.rank}</span>
-                            <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                            {/* 72px 칸에 inflammatory(12자)가 넘쳐 옆 칸 병명과 겹쳤다 — 자르고 전체 코드는 title 로 */}
+                            <span className="truncate font-mono text-blue-300" title={item.diseaseCode}>{item.diseaseCode}</span>
                             <span className="text-white">{item.diseaseNameKo}</span>
                             <span className="text-right text-gray-200">
                               {isResolvingCandidate ? "검색 중" : `${formatConfidence(item.confidence)}`}

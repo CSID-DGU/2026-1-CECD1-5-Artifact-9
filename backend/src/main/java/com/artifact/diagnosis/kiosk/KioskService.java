@@ -304,7 +304,9 @@ public class KioskService {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
             // task 를 보내지 않는다 → FastAPI 기본값 skin_lesion. 태블릿 앞에는 어느 모델이 맞는지 고를 의사가
             // 없고 preliminary_analysis 에도 태스크 컬럼이 없다(V10 머리말). 모델 선택은 진료실(AnalysisService)에서만.
-            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
+            // crops=false: 확대 보기·확대 재판정을 아직 끈다. preliminary_analysis 에는 확대 히트맵도 재판정 전 원본
+            // 1순위도 담을 칸이 없어서, 켜 두면 재판정된 순위만 남고 원본 판정은 기록 없이 사라진다.
+            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image, "crops", false));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))

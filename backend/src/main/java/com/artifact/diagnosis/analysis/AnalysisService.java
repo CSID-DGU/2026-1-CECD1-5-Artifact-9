@@ -20,11 +20,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -178,13 +180,20 @@ public class AnalysisService {
                     .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
                     .toList();
 
-            String heatmapKey = uploadHeatmap(visitId, prediction);
+            AnalysisTransactionService.StoredHeatmap heatmap = uploadHeatmaps(visitId, prediction);
+
+            // 확대 재판정을 했으면 원본만 본 1순위를 함께 남긴다 — top1 이 그것과 다를 수 있다
+            // ("원본만 보면 X 였는데 확대 영역까지 보고 Y 로 판정했다"를 나중에도 말할 수 있어야 한다).
+            FastApiTop1 fullImage = prediction.fullImageTop1();
+            TopKItem fullImageTop1 = fullImage == null ? null
+                    : new TopKItem(fullImage.diseaseCode(), fullImage.confidence());
 
             // (3) 짧은 트랜잭션 — 결과 저장 + 근거 이미지 매핑 + ANALYZED 전이
             result = analysisTransactionService.saveResult(
                     visitId, targetImageIds, task,
                     prediction.modelVersionOrDefault(), prediction.top1().diseaseCode(),
-                    prediction.top1().confidence(), confidenceLevel, topK, inferenceMs, heatmapKey);
+                    prediction.top1().confidence(), confidenceLevel, topK, inferenceMs,
+                    heatmap, fullImageTop1);
         } catch (RuntimeException e) {
             analysisTransactionService.abortAnalysis(visitId, target.previousStatus());
             throw e;
@@ -234,12 +243,30 @@ public class AnalysisService {
                 .toList();
     }
 
-    /** 히트맵 저장 (키만 DB에 보관, URL은 응답 시 생성). 스토리지 왕복이므로 트랜잭션 밖에서 부른다. */
-    private String uploadHeatmap(Long visitId, FastApiPredictResponse prediction) {
-        if (prediction.heatmapBase64() == null) return null;
-        byte[] heatmapBytes = Base64.getDecoder().decode(prediction.heatmapBase64());
-        String key = "heatmap/" + visitId + "/" + System.currentTimeMillis() + ".jpg";
-        return imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
+    /**
+     * 히트맵 저장 (키만 DB에 보관, URL은 응답 시 생성). 스토리지 왕복이므로 트랜잭션 밖에서 부른다.
+     *
+     * 확대 히트맵은 하나가 실패하면 그것만 건너뛴다. 확대 보기는 전체 히트맵을 거들 뿐이라 그 때문에
+     * 이미 끝난 추론까지 버리면 안 된다. 전체 히트맵은 지금까지처럼 실패하면 분석이 실패한다.
+     */
+    private AnalysisTransactionService.StoredHeatmap uploadHeatmaps(Long visitId, FastApiPredictResponse prediction) {
+        // 전체·확대 히트맵이 같은 접두어를 쓴다 — 스토리지에서 한 분석의 그림끼리 나란히 보인다.
+        String prefix = "heatmap/" + visitId + "/" + System.currentTimeMillis();
+        String key = prediction.heatmapBase64() == null ? null
+                : imageStorageService.uploadBytes(prefix + ".jpg",
+                        Base64.getDecoder().decode(prediction.heatmapBase64()), "image/jpeg");
+
+        List<HeatmapCrop> crops = new ArrayList<>();
+        for (FastApiCrop crop : Objects.requireNonNullElse(prediction.crops(), List.<FastApiCrop>of())) {
+            try {
+                String cropKey = imageStorageService.uploadBytes(prefix + "_crop" + crop.rank() + ".jpg",
+                        Base64.getDecoder().decode(crop.heatmapBase64()), "image/jpeg");
+                crops.add(new HeatmapCrop(crop.rank(), cropKey, crop.boxNorm(), crop.peak(), crop.source()));
+            } catch (RuntimeException e) {
+                log.warn("확대 히트맵 저장 실패 — 이 영역만 건너뛴다 visitId={} rank={}", visitId, crop.rank(), e);
+            }
+        }
+        return new AnalysisTransactionService.StoredHeatmap(key, prediction.heatmapStyle(), List.copyOf(crops));
     }
 
     @Transactional(readOnly = true)
@@ -274,10 +301,13 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), disease.getDiseaseCode()),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), disease.getDiseaseCode(), fullImageCode(result)),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
-                heatmapApiUrl(result)
+                heatmapApiUrl(result),
+                result.getHeatmapStyle(),
+                heatmapCropResults(result),
+                fullImageTop1Result(result)
         );
     }
 
@@ -286,7 +316,20 @@ public class AnalysisService {
                 .findFirstByVisitIdOrderByAnalyzedAtDesc(visitId)
                 .filter(r -> r.getHeatmapImageUrl() != null)
                 .orElseThrow(() -> new NoSuchElementException("히트맵이 없습니다: " + visitId));
-        byte[] bytes = imageStorageService.download(result.getHeatmapImageUrl());
+        return jpeg(imageStorageService.download(result.getHeatmapImageUrl()));
+    }
+
+    /** 최근 분석의 확대 히트맵 하나. 번호는 {@link AnalysisResponse.HeatmapCropResult#rank()} 다. */
+    public ResponseEntity<byte[]> getHeatmapCropContent(Long visitId, int rank) {
+        HeatmapCrop crop = analysisResultRepository
+                .findFirstByVisitIdOrderByAnalyzedAtDesc(visitId)
+                .map(AnalysisResult::getHeatmapCrops)
+                .flatMap(crops -> crops.stream().filter(c -> c.rank() == rank).findFirst())
+                .orElseThrow(() -> new NoSuchElementException("확대 히트맵이 없습니다: " + visitId + " #" + rank));
+        return jpeg(imageStorageService.download(crop.key()));
+    }
+
+    private static ResponseEntity<byte[]> jpeg(byte[] bytes) {
         // 환자 병변 사진이라 중간 프록시 등 공유 캐시에 담기면 안 된다 — private로 제한.
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
@@ -373,16 +416,44 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), prediction.top1().diseaseCode()),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), prediction.top1().diseaseCode(), fullImageCode(result)),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
-                heatmapApiUrl(result)
+                heatmapApiUrl(result),
+                result.getHeatmapStyle(),
+                heatmapCropResults(result),
+                fullImageTop1Result(result)
         );
     }
 
     private static String heatmapApiUrl(AnalysisResult result) {
         if (result.getHeatmapImageUrl() == null) return null;
         return "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap";
+    }
+
+    /** 저장된 확대 히트맵을 화면용으로. 이 기능 전의 분석·확대 보기가 없는 분석은 빈 목록이다. */
+    private static List<AnalysisResponse.HeatmapCropResult> heatmapCropResults(AnalysisResult result) {
+        if (result.getHeatmapCrops() == null) return List.of();
+        return result.getHeatmapCrops().stream()
+                .map(c -> new AnalysisResponse.HeatmapCropResult(
+                        c.rank(),
+                        "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap/crops/" + c.rank(),
+                        c.boxNorm(),
+                        c.peak(),
+                        c.source()))
+                .toList();
+    }
+
+    /** 재판정 전 원본 사진의 1순위 코드 — 경고 문구의 강도를 가를 때 함께 본다. 재판정하지 않았으면 null. */
+    private static String fullImageCode(AnalysisResult result) {
+        return result.getFullImageTop1() == null ? null : result.getFullImageTop1().code();
+    }
+
+    private static AnalysisResponse.FullImageTop1 fullImageTop1Result(AnalysisResult result) {
+        TopKItem item = result.getFullImageTop1();
+        if (item == null) return null;
+        return new AnalysisResponse.FullImageTop1(
+                item.code(), DISEASE_NAME_KO.getOrDefault(item.code(), item.code()), item.confidence());
     }
 }
 

@@ -47,12 +47,51 @@ public record AnalysisResponse(
 
         Integer inferenceTimeMs,
         LocalDateTime analyzedAt,
-        String heatmapImageUrl
+        String heatmapImageUrl,
+
+        @Schema(description = "히트맵을 그린 방식(FastAPI HEATMAP_STYLE). 이 기록 전의 분석은 null",
+                example = "layercam-flip-jet-v2")
+        String heatmapStyle,
+
+        /**
+         * 확대 히트맵들. 화면은 전체 이미지 위에 boxNorm 상자를 그리고 같은 번호의 확대 히트맵을 나란히 보여 준다.
+         * 확대 보기가 없으면(이 기능 전의 분석·히트맵 실패) 빈 배열이다.
+         */
+        @Schema(description = "히트맵이 짚은 곳을 확대한 히트맵 목록. 없으면 빈 배열")
+        List<HeatmapCropResult> heatmapCrops,
+
+        /**
+         * 원본만으로는 신뢰도가 낮아 확대 영역까지 섞어 다시 판정했을 때만 채운다 — 원본 사진만 보고 낸 1순위.
+         * 이때 top1·top5 는 섞은 최종 판정이고, confidenceLevel 은 원본 기준 그대로다.
+         */
+        @Schema(description = "확대 재판정 전, 원본 사진만 본 1순위. 재판정하지 않았으면 null")
+        FullImageTop1 fullImageTop1
 ) {
     public record Top1Result(
             String diseaseCode,
             String diseaseNameKo,
             BigDecimal confidence
+    ) {}
+
+    /**
+     * @param imageUrl 확대 히트맵 JPEG 경로(인증 필요). 재분석해도 경로가 같으므로 화면은 analyzedAt 을 붙여 캐시를 피한다.
+     * @param boxNorm  원본 이미지 기준 [x0, y0, x1, y1], 각 0~1
+     * @param peak     그 영역의 히트맵 최댓값(0~1)
+     * @param source   "reinfer"(확대 영역을 모델에 다시 넣어 그림) 또는 "zoom"(전체 히트맵을 잘라 키움).
+     *                 화면의 설명 문구가 이 값을 따른다. 이 필드 전의 기록은 null
+     */
+    public record HeatmapCropResult(
+            int rank,
+            String imageUrl,
+            List<Double> boxNorm,
+            Double peak,
+            String source
+    ) {}
+
+    public record FullImageTop1(
+            String diseaseCode,
+            String diseaseNameKo,
+            double confidence
     ) {}
 
     public record TopKResult(

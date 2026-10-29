@@ -193,7 +193,7 @@ def evaluate_cam(samples, limit: int | None) -> dict:
         "task": TASK.name,
         "model_version": TASK.model_version,
         "cam_layers": TASK.cam_layer_names,
-        "heatmap_display_floor": serving.HEATMAP_DISPLAY_FLOOR,
+        "heatmap_style": serving.HEATMAP_STYLE,
         "sample_count": len(rows),
         "classes": CLASSES,
         **_agg(rows),
@@ -233,7 +233,7 @@ def faithfulness_for(path: Path) -> dict | None:
       score     insertion - deletion. 음수면 "CAM 이 가리킨 곳은 근거가 아니었다"는 뜻이다.
 
     이 지표는 CAM 의 **픽셀 순위만** 쓴다(각 단계의 마스크가 "상위 k 개 픽셀"). 그래서
-    _norm01 의 분위 선택, HEATMAP_DISPLAY_FLOOR, alpha 예산 같은 표시용 결정에 영향받지
+    _norm01 의 분위 선택, HEATMAP_SMOOTH·ALPHA 같은 표시용 결정에 영향받지
     않는다 — 알고리즘·레이어 선택만 평가한다.
 
     한 방향만 좋아지는 후보를 걸러내려면 score 만 보지 말고 del/ins 를 같이 봐야 한다.
@@ -307,7 +307,7 @@ def evaluate_faithfulness(samples, limit: int | None) -> dict:
         "task": TASK.name,
         "model_version": TASK.model_version,
         "cam_layers": TASK.cam_layer_names,
-        "heatmap_display_floor": serving.HEATMAP_DISPLAY_FLOOR,
+        "heatmap_style": serving.HEATMAP_STYLE,
         "sample_count": len(rows),
         "classes": CLASSES,
         **agg(rows),
@@ -417,7 +417,7 @@ def print_report(result):
         q = result["quality"]
         print()
         print("  히트맵 집중도 (서빙 응답의 heatmap_quality 와 같은 값)")
-        print("    " + lj("표시 영역 비율", 36) + pct(q["focus_area"], 8))
+        print("    " + lj("CAM≥0.5 칸 비율", 36) + pct(q["focus_area"], 8))
         print("    " + lj("상위 10% 격자의 에너지 점유율", 36) + pct(q["peak_ratio"], 8))
         print("    두 값은 **서술값**이다. 집중도와 히트맵 신뢰도의 관계는 출처마다")
         print("    반대로 나와(--faithfulness 로 확인) 좋다/나쁘다 판정에 쓸 수 없다.")
@@ -460,9 +460,9 @@ def print_comparison(current, baseline):
               was_bins.get(rng, {}).get("pointing_game"), f"  {rng}")
 
     if "quality" in current and "quality" in baseline:
-        print("\n  히트맵 집중도 (표시 영역 비율은 **낮을수록** 집중)")
+        print("\n  히트맵 집중도 (CAM≥0.5 칸 비율은 **낮을수록** 집중)")
         delta(current["quality"]["focus_area"], baseline["quality"]["focus_area"],
-              "  표시 영역 비율")
+              "  CAM≥0.5 칸 비율")
         delta(current["quality"]["peak_ratio"], baseline["quality"]["peak_ratio"],
               "  상위 10% 에너지 점유율")
         if current["quality"].get("contrast") is not None:

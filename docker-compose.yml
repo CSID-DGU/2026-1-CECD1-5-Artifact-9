@@ -47,6 +47,12 @@ services:
       # 차단선이 아니라 경고선이다 — 이 값 미만이면 결과에 "확신 낮음" 표시만 붙고,
       # 결과 자체는 그대로 나간다. 0.45 를 고른 근거는 fastapi/main.py 의 같은 이름 상수 주석 참고.
       LOW_CONFIDENCE_THRESHOLD: ${LOW_CONFIDENCE_THRESHOLD:-0.45}
+      # 히트맵 표시 기준(fastapi/main.py 의 같은 이름 상수 주석). 여기 나열하지 않으면 .env 에 적어도
+      # 컨테이너로 넘어가지 않는다. 앞의 셋은 색만, HEATMAP_CROPS 는 화면에 보여 줄 확대 히트맵 수만 바꾼다.
+      HEATMAP_ALPHA_MIN: ${HEATMAP_ALPHA_MIN:-0.25}
+      HEATMAP_ALPHA_MAX: ${HEATMAP_ALPHA_MAX:-0.60}
+      HEATMAP_SMOOTH: ${HEATMAP_SMOOTH:-0.03}
+      HEATMAP_CROPS: ${HEATMAP_CROPS:-3}
       # 백엔드와 공유하는 내부 호출 시크릿. 아래 backend 에도 같은 값이 들어간다.
       # 미설정 시 FastAPI 가 기동을 거부한다(main.py 상단) — 무방비로 뜨는 것보다 안 뜨는 게 낫다.
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET이 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}

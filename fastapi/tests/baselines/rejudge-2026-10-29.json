@@ -1,0 +1,143 @@
+{
+ "task": "skin_lesion",
+ "model_version": "efficientnet_b0-03061a31e63f",
+ "serving_threshold": 0.45,
+ "heatmap_style": "layercam-flip-jet-v2",
+ "all": {
+  "original": {
+   "n": 2398,
+   "accuracy": 0.8474,
+   "mel_recall": 0.8982,
+   "malignant_to_benign": 28
+  },
+  "served": {
+   "n": 2398,
+   "accuracy": 0.8495,
+   "mel_recall": 0.8938,
+   "malignant_to_benign": 27
+  },
+  "rejudged": 366,
+  "changed": 102,
+  "band_original": {
+   "n": 366,
+   "accuracy": 0.5984,
+   "mel_recall": 0.4667,
+   "malignant_to_benign": 11
+  },
+  "band_served": {
+   "n": 366,
+   "accuracy": 0.612,
+   "mel_recall": 0.4,
+   "malignant_to_benign": 10
+  },
+  "mcnemar": {
+   "original_only": 42,
+   "served_only": 47,
+   "p": 0.6718
+  },
+  "crossed_served": {
+   "n": 108,
+   "accuracy": 0.6759,
+   "mel_recall": 0.5,
+   "malignant_to_benign": 4
+  },
+  "confident_original": {
+   "n": 2032,
+   "accuracy": 0.8922,
+   "mel_recall": 0.9289,
+   "malignant_to_benign": 17
+  }
+ },
+ "by_group": {
+  "ham": {
+   "original": {
+    "n": 2004,
+    "accuracy": 0.8179,
+    "mel_recall": 0.8982,
+    "malignant_to_benign": 28
+   },
+   "served": {
+    "n": 2004,
+    "accuracy": 0.8204,
+    "mel_recall": 0.8938,
+    "malignant_to_benign": 27
+   },
+   "rejudged": 363,
+   "changed": 102,
+   "band_original": {
+    "n": 363,
+    "accuracy": 0.5978,
+    "mel_recall": 0.4667,
+    "malignant_to_benign": 11
+   },
+   "band_served": {
+    "n": 363,
+    "accuracy": 0.6116,
+    "mel_recall": 0.4,
+    "malignant_to_benign": 10
+   },
+   "mcnemar": {
+    "original_only": 42,
+    "served_only": 47,
+    "p": 0.6718
+   },
+   "crossed_served": {
+    "n": 107,
+    "accuracy": 0.6729,
+    "mel_recall": 0.5,
+    "malignant_to_benign": 4
+   },
+   "confident_original": {
+    "n": 1641,
+    "accuracy": 0.8665,
+    "mel_recall": 0.9289,
+    "malignant_to_benign": 17
+   }
+  },
+  "scin": {
+   "original": {
+    "n": 394,
+    "accuracy": 0.9975,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   },
+   "served": {
+    "n": 394,
+    "accuracy": 0.9975,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   },
+   "rejudged": 3,
+   "changed": 0,
+   "band_original": {
+    "n": 3,
+    "accuracy": 0.6667,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   },
+   "band_served": {
+    "n": 3,
+    "accuracy": 0.6667,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   },
+   "mcnemar": {
+    "original_only": 0,
+    "served_only": 0,
+    "p": 1.0
+   },
+   "crossed_served": {
+    "n": 1,
+    "accuracy": 1.0,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   },
+   "confident_original": {
+    "n": 391,
+    "accuracy": 1.0,
+    "mel_recall": null,
+    "malignant_to_benign": 0
+   }
+  }
+ }
+}

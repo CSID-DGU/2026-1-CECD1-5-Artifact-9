@@ -158,6 +158,15 @@ jobs:
             -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
             artifact-fastapi:ci python tests/test_model_contract.py
 
+      # 확대 보기(crops)와 확대 재판정은 실패해도 분석 결과가 나가도록 짜여 있다. 그래서 고장이 나도
+      # 화면에는 아무 일 없어 보인다 — 확대 히트맵이 조용히 사라지거나, 재판정으로 바뀐 병명 옆에
+      # 옛 병명의 히트맵이 붙어 나가도 확률·병명은 그럴듯하다. 합성 이미지로 매번 확인한다.
+      - name: 확대 보기·재판정 검사
+        run: |
+          docker run --rm \
+            -e INTERNAL_API_SECRET=ci-dummy-not-a-real-secret \
+            artifact-fastapi:ci python tests/test_heatmap_crops.py
+
       # Grad-CAM 은 전역 model 객체에 forward hook 을 붙여 중간 activation 을 꺼낸다.
       # 서버가 모델 하나를 공유하므로, A 요청의 hook 이 B 요청의 forward 로 발화하면
       # **히트맵이 뒤바뀐 채로 정상 응답이 나간다.** 확률도 병명도 그럴듯하고 그림만

@@ -44,4 +44,13 @@ public class AnalysisController {
     public ResponseEntity<byte[]> getHeatmap(@PathVariable Long visitId) {
         return analysisService.getHeatmapContent(visitId);
     }
+
+    @Operation(summary = "확대 히트맵 이미지 조회",
+               description = "최근 분석에서 히트맵이 짚은 곳을 확대한 히트맵 하나를 반환합니다. "
+                       + "rank 는 분석 응답 heatmapCrops[].rank 입니다.")
+    @StaffAccess
+    @GetMapping("/heatmap/crops/{rank}")
+    public ResponseEntity<byte[]> getHeatmapCrop(@PathVariable Long visitId, @PathVariable int rank) {
+        return analysisService.getHeatmapCropContent(visitId, rank);
+    }
 }
