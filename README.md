@@ -630,7 +630,7 @@ ANTHROPIC_API_KEY=
 | 검색 결과가 비어 있음 | 백엔드 첫 기동의 비동기 적재(`data-initializer` 스레드) 완료 여부, `resources/data/*.xlsx` 존재 여부 확인 |
 | S3 관련 오류 | 환경변수 미설정 시 `IMAGE_STORAGE_TYPE=local` 권장 |
 | GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] CAM 계산 실패` 또는 `[GradCAM] 히트맵 렌더링 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
-| 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(표시 임계값을 넘는 면적 비율)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 표시 범위는 `HEATMAP_DISPLAY_FLOOR`(기본 0.35)·`HEATMAP_ALPHA_MAX`(기본 0.60) 로 조절하며, 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
+| 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(격자 CAM 이 0.5 이상인 칸의 비율 — 흐림을 거친 화면의 맵과는 조금 다르다)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 색의 진하기는 `HEATMAP_ALPHA_MIN`(기본 0.25)·`HEATMAP_ALPHA_MAX`(기본 0.60), 흐림은 `HEATMAP_SMOOTH`(기본 0.03)로 조절한다 — 셋 다 색만 바꾼다. `HEATMAP_CROPS`(기본 3, 0~3)는 화면에 보여 줄 확대 히트맵 수만 바꾼다 — 확대 재판정은 이 값과 상관없이 최대 3곳으로 한다. 넷 다 `docker-compose.yml` 이 `.env` 에서 넘긴다. 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
 | AI 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY`(또는 `ANTHROPIC_API_KEY`) 환경변수 설정 후 재기동 |
 | AI 코멘트가 "일시적으로 혼잡합니다" | 모든 공급자가 실패했고, 그중 적어도 하나가 일시 장애(503·429·5xx·타임아웃)였다는 뜻이다. 나머지는 키·모델명 오류일 수 있으므로 백엔드 로그의 `LLM [...] 모든 공급자 실패:` 줄에서 공급자별 결과(AUTH·MODEL_NOT_FOUND·BILLING 등)를 확인한다. 설정 문제는 ERROR 로그로 따로 남는다. Claude 키가 없으면 Google 쪽 장애가 길어질 때 대신 답할 곳이 없다 — `ANTHROPIC_API_KEY` 설정을 검토 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
