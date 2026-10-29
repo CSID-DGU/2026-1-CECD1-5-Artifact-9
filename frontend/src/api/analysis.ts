@@ -70,6 +70,8 @@ export type HeatmapCrop = {
   boxNorm: number[];
   /** 그 영역의 히트맵 최댓값(0~1). */
   peak: number | null;
+  /** reinfer: 확대 영역을 AI에 다시 넣어 그림, zoom: 전체 히트맵을 잘라 키움. 이 필드 전의 기록은 null. */
+  source?: "reinfer" | "zoom" | null;
 };
 
 /**

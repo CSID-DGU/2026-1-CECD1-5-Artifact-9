@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HeatmapCrop } from "../api/analysis";
 import { AuthedImage } from "./AuthedImage";
 
@@ -10,8 +10,22 @@ import { AuthedImage } from "./AuthedImage";
 const JET_GRADIENT =
   "linear-gradient(to right, #00007f 0%, #0000ff 12.5%, #00ffff 37.5%, #7fff7f 50%, #ffff00 62.5%, #ff0000 87.5%, #7f0000 100%)";
 
-/** 히트맵 색의 뜻. 확대 히트맵이 있으면 그 색 기준도 함께 적는다. */
-export function HeatmapLegend({ hasCrops }: { hasCrops: boolean }) {
+/**
+ * 히트맵 색의 뜻. 확대 히트맵이 있으면 그 색 기준도 함께 적는다.
+ *
+ * heatmapStyle 을 넘기면 그 값으로 그린 방식을 가린다. 값이 없는(null) 기록은 2026-10 이전 방식이다 —
+ * 노랑→빨강만 쓰고 바닥값 아래는 칠하지 않아 파랑이 없고, 노랑이 가장 약한 근거였다. 그 그림을 이 색띠로
+ * 읽으면 노랑을 과대평가하고 "근거 아님"(파랑)을 찾지 못하므로 옛 범례를 그대로 보여 준다.
+ * 넘기지 않으면(undefined) 지금 방식으로 본다 — 확대 히트맵 크게 보기처럼 지금 방식으로만 생기는 그림이다.
+ */
+export function HeatmapLegend({ hasCrops, heatmapStyle }: { hasCrops: boolean; heatmapStyle?: string | null }) {
+  if (heatmapStyle !== undefined && !heatmapStyle?.startsWith("layercam-flip-jet")) {
+    return (
+      <p className="px-2 py-1.5 text-[10px] text-gray-400">
+        🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · 이전 방식으로 그린 히트맵
+      </p>
+    );
+  }
   return (
     <div className="px-2 py-1.5 text-[10px] text-gray-400">
       <div className="flex items-center gap-1.5">
@@ -75,7 +89,10 @@ type CropGalleryProps = {
   cacheKey: string;
   activeRank: number | null;
   onActiveChange: (rank: number | null) => void;
-  /** 확대 영역을 모델에 다시 넣지 않고 전체 히트맵을 잘라 키운 태스크인가(안면부). 설명 문구만 바뀐다. */
+  /**
+   * 확대 영역을 모델에 다시 넣지 않고 전체 히트맵을 잘라 키운 태스크인가(안면부). 설명 문구만 바뀐다.
+   * 서버가 crops[].source 를 주면 그쪽을 따른다 — 피부 병변도 재추론이 실패하면 잘라 키운 그림이 온다.
+   */
   zoomOnly?: boolean;
 };
 
@@ -84,25 +101,40 @@ type CropGalleryProps = {
  */
 export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomOnly = false }: CropGalleryProps) {
   const [expanded, setExpanded] = useState<HeatmapCrop | null>(null);
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
-  // 크게 보기는 Esc 로도 닫힌다. 키보드만 쓰는 사용자가 갇히지 않게 한다.
+  // 크게 보기는 네이티브 모달 <dialog> 다. showModal() 이 포커스를 안으로 옮기고 뒤 화면을 inert 로 만들어,
+  // 키보드 Tab 이 가려진 뒤 화면(상병 후보 체크박스 등)으로 새지 않는다. Esc 도 브라우저가 처리한다.
+  // 닫히면 연 칸으로 포커스를 돌려준다 — 키보드 사용자가 어디 있었는지 잃지 않게.
   useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (expanded && !dialog.open) {
+      openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+    } else if (!expanded && dialog.open) {
+      dialog.close();
+    }
   }, [expanded]);
 
+  const close = () => dialogRef.current?.close();
+  const handleClosed = () => {
+    setExpanded(null);
+    openerRef.current?.focus();
+    openerRef.current = null;
+  };
+
   const src = (crop: HeatmapCrop) => `${crop.imageUrl}?t=${encodeURIComponent(cacheKey)}`;
+  // 한 분석의 확대 히트맵은 모두 같은 방식으로 그려진다. source 가 없는 옛 기록만 태스크로 짐작한다.
+  const zoomed = crops[0]?.source ? crops[0].source === "zoom" : zoomOnly;
 
   return (
     <div className="flex flex-col gap-1">
       <p className="px-0.5 text-[11px] text-gray-400">
         확대 히트맵 {crops.length}곳
         <span className="ml-1 text-[10px] text-gray-500">
-          {zoomOnly ? "· 전체 히트맵에서 잘라 키운 그림" : "· 확대 영역을 AI가 다시 본 근거"}
+          {zoomed ? "· 전체 히트맵에서 잘라 키운 그림" : "· 확대 영역을 AI가 다시 본 근거"}
         </span>
       </p>
       <div className="grid grid-cols-3 gap-1.5">
@@ -129,28 +161,30 @@ export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomO
         ))}
       </div>
 
-      {expanded && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`확대 히트맵 ${expanded.rank}`}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
-          onClick={() => setExpanded(null)}
-        >
-          {/* 폭을 정해 둔다. 내용 크기에 맞추면 작은 확대 히트맵이 원래 크기 그대로 떠서 "크게 보기"가 아니게 되고,
-              범례 색띠도 글자에 밀려 사라진다. */}
-          <div className="w-[min(90vw,560px)]" onClick={(e) => e.stopPropagation()}>
+      {/* 폭을 정해 둔다. 내용 크기에 맞추면 작은 확대 히트맵이 원래 크기 그대로 떠서 "크게 보기"가 아니게 되고,
+          범례 색띠도 글자에 밀려 사라진다. 바깥(어두운 배경)을 누르면 닫힌다 — 그때 클릭 대상이 dialog 자신이다. */}
+      <dialog
+        ref={dialogRef}
+        aria-label={expanded ? `확대 히트맵 ${expanded.rank}` : undefined}
+        onClose={handleClosed}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+        className="m-auto w-[min(90vw,560px)] max-w-none overflow-visible border-0 bg-transparent p-0 backdrop:bg-black/80"
+      >
+        {expanded && (
+          <div>
             <div className="mb-2 flex items-center justify-between text-sm text-gray-200">
               <span>확대 히트맵 {expanded.rank}</span>
-              <button type="button" onClick={() => setExpanded(null)} className="rounded bg-gray-700 px-2 py-0.5 text-xs hover:bg-gray-600">
+              <button type="button" onClick={close} className="rounded bg-gray-700 px-2 py-0.5 text-xs text-gray-200 hover:bg-gray-600">
                 닫기
               </button>
             </div>
             <AuthedImage src={src(expanded)} alt={`확대 히트맵 ${expanded.rank}`} className="max-h-[75vh] w-full rounded object-contain" />
             <HeatmapLegend hasCrops={false} />
           </div>
-        </div>
-      )}
+        )}
+      </dialog>
     </div>
   );
 }

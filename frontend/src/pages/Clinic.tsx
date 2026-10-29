@@ -117,6 +117,9 @@ export default function Clinic() {
   const [imageViewMode, setImageViewMode] = useState<"none" | "original" | "heatmap">("none");
   // 확대 히트맵 칸에 올린 번호 — 전체 이미지의 같은 번호 상자를 노랗게 표시한다.
   const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
+  // 다 받아진 이미지의 주소. 상자는 이미지 크기에 대한 비율이라, 이미지가 뜨기 전(높이 0)에 그리면
+  // 상자가 납작하게 아래 범례 위로 겹친다. 받아진 주소가 지금 주소와 같을 때만 상자를 그린다.
+  const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
 
   // 처방 폼
   type AnalysisCandidate = AnalysisResponse["top5"][number];
@@ -764,6 +767,10 @@ export default function Clinic() {
                       <p className="mt-1 text-[11px] leading-snug text-amber-200">
                         원본 사진만으로는 {analysis.fullImageTop1.diseaseNameKo} {formatConfidence(analysis.fullImageTop1.confidence)}
                         로 판단이 어려워, 히트맵이 짚은 곳을 확대해 함께 보고 다시 판정했습니다.
+                        {/* 1순위가 바뀌면 서버는 히트맵과 확대 영역을 새 1순위로 다시 그린다 — 화면의 상자가
+                            판정을 바꾼 바로 그 영역이라고 읽히지 않게 적는다. */}
+                        {analysis.fullImageTop1.diseaseCode !== analysis.top1.diseaseCode
+                          && " 1순위가 바뀌어, 아래 히트맵과 확대 영역은 바뀐 1순위 기준으로 다시 그린 것입니다."}
                       </p>
                     )}
                   </div>
@@ -833,12 +840,15 @@ export default function Clinic() {
                                   alt={imageViewMode === "heatmap" ? "AI 판단 근거 히트맵" : "분석 이미지"}
                                   className="w-full"
                                   style={{ display: "block", transition: "opacity 0.15s ease" }}
+                                  onLoad={() => setLoadedImageUrl(displayUrl)}
                                 />
-                                {imageViewMode === "heatmap" && (
+                                {imageViewMode === "heatmap" && loadedImageUrl === displayUrl && (
                                   <CropBoxes crops={heatmapCrops} activeRank={activeCropRank} />
                                 )}
                               </div>
-                              {imageViewMode === "heatmap" && <HeatmapLegend hasCrops={heatmapCrops.length > 0} />}
+                              {imageViewMode === "heatmap" && (
+                                <HeatmapLegend hasCrops={heatmapCrops.length > 0} heatmapStyle={analysis.heatmapStyle ?? null} />
+                              )}
                             </>
                           )}
                         </div>
