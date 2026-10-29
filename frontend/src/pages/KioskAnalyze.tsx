@@ -4,6 +4,7 @@ import { getErrorMessage, isNotFound } from "../api/errors";
 import { analyzeKioskSession, getKioskSession, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { formatConfidence } from "../utils/confidence";
 
@@ -43,6 +44,8 @@ export default function KioskAnalyze() {
   const [gradcamError, setGradcamError] = useState(false);
   const [result, setResult] = useState<PreliminaryAnalysis | null>(null);
   const [imageViewMode, setImageViewMode] = useState<"heatmap" | "original">("heatmap");
+  // 확대 히트맵 칸에 올린(누른) 번호 — 전체 히트맵의 같은 번호 상자를 노랗게 표시한다.
+  const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
 
   // 촬영한 원본 사진의 blob URL. 결과 화면의 "원본 이미지" 토글이 이 값을 그대로 쓴다 —
   // 방금 올린 파일이라 서버에 다시 요청할 필요가 없고, 태블릿에는 JWT도 없다.
@@ -92,6 +95,7 @@ export default function KioskAnalyze() {
     setGradcamError(false);
     setGradcamLoading(false);
     setImageViewMode("heatmap");
+    setActiveCropRank(null);
 
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = selected ? URL.createObjectURL(selected) : null;
@@ -146,7 +150,7 @@ export default function KioskAnalyze() {
             <div className="absolute inset-3 rounded-full bg-blue-500/20" />
           </div>
           <div>
-            <p className="text-base font-semibold text-white">AI 분석 및 Grad-CAM 생성중...</p>
+            <p className="text-base font-semibold text-white">AI 분석 및 히트맵 생성중...</p>
             <p className="mt-2 text-xs leading-relaxed text-gray-300">
               병변 후보를 계산하고, 모델이 주목한 영역을 시각화하고 있습니다.
             </p>
@@ -296,12 +300,12 @@ export default function KioskAnalyze() {
                 disabled={!file || loading}
                 className="w-full"
               >
-                {loading ? "분석 및 Grad-CAM 생성 중..." : "분석하기"}
+                {loading ? "분석 및 히트맵 생성 중..." : "분석하기"}
               </Button>
               {loading && (
                 <div className="flex w-full items-center gap-2 rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100">
                   <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200/30 border-t-blue-200" />
-                  <span>AI가 후보 질환을 분석하고 Grad-CAM 이미지를 생성하는 중입니다.</span>
+                  <span>AI가 후보 질환을 분석하고 히트맵 이미지를 생성하는 중입니다.</span>
                 </div>
               )}
               {error && <p className="text-xs text-red-400">{error}</p>}
@@ -321,6 +325,16 @@ export default function KioskAnalyze() {
                   <p className="mt-0.5 text-xs text-blue-100">
                     신뢰도 {formatConfidence(result.topK[0].confidence)}
                   </p>
+                  {/* 확대해서 다시 본 결과라는 사실과 처음 사진만 본 답을 환자에게도 숨기지 않는다.
+                      진료실 화면과 같은 사실을 보여 줘야 의사와 환자가 같은 이야기를 한다. */}
+                  {result.fullImageTop1 && (
+                    <p className="mt-1 text-[11px] leading-snug text-amber-200">
+                      처음 사진만으로는 {result.fullImageTop1.diseaseNameKo} {formatConfidence(result.fullImageTop1.confidence)}
+                      로 판단이 어려워, AI가 주목한 부위를 확대해 함께 보고 다시 판단했습니다.
+                      {result.topK[0] && result.fullImageTop1.diseaseCode !== result.topK[0].diseaseCode
+                        && " 그래서 가장 가능성이 높은 결과가 바뀌었고, 아래 히트맵도 바뀐 결과를 기준으로 다시 그렸습니다."}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -333,6 +347,8 @@ export default function KioskAnalyze() {
               {(() => {
                 const showHeatmap = imageViewMode === "heatmap" && !gradcamError;
                 const displayUrl = showHeatmap ? gradcamImageUrl : previewUrl;
+                // 구버전 백엔드는 필드가 없고, 확대 보기가 없는 분석은 빈 배열이다 — 둘 다 전처럼 전체 히트맵만 보인다.
+                const crops = result.heatmapCrops ?? [];
 
                 return (
                   <div className="flex flex-col gap-1.5">
@@ -360,38 +376,52 @@ export default function KioskAnalyze() {
                       {gradcamLoading && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-950/80 text-xs text-gray-200">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-500 border-t-blue-300" />
-                          <span>Grad-CAM 이미지 생성중...</span>
+                          <span>히트맵 이미지 생성중...</span>
                           <span className="text-[10px] text-gray-500">AI가 주목한 병변 영역을 불러오고 있습니다.</span>
                         </div>
                       )}
                       {displayUrl && (
-                        <img
-                          src={displayUrl}
-                          alt={showHeatmap ? "GradCAM 히트맵" : "촬영한 원본 사진"}
-                          className={`w-full ${gradcamLoading ? "opacity-0" : "opacity-100"}`}
-                          style={{ display: "block", transition: "opacity 0.15s ease" }}
-                          onLoad={() => setGradcamLoading(false)}
-                          onError={() => {
-                            setGradcamLoading(false);
-                            // 원본은 방금 고른 파일의 blob이라 실패할 일이 없다 → 실패했다면 히트맵 쪽이다.
-                            if (showHeatmap) setGradcamError(true);
-                          }}
-                        />
+                        // 상자 좌표가 이미지 크기에 대한 비율이라, 이 relative 상자가 이미지와 같은 크기여야 한다
+                        // (바깥 상자는 아래 범례·안내 문구까지 품고 있어 높이가 다르다).
+                        <div className="relative">
+                          <img
+                            src={displayUrl}
+                            alt={showHeatmap ? "AI 판단 근거 히트맵" : "촬영한 원본 사진"}
+                            className={`w-full ${gradcamLoading ? "opacity-0" : "opacity-100"}`}
+                            style={{ display: "block", transition: "opacity 0.15s ease" }}
+                            onLoad={() => setGradcamLoading(false)}
+                            onError={() => {
+                              setGradcamLoading(false);
+                              // 원본은 방금 고른 파일의 blob이라 실패할 일이 없다 → 실패했다면 히트맵 쪽이다.
+                              if (showHeatmap) setGradcamError(true);
+                            }}
+                          />
+                          {showHeatmap && !gradcamLoading && <CropBoxes crops={crops} activeRank={activeCropRank} />}
+                        </div>
                       )}
                       {showHeatmap && !gradcamLoading && (
-                        <p className="px-2 py-1 text-[10px] text-gray-400">
-                          🔴 빨간색 — AI가 진단 근거로 삼은 병변 부위 · Grad-CAM 기반
-                        </p>
+                        <HeatmapLegend hasCrops={crops.length > 0} heatmapStyle={result.heatmapStyle ?? null} />
                       )}
                       {gradcamError && (
                         <p className="px-2 py-1 text-[11px] text-yellow-200">
-                          Grad-CAM 이미지를 불러오지 못해 촬영한 원본 사진만 표시합니다. 분석 결과는 아래 표를 확인해 주세요.
+                          히트맵 이미지를 불러오지 못해 촬영한 원본 사진만 표시합니다. 분석 결과는 아래 표를 확인해 주세요.
                         </p>
                       )}
                       <div className="absolute left-2 top-2 z-20 rounded bg-gray-950/80 px-2 py-1 text-[10px] text-gray-300">
-                        {showHeatmap ? "Grad-CAM" : "원본"}
+                        {showHeatmap ? "히트맵" : "원본"}
                       </div>
                     </div>
+
+                    {/* 태블릿에는 JWT 가 없다 — 확대 히트맵도 서버가 내려준 토큰 경로를 일반 <img> 로 받는다. */}
+                    {showHeatmap && !gradcamLoading && crops.length > 0 && (
+                      <CropGallery
+                        crops={crops}
+                        cacheKey={result.analyzedAt}
+                        activeRank={activeCropRank}
+                        onActiveChange={setActiveCropRank}
+                        authed={false}
+                      />
+                    )}
                   </div>
                 );
               })()}
@@ -403,7 +433,8 @@ export default function KioskAnalyze() {
                 {result.topK.map((item, idx) => (
                   <div key={item.diseaseCode} className="grid grid-cols-[34px_72px_1fr_64px] items-center border-t border-gray-800 px-2 py-1.5 text-xs">
                     <span className="text-gray-400">{idx + 1}</span>
-                    <span className="font-mono text-blue-300">{item.diseaseCode}</span>
+                    {/* 72px 칸에 inflammatory(12자)가 넘쳐 옆 칸 병명과 겹쳤다 — 자르고 전체 코드는 title 로 */}
+                    <span className="truncate font-mono text-blue-300" title={item.diseaseCode}>{item.diseaseCode}</span>
                     <span className="text-white">{item.diseaseNameKo}</span>
                     <span className="text-right text-gray-200">{formatConfidence(item.confidence)}</span>
                   </div>
