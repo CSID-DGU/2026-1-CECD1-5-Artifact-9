@@ -1,12 +1,15 @@
 """
-화면에 나가는 히트맵과 확대 영역이 **병변 자리**를 짚는지, 서빙 코드 그대로 정답 마스크로 잰다.
+화면에 나가는 히트맵과 확대 영역이 **병변 자리**를 짚는지, 서빙 함수로 정답 마스크에 대어 잰다.
 
 evaluate_cam.py 와 무엇이 다른가
 -------------------------------
 evaluate_cam.py 는 격자 CAM 을 재고 분류 정답(holdout.csv 의 라벨)이 필요하다. 이 스크립트는
 라벨 없이 마스크만 있으면 되고, **표시용 맵**(_display_map — 흐림까지 거친, 사용자가 보는 그림)과
 **확대 영역**(_propose_crops·_crop_forward·_crop_layercams)을 잰다. main.py 의 함수를 그대로
-부르므로 서빙에서 바뀐 것이 여기에 자동으로 반영된다.
+부르므로 그 함수들이 바뀌면 여기에 자동으로 반영된다. 다만 run_inference 의 흐름을 통째로 부르지는 않는다 —
+**원본 1순위로 그린 그림**만 잰다. 낮은 신뢰도에서 확대 재판정으로 1순위가 바뀌면 서버는 새 1순위로
+전체 히트맵과 확대 영역을 다시 그리는데, 그 경우는 여기서 따로 재지 않는다(재판정 자체의 효과는
+evaluate_rejudge.py).
 
 데이터: ISIC 2018 Task 1 (병변 분할) 검증 100장 + 시험 1,000장. 홀드아웃과 겹치지 않는다.
   https://isic-archive.s3.amazonaws.com/challenges/2018/ISIC2018_Task1-2_Validation_Input.zip
@@ -26,7 +29,12 @@ evaluate_cam.py 는 격자 CAM 을 재고 분류 정답(holdout.csv 의 라벨)�
     docker compose run --rm -v /path/to/isic2018:/data:ro fastapi \\
         python tests/evaluate_heatmap_loc.py --image-dir /data/images --mask-dir /data/masks
     ... --limit 200            # 빨리 감 잡기
-    ... --json out.json        # 기록 남기기 (baselines/README.md 의 표와 비교)
+
+    # 기록을 남기려면 baselines 를 마운트한다 — 마운트 없이 --json 을 주면 컨테이너와 함께 사라진다.
+    docker compose run --rm -v /path/to/isic2018:/data:ro \\
+        -v "$PWD/fastapi/tests/baselines:/app/tests/baselines" fastapi \\
+        python tests/evaluate_heatmap_loc.py --image-dir /data/images --mask-dir /data/masks \\
+        --json tests/baselines/heatmap-loc-$(date +%F).json
 """
 
 import argparse

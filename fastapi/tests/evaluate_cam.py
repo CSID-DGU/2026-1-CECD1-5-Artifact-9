@@ -417,7 +417,7 @@ def print_report(result):
         q = result["quality"]
         print()
         print("  히트맵 집중도 (서빙 응답의 heatmap_quality 와 같은 값)")
-        print("    " + lj("표시 영역 비율", 36) + pct(q["focus_area"], 8))
+        print("    " + lj("CAM≥0.5 칸 비율", 36) + pct(q["focus_area"], 8))
         print("    " + lj("상위 10% 격자의 에너지 점유율", 36) + pct(q["peak_ratio"], 8))
         print("    두 값은 **서술값**이다. 집중도와 히트맵 신뢰도의 관계는 출처마다")
         print("    반대로 나와(--faithfulness 로 확인) 좋다/나쁘다 판정에 쓸 수 없다.")
@@ -460,9 +460,9 @@ def print_comparison(current, baseline):
               was_bins.get(rng, {}).get("pointing_game"), f"  {rng}")
 
     if "quality" in current and "quality" in baseline:
-        print("\n  히트맵 집중도 (표시 영역 비율은 **낮을수록** 집중)")
+        print("\n  히트맵 집중도 (CAM≥0.5 칸 비율은 **낮을수록** 집중)")
         delta(current["quality"]["focus_area"], baseline["quality"]["focus_area"],
-              "  표시 영역 비율")
+              "  CAM≥0.5 칸 비율")
         delta(current["quality"]["peak_ratio"], baseline["quality"]["peak_ratio"],
               "  상위 10% 에너지 점유율")
         if current["quality"].get("contrast") is not None:

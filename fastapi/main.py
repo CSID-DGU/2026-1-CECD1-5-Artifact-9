@@ -126,6 +126,11 @@ CLASS_NAMES_KO = TASKS[DEFAULT_TASK]["names_ko"]
 # 조정하려면 느낌으로 고치지 말고 tests/evaluate.py 를 --ood-dir 과 함께 돌려
 # 「임계값의 양쪽 비용」 표를 다시 뽑을 것. 근거 수치는 tests/baselines/README.md.
 #
+# 이 값은 **확대 재판정의 문턱**이기도 하다(run_inference) — 이 선 아래의 피부 병변 결과는
+# 확대 영역들의 판정을 섞어 1순위를 다시 매긴다. 그래서 값을 바꾸면 경고율만이 아니라 화면의
+# 1순위도 바뀐다. evaluate.py 는 재판정 전의 분류기만 재므로, 그 효과는
+# tests/evaluate_rejudge.py --threshold 로 함께 볼 것.
+#
 # 경고 **문구**는 여기서 만들지 않고 등급만 내려보낸다. 문구는 심각도(악성/양성)에
 # 따라 갈려야 하는데 심각도의 원본은 disease 테이블이고, 그건 백엔드가 소유한다.
 # 여기에 사본을 두면 언젠가 한쪽만 바뀐다.
@@ -188,7 +193,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #   1.0 에 가깝게 올리면 병변 자체가 색에 가려 의사가 눈으로 확인할 수 없다.
 # SMOOTH: 표시 직전 가우시안 흐림의 sigma (짧은 변에 대한 비율). 격자 칸 경계를 지워
 #   태스크마다 다른 격자(224 입력 14칸, 384 입력 24칸)가 같은 모양으로 보이게 한다.
-# CROPS: 히트맵에서 고른 확대 영역 수(최대). 0 이면 확대 보기를 만들지 않는다.
+#   **색만 바꾼다** — 확대 영역은 이 값과 상관없이 _CROP_PICK_SMOOTH 로 흐린 맵에서 고른다.
+# CROPS: 화면에 보여 줄 확대 히트맵 수(0~_REJUDGE_CROPS). 0 이면 확대 보기를 만들지 않는다.
+#   **보여 주는 수만 바꾼다** — 확대 재판정은 이 값과 상관없이 늘 최대 _REJUDGE_CROPS 곳으로 한다.
+#   화면을 덜 어지럽히려고 줄였는데 진단이 따라 바뀌면 안 된다.
 HEATMAP_ALPHA_MIN = float(os.getenv("HEATMAP_ALPHA_MIN", "0.25"))
 HEATMAP_ALPHA_MAX = float(os.getenv("HEATMAP_ALPHA_MAX", "0.60"))
 HEATMAP_SMOOTH = float(os.getenv("HEATMAP_SMOOTH", "0.03"))
@@ -201,8 +209,14 @@ HEATMAP_CROPS = int(os.getenv("HEATMAP_CROPS", "3"))
 # _CROP_SMOOTH: 확대 히트맵의 흐림(확대 영역 짧은 변에 대한 비율). 확대하면 병변이 화면을 채워
 #   근거가 여러 점으로 갈라진다 — 전체와 같은 0.03 이면 0.5 이상 영역이 평균 4.7조각(병변 적중 89.5%),
 #   0.08 이면 2.1조각(92.0%)이다. 기록은 tests/baselines/README.md ③.
+# _CROP_PICK_SMOOTH·_REJUDGE_CROPS: 확대 영역을 **고를 때** 쓰는 맵의 흐림과 고르는 수(최대). 위 적중률과
+#   재판정 수치(tests/baselines/README.md ③)를 잰 값(=HEATMAP_SMOOTH·HEATMAP_CROPS 기본값)에 묶어 둔다.
+#   재판정이 이 영역들로 병명을 바꾸므로, 현장에서 표시를 고치려고 환경변수를 바꿨는데 진단이 따라
+#   바뀌면 안 된다.
 _CROP_MIN_PEAK = 0.7
 _CROP_SMOOTH = 0.08
+_CROP_PICK_SMOOTH = 0.03
+_REJUDGE_CROPS = 3
 
 # 응답·저장된 히트맵이 어떤 방식으로 만들어졌는지. 표시 방식이 바뀌면 이 값을 올린다 —
 # 예전 결과(바닥값·노랑빨강)와 새 결과가 한 화면에 섞였을 때 구별할 근거가 된다.
@@ -413,6 +427,9 @@ class PredictRequest(BaseModel):
     image_base64: str
     # 생략하면 기본 태스크 — task 를 모르는 구버전 백엔드가 그대로 돈다.
     task: str = DEFAULT_TASK
+    # False 면 확대 보기와 확대 재판정을 하지 않는다(run_inference). crops·full_image_top1 을 저장할 곳이 없는
+    # 호출자가 재판정된 순위만 받아 원본 판정을 잃지 않게 한다. 생략하면 켜진다.
+    crops: bool = True
 
 
 def _norm01(t: torch.Tensor, lo: float = _CAM_NORM_LO) -> torch.Tensor:
@@ -457,7 +474,8 @@ def _cam_quality(cam: torch.Tensor) -> dict:
     히트맵이 화면에서 어떻게 보이는지를 숫자로 남긴다.
     격자 해상도에서 계산하므로 비용은 사실상 0 이다.
 
-    - focus_area : CAM 이 0.5 이상인 면적 비율. 화면에서 노랑~빨강으로 칠해지는 넓이다.
+    - focus_area : 격자 CAM 이 0.5 이상인 칸의 비율. 화면의 그림은 이것을 흐리고 다시 편 맵이라
+                   조금 다르다(jet 에서 0.5 는 연두다 — 대략 연두보다 뜨거운 곳의 넓이로 읽는다).
     - peak_ratio : 상위 10% 격자가 담은 CAM 에너지 비율. 집중도.
 
     **`level: focused|diffuse` 와 `contrast` 는 뺐다.** 둘 다 "이 히트맵을 믿어도
@@ -566,13 +584,15 @@ def _to_p99(m: torch.Tensor) -> torch.Tensor:
 
 
 def _display_map(cam: torch.Tensor, width: int, height: int,
-                 smooth: float = HEATMAP_SMOOTH) -> torch.Tensor:
+                 smooth: float | None = None) -> torch.Tensor:
     """
     격자 CAM → 표시용 맵 (1,1,h,w), 0~1. 이미지 비율의 작업 해상도로 늘리고 가우시안으로
     칸 경계를 지운 뒤 다시 0~1 로 편다. 두 태스크의 격자(14·24칸)가 같은 모양으로 보이는 것이
     이 흐림 덕분이다. 정규화를 원본 해상도가 아니라 여기서 하는 이유: 보간이 만든 값이 기준이
     되면 같은 CAM 인데 원본 해상도에 따라 색이 달라진다.
+    smooth 를 생략하면 HEATMAP_SMOOTH 를 **부를 때** 읽는다(기본 인자로 묶으면 정의 시점 값에 굳는다).
     """
+    smooth = HEATMAP_SMOOTH if smooth is None else smooth
     scale = _DISPLAY_WORK_SIDE / max(width, height)
     w, h = max(8, round(width * scale)), max(8, round(height * scale))
     m = F.interpolate(cam.float(), size=(h, w), mode="bilinear", align_corners=False)
@@ -701,13 +721,20 @@ def _boxes_overlap(a, b) -> bool:
     return (union > 0 and inter / union >= 0.3) or inter >= 0.6 * min(area_a, area_b)
 
 
-def _crop_regions(cam: torch.Tensor | None, image: Image.Image):
-    """CAM → (표시용 맵, 확대 상자들, 확대 이미지들). 모델과 무관하므로 락 밖에서 부른다."""
+def _crop_regions(cam: torch.Tensor | None, image: Image.Image, k: int | None = None):
+    """CAM → (표시용 맵, 확대 상자들, 확대 이미지들). 모델과 무관하므로 락 밖에서 부른다.
+    k 는 고를 영역 수(최대)다. 생략하면 _REJUDGE_CROPS, 0 이면 고르지 않는다."""
     if cam is None:
         return None, [], []
+    k = _REJUDGE_CROPS if k is None else k
     width, height = image.size
     disp = _display_map(cam, width, height)
-    boxes = _propose_crops(disp, width, height, HEATMAP_CROPS) if HEATMAP_CROPS > 0 else []
+    if k <= 0:
+        return disp, [], []
+    # 고르는 맵은 표시 흐림과 떼어 둔다(_CROP_PICK_SMOOTH 주석). 기본값이 같으면 다시 만들지 않는다.
+    pick = (disp if HEATMAP_SMOOTH == _CROP_PICK_SMOOTH
+            else _display_map(cam, width, height, smooth=_CROP_PICK_SMOOTH))
+    boxes = _propose_crops(pick, width, height, k)
     return disp, boxes, [image.crop(tuple(round(v) for v in box[:4])) for box in boxes]
 
 
@@ -725,6 +752,11 @@ def _crop_forward(crops: list[Image.Image], tm: TaskModel) -> list[tuple[torch.T
 def _crop_layercams(passes: list[tuple[torch.Tensor, torch.Tensor]], k: int) -> list[torch.Tensor]:
     """확대 영역마다 클래스 k 의 LayerCAM (1,1,h,w), 0~1.
     좌우 반전 평균은 하지 않는다 — 확대 영역에서는 적중이 92.0% → 92.3% 로 거의 같은데 비용이 두 배다.
+
+    _norm01 의 중앙값 빼기는 확대 영역에서도 사실상 무동작이다. 병변이 꽉 찬 영역이라도 LayerCAM 은
+    클래스에 고유한 몇 곳에만 값을 둔다 — ISIC 1,100장에서 빼기를 없애고 _to_p99 만 남겨도 병변이 95% 넘게
+    찬 확대 영역 348곳의 파랑(<0.25) 넓이가 57.7% → 57.3%, 경계 영역 1,364곳의 적중이 90.4% → 90.8% 였다.
+    그런 영역의 절반가량이 파랗게 보이는 것은 정규화 탓이 아니라, 병변 안에서도 근거로 삼은 곳이 따로 있어서다.
     """
     return [_norm01(_layercam_for(logits, act, k)) for logits, act in passes]
 
@@ -735,7 +767,9 @@ def _zoom_display(disp: torch.Tensor, box, width: int, height: int) -> torch.Ten
     소수 좌표 그대로 표본을 뽑는다."""
     hd, wd = disp.shape[-2:]
     sx, sy = wd / width, hd / height
-    roi = torch.tensor([[0.0, box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy]], dtype=disp.dtype)
+    # roi 는 맵과 같은 장치에 둔다 — CUDA 의 roi_align 은 CPU 텐서를 받으면 예외를 던진다.
+    roi = torch.tensor([[0.0, box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy]],
+                       dtype=disp.dtype, device=disp.device)
     side = _DISPLAY_WORK_SIDE
     return _to_p99(roi_align(disp, roi, output_size=(side, side), sampling_ratio=2, aligned=True))
 
@@ -778,26 +812,34 @@ def get_task_model(task: str) -> TaskModel:
     return tm
 
 
-def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
+def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK, crops: bool = True) -> dict:
     """
     EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 / crops 포함 결과 반환.
 
     task 는 TASKS 의 키다. 생략하면 기본 태스크라 기존 호출은 한 글자도 안 바꿔도 된다.
+    crops=False 면 확대 보기와 확대 재판정을 하지 않는다(PredictRequest.crops 참고) — 전체 히트맵과
+    원본 판정만 나간다.
 
-    확대 보기(crops): 전체 히트맵이 짚은 곳을 최대 HEATMAP_CROPS 곳 골라 확대한 히트맵을 함께 준다.
+    확대 보기(crops): 전체 히트맵이 짚은 곳을 최대 _REJUDGE_CROPS 곳 골라, 그중 앞의 HEATMAP_CROPS 곳을
+    확대한 히트맵을 함께 준다(재판정은 고른 곳 전부로 한다 — 보여 주는 수가 진단을 바꾸지 않게).
     reinfer_crops 가 켜진 태스크는 확대 영역을 모델에 다시 넣어 그 영역 자체의 CAM 으로 그린다 —
     전체 CAM 은 224 입력의 14칸 격자라 확대 영역 하나에 서너 칸밖에 안 걸리지만, 다시 넣으면
-    그 영역에 14칸이 온전히 걸린다. ISIC 정답 마스크로 확대 영역 안의 병변 적중을 재면
-    전체 CAM 을 잘라 키운 것 88.3%, 다시 넣은 것 92.0% 다(2·3번째 영역은 80% → 92%).
+    그 영역에 14칸이 온전히 걸린다. ISIC 정답 마스크로 확대 영역 안의 병변 적중을 같은 실험 설정
+    (앞 500장, 반전 평균·흐림 3%)에서 견주면 전체 CAM 을 잘라 키운 것 88.3%, 다시 넣은 것 92.0% 였다
+    (2·3번째 영역은 80% → 92%). 서빙 코드 그대로 재면 다시 넣은 확대 히트맵의 적중은 90.4%(1,364곳)다
+    — 기록은 tests/baselines/README.md ③.
     설명하는 클래스는 화면에 나가는 1순위다. 확대 영역이 따로 고른 클래스로 그리면 적중이 83.5% 로
     떨어지고, 무엇보다 화면의 병명과 다른 것을 설명하게 된다.
+    재추론이 실패하면 잘라 키운 그림으로 대신하고, 응답의 crops[].source 에 어느 쪽인지("reinfer"/"zoom")
+    남긴다 — 화면이 "AI가 다시 본 근거"라고 쓸지 정하는 근거다.
 
     확대 재판정: 원본만으로는 판단이 어려울 때(1순위 신뢰도 < LOW_CONFIDENCE_THRESHOLD) 확대
     영역들의 판정을 원본과 반반 섞어 다시 판정한다. 확대 영역만으로 판정하지 않는 이유는 그쪽이
-    훨씬 못하기 때문이다(HAM 홀드아웃 2,004장: 원본 81.8%, 1번 영역만 67.7%). 낮은 신뢰도일 때만
-    섞으면 81.8% → 82.3%, 악성을 양성으로 놓친 수 28 → 27 이다. 그 구간(363장)만 보면 59.8% → 62.5%.
-    크지 않고 통계적으로 확실하지도 않다(McNemar p=0.31) — 그래서 확신 낮음 등급은 원본 기준으로
-    그대로 둔다(아래 confidence_level).
+    훨씬 못하기 때문이다(HAM 홀드아웃 2,004장: 원본 81.8%, 1번 영역만 67.7%). 이 함수 그대로 재면
+    (tests/evaluate_rejudge.py) HAM 81.8% → 82.0%, 재판정 구간 363장 59.8% → 61.2%, 악성을 양성으로
+    놓친 수 28 → 27, mel 재현율 89.8% → 89.4%(1장), SCIN 394장은 그대로다. 이득은 작고 통계적으로
+    원본과 구별되지 않는다(McNemar p=0.67) — 그래서 확신 낮음 등급은 원본 기준으로 그대로 두고
+    (아래 confidence_level), 원본만 본 1순위를 full_image_top1 로 함께 내보내 화면과 경고 문구가 쓴다.
     """
     tm = get_task_model(task)
     # EXIF 회전을 먼저 적용한다. 폰카 사진은 센서 방향 그대로 저장되고 회전 정보는
@@ -817,21 +859,25 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
     pred = int(probs.argmax())
     full_results = _top_k(probs, tm)
 
-    # 확신 낮음 등급은 **원본 사진의 판정**으로 매긴다. 재판정으로 0.45 를 넘긴 HAM 101장의 정답률은
-    # 66% 로, 처음부터 0.45 이상이던 1,641장(87%)보다 한참 낮다 — 섞은 확률이 올랐다고 믿을 만해진 게 아니다.
+    # 확신 낮음 등급은 **원본 사진의 판정**으로 매긴다. 재판정으로 0.45 를 넘긴 HAM 107장의 정답률은
+    # 67.3% 로, 처음부터 0.45 이상이던 1,641장(86.7%)보다 한참 낮다 — 섞은 확률이 올랐다고 믿을 만해진 게 아니다.
     confidence_level = (
         CONFIDENCE_NORMAL if full_results[0]["confidence"] >= LOW_CONFIDENCE_THRESHOLD
         else CONFIDENCE_LOW
     )
 
     # ── 확대 영역 고르기 (모델과 무관 → 락 밖) ──
-    disp, boxes, crop_images = _crop_regions(cam, image)
+    # 재판정은 늘 같은 기준으로 고른 최대 _REJUDGE_CROPS 곳으로 하고, 화면에는 그중 앞의 HEATMAP_CROPS 곳만 그린다.
+    n_pick = _REJUDGE_CROPS if crops else 0
+    n_show = max(0, min(HEATMAP_CROPS, n_pick))
+    disp, boxes, crop_images = _crop_regions(cam, image, n_pick)
 
     # ── 확대 영역 재추론·재판정 (모델을 만지므로 다시 락 안) ──
     # 확대 영역 하나하나의 판정은 응답에 넣지 않는다. 혼자서는 원본보다 훨씬 못 맞혀서
     # (HAM 홀드아웃: 확대 영역 전부 54.8%, 원본 81.8%) 따로 보여 주면 오해를 부른다.
     final_probs, crop_cams, rejudged = probs, None, False
-    if crop_images and tm.reinfer_crops:
+    # 보여 줄 것도 재판정할 것도 없으면(확대 보기를 끈 채 신뢰도가 높으면) 확대 영역을 넣어 볼 이유가 없다.
+    if crop_images and tm.reinfer_crops and (n_show > 0 or confidence_level == CONFIDENCE_LOW):
         try:
             with tm.lock:
                 passes = _crop_forward(crop_images, tm)
@@ -841,17 +887,21 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
                     rejudged = True
                 final = int(final_probs.argmax())
                 if final == pred:
-                    crop_cams = _crop_layercams(passes, final)
+                    crop_cams = _crop_layercams(passes[:n_show], final)
                 else:
                     # 1순위가 바뀌었다. 히트맵은 화면의 1순위를 설명해야 하므로 전체 CAM 을 새 1순위로 다시
                     # 구하고 확대 영역도 그 히트맵에서 다시 고른다 — 옛 1순위의 근거 자리를 새 병명 옆에 두지 않는다.
                     _, final_cam, final_quality = _compute_gradcam(tensor, tm, target=final)
+                    if final_cam is None:
+                        # _compute_gradcam 은 CAM 실패를 삼키고 None 을 준다. 그대로 바꿔 끼우면 새 병명이
+                        # 히트맵도 확대 보기도 없이 나간다 — 아래 except 로 보내 원본 판정·원본 히트맵을 지킨다.
+                        raise RuntimeError("새 1순위의 CAM 계산 실패")
             if final != pred:
-                final_disp, final_boxes, final_crops = _crop_regions(final_cam, image)
+                final_disp, final_boxes, final_crops = _crop_regions(final_cam, image, n_pick)
                 final_cams = None
-                if final_crops:
+                if final_crops[:n_show]:
                     with tm.lock:
-                        final_cams = _crop_layercams(_crop_forward(final_crops, tm), final)
+                        final_cams = _crop_layercams(_crop_forward(final_crops[:n_show], tm), final)
                 # 끝까지 성공했을 때만 바꿔 끼운다 — 중간에 실패하면 원본 판정과 원본 히트맵이 짝으로 남는다.
                 heatmap_quality, disp, boxes, crop_images, crop_cams = (
                     final_quality, final_disp, final_boxes, final_crops, final_cams)
@@ -865,21 +915,29 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
     width, height = image.size
     heatmap_base64 = (_render_overlay(image, disp, 0, _HEATMAP_MAX_SIDE, "히트맵")
                       if disp is not None else None)
-    crops = []
-    for i, (box, crop) in enumerate(zip(boxes, crop_images)):
-        crop_disp = (_display_map(crop_cams[i], *crop.size, smooth=_CROP_SMOOTH)
-                     if crop_cams is not None else _zoom_display(disp, box, width, height))
+    crop_list = []
+    for i, (box, crop) in enumerate(zip(boxes[:n_show], crop_images[:n_show])):
+        try:
+            crop_disp = (_display_map(crop_cams[i], *crop.size, smooth=_CROP_SMOOTH)
+                         if crop_cams is not None else _zoom_display(disp, box, width, height))
+        except Exception as e:
+            # 확대 보기 하나가 실패하면 그것만 건너뛴다 — 분석 결과와 나머지 확대 보기는 그대로 나간다.
+            print(f"[GradCAM] 확대 히트맵 {i + 1} 계산 실패 (분석 결과에는 영향 없음): {e}")
+            continue
         crop_heatmap = _render_overlay(crop, crop_disp, _CROP_MIN_SIDE, _CROP_MAX_SIDE, f"확대 히트맵 {i + 1}")
         if crop_heatmap is None:
             continue
         x0, y0, x1, y1, peak = box
-        crops.append({
-            "rank": len(crops) + 1,
+        crop_list.append({
+            "rank": len(crop_list) + 1,
             # 원본 이미지 기준 0~1. 화면이 전체 이미지 위에 상자를 그릴 때 쓴다(EXIF 회전 적용 뒤 기준).
             "box_norm": [round(x0 / width, 4), round(y0 / height, 4),
                          round(x1 / width, 4), round(y1 / height, 4)],
             "peak": round(peak, 3),
             "heatmap_base64": crop_heatmap,
+            # reinfer: 확대 영역을 모델에 다시 넣어 그린 CAM. zoom: 전체 히트맵을 잘라 키운 것
+            # (안면부, 또는 재추론이 실패한 피부 병변). 화면 설명 문구가 이 값을 따른다.
+            "source": "reinfer" if crop_cams is not None else "zoom",
         })
 
     return {
@@ -900,7 +958,7 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK) -> dict:
         "task": tm.name,
         # 아래도 같은 이유로 구버전 백엔드에는 보이지 않는다.
         "heatmap_style": HEATMAP_STYLE,
-        "crops": crops,
+        "crops": crop_list,
         # 확대 재판정을 했을 때만 채운다: 원본 사진만 보고 낸 1순위. top1 과 다를 수 있다.
         "full_image_top1": full_results[0] if rejudged else None,
     }
@@ -967,4 +1025,4 @@ def predict(file: UploadFile = File(...), task: str = Form(DEFAULT_TASK)):
 def predict_base64(request: PredictRequest):
     """Spring Boot 내부 호출용 (JSON base64). 본문의 task 생략 시 기본 태스크."""
     image_bytes = base64.b64decode(request.image_base64)
-    return run_inference(image_bytes, request.task)
+    return run_inference(image_bytes, request.task, crops=request.crops)

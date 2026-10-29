@@ -14,9 +14,11 @@ A 요청이 hook 을 붙인 상태에서 B 요청이 forward 를 돌리면
 
 히트맵은 바이트가 아니라 **화소**로 비교한다. 역전파(CAM)를 여러 스레드로 돌리면 합산 순서가
 실행마다 달라 값이 1e-7 수준으로 흔들리고(1스레드에서는 비트 단위로 같다), 그것이 JPEG 에서
-화소 몇 단계로 드러날 수 있다. 교차오염은 남의 사진의 히트맵이 오는 것이라 차이의 규모가 다르다 —
-이 스크립트의 두 이미지끼리는 화소 평균 44.6 단계가 차이 난다. 확대 보기(crops)도 같은 hook 을
-거치므로 개수·위치·그림을 함께 비교한다.
+화소 몇 단계로 드러날 수 있다. 교차오염은 남의 CAM 이 오는 것이라 차이의 규모가 다르다 — 두 이미지는
+배경이 같고 무늬만 서로 다른 구석에 두어 CAM 이 다른 곳을 짚게 했다. 그 차이가 실제로 보이는지는
+히트맵 전체가 아니라 **색 층**(히트맵에서 원본 사진을 뺀 것)끼리 견줘 미리 확인한다 — 히트맵째 견주면
+사진이 달라서 늘 달라 보이고, CAM 이 바뀐 것을 잡을 수 있는지는 알 수 없다. 확대 보기(crops)도 같은
+hook 을 거치므로 개수·위치·그림을 함께 비교한다.
 
 추론 엔드포인트는 `X-Internal-Secret` 으로 보호돼 있다. 컨테이너 안에서 돌리면
 서버와 같은 `INTERNAL_API_SECRET` 환경변수를 그대로 읽으므로 따로 줄 것이 없다.
@@ -54,16 +56,15 @@ SECRET = os.getenv("INTERNAL_API_SECRET", "")
 
 
 def make_image(seed: int, size=(320, 320)) -> str:
-    """서로 확실히 다른 테스트 이미지를 만든다 (base64 JPEG)."""
-    img = Image.new("RGB", size, (30 + seed * 60, 20, 40))
+    """배경은 같고 동심원 무늬만 서로 다른 구석(0 은 왼쪽 위, 1 은 오른쪽 아래)에 있는 이미지 (base64 JPEG).
+    CAM 이 서로 다른 곳을 짚어야 남의 CAM 이 섞여 들어온 것을 그림으로 가려낼 수 있다."""
+    img = Image.new("RGB", size, (30, 20, 40))
     draw = ImageDraw.Draw(img)
-    for i in range(6):
-        offset = i * 22 + seed * 11
-        draw.ellipse(
-            [offset, offset, size[0] - offset, size[1] - offset],
-            outline=(200 - i * 20, 60 + seed * 50, 90 + i * 15),
-            width=7,
-        )
+    cx, cy = (0.3 * size[0], 0.3 * size[1]) if seed == 0 else (0.7 * size[0], 0.7 * size[1])
+    for i in range(5):
+        r = 90 - i * 16
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r],
+                     outline=(200 - i * 20, 60 + seed * 50, 90 + i * 15), width=7)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=92)
     return base64.b64encode(buf.getvalue()).decode()
@@ -92,15 +93,24 @@ def _picture(b64: str, size: tuple[int, int] | None = None) -> Image.Image:
     return img.resize(size) if size else img
 
 
-def same_picture(a_b64: str, b_b64: str, size: tuple[int, int] | None = None) -> bool:
-    """같은 그림인가 — 화소 평균 1 단계, 최대 32 단계까지는 같다고 본다(모듈 독스트링 참고).
-    size 를 주면 둘 다 그 크기로 줄여 비교한다(확대 영역은 상자가 한 칸 밀리면 크기가 1px 다를 수 있다)."""
-    a, b = _picture(a_b64, size), _picture(b_b64, size)
+def same_image(a: Image.Image, b: Image.Image) -> bool:
+    """같은 그림인가 — 화소 평균 1 단계, 최대 32 단계까지는 같다고 본다(모듈 독스트링 참고)."""
     if a.size != b.size:
         return False
     diff = ImageChops.difference(a, b)
     mean = sum(ImageStat.Stat(diff).mean) / 3
     return mean <= 1.0 and max(hi for _, hi in diff.getextrema()) <= 32
+
+
+def same_picture(a_b64: str, b_b64: str, size: tuple[int, int] | None = None) -> bool:
+    """size 를 주면 둘 다 그 크기로 줄여 비교한다(확대 영역은 상자가 한 칸 밀리면 크기가 1px 다를 수 있다)."""
+    return same_image(_picture(a_b64, size), _picture(b_b64, size))
+
+
+def color_layer(heatmap_b64: str, photo_b64: str) -> Image.Image:
+    """히트맵에서 원본 사진을 뺀 것 — CAM 이 칠한 색만 남는다(사진이 같으면 이것만 다르다)."""
+    heat = _picture(heatmap_b64)
+    return ImageChops.difference(heat, _picture(photo_b64, heat.size))
 
 
 def mismatch(body: dict, base: dict) -> str | None:
@@ -150,10 +160,13 @@ def main() -> int:
         print(f"   이미지 {i}: top1={r['body']['top1']['disease_code']} "
               f"히트맵 {len(h)}바이트, 확대 보기 {len(r['body'].get('crops') or [])}장")
 
-    # 두 이미지의 히트맵이 서로 구별되는지 — 같아 보이면 아래 비교가 오염을 못 잡는다
-    if same_picture(baseline[0]["heatmap_base64"], baseline[1]["heatmap_base64"]):
-        print("   ✗ 두 테스트 이미지의 히트맵이 같아 보여 오염을 구별할 수 없음 → 이 검증법 사용 불가")
+    # 두 이미지의 **CAM** 이 서로 구별되는지 — 색 층이 같아 보이면 남의 CAM 이 와도 아래 비교가 못 잡는다
+    layers = [color_layer(baseline[i]["heatmap_base64"], images[i]) for i in range(2)]
+    if same_image(*layers):
+        print("   ✗ 두 테스트 이미지의 CAM 이 같아 보여 오염을 구별할 수 없음 → 이 검증법 사용 불가")
         return 1
+    gap = sum(ImageStat.Stat(ImageChops.difference(*layers)).mean) / 3
+    print(f"   두 이미지의 색 층 차이: 화소 평균 {gap:.1f} 단계 (같다고 보는 한계는 1 단계)")
 
     # 추론이 결정적인지 확인 (이 전제가 깨지면 아래 비교가 무의미)
     for i, img in enumerate(images):
