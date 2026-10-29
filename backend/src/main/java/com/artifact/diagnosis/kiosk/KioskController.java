@@ -60,4 +60,14 @@ public class KioskController {
             @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token) {
         return kioskService.getHeatmapContentByToken(token);
     }
+
+    @Operation(summary = "예비분석 확대 히트맵 조회",
+               description = "방금 분석한 접수의 확대 히트맵 하나를 반환한다. rank 는 예비분석 응답 heatmapCrops[].rank 다. "
+                           + "토큰이 유효하지 않거나 그 번호의 확대 히트맵이 없으면 404.")
+    @GetMapping("/session/{token}/heatmap/crops/{rank}")
+    public ResponseEntity<byte[]> heatmapCrop(
+            @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token,
+            @Parameter(description = "확대 히트맵 번호(1부터)") @PathVariable int rank) {
+        return kioskService.getHeatmapCropContentByToken(token, rank);
+    }
 }

@@ -57,6 +57,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/kiosk/session/*").permitAll()
                 .requestMatchers("/api/kiosk/session/*/analyze").permitAll()
                 .requestMatchers("/api/kiosk/session/*/heatmap").permitAll()
+                .requestMatchers("/api/kiosk/session/*/heatmap/crops/*").permitAll()
 
                 // QR 없이 시연할 때의 폴백. 토큰 없이 "다음 대기 환자"를 알려주므로
                 // 기본은 비활성이고 KIOSK_AUTO_PENDING=true 일 때만 동작한다(KioskService 참고).
