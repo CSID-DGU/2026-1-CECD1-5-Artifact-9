@@ -82,6 +82,8 @@
 
 Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함께 **GradCAM 오버레이 이미지**가 반환된다. Top-1 신뢰도가 임계값(`LOW_CONFIDENCE_THRESHOLD`, 기본 0.45) 미만이면 결과에 **"확신 낮음" 경고**가 함께 붙는다 — 결과를 막지는 않는다. 홀드아웃 2,857장 기준 약 14%에 경고가 붙고, 그 14% 안에 전체 오답의 38%가 들어 있다.
 
+히트맵은 한 가지 색띠로 칠한다 — 빨강은 AI가 진단 근거로 삼은 곳, 파랑은 근거로 삼지 않은 곳이다. 히트맵 보기에서는 전체 이미지 위에 히트맵이 짚은 곳(최대 3곳)을 번호 상자로 표시하고, 그 영역을 확대한 **확대 히트맵**을 나란히 보여 준다. 피부 병변 분석에서 원본만으로 신뢰도가 경고선 미만이면 확대 영역들의 판정을 함께 보고 **다시 판정**하며, 원본 사진만 본 답도 함께 표시한다(확신 낮음 경고는 그대로 남고, 원본이 악성·전암을 짚었다면 재판정 뒤에도 그 경고 문구를 유지한다).
+
 <img width="302" height="418" alt="image" src="https://github.com/user-attachments/assets/47273a55-5133-4dca-a35c-ce2dfa25d6bc" />
 <img width="272" height="452" alt="image" src="https://github.com/user-attachments/assets/585c2fde-9dcf-400a-a17e-b1196d55ef6d" />
 
@@ -129,7 +131,7 @@ Top-1 질환명, Top-5 후보, confidence, inference time, model version과 함�
 
 ### AI 피부 병변 분석 + GradCAM 설명 히트맵 
 
-업로드 이미지를 EfficientNet-B0 모델로 분석하여 **Top-1 / Top-5 후보 질환 + confidence + inference time + model version** 을 반환한다. 동시에 **GradCAM 오버레이 이미지(JPEG)** 를 함께 생성·저장해 의료진이 "AI가 어디를 보고 판단했는지"를 시각적으로 확인할 수 있다. GradCAM은 cv2/grad-cam 라이브러리 의존 없이 **순수 PyTorch + Pillow** 로 구현되어 컨테이너 이미지가 가볍다.
+업로드 이미지를 EfficientNet-B0 모델로 분석하여 **Top-1 / Top-5 후보 질환 + confidence + inference time + model version** 을 반환한다. 동시에 **GradCAM 오버레이 이미지(JPEG)** 를 함께 생성·저장해 의료진이 "AI가 어디를 보고 판단했는지"를 시각적으로 확인할 수 있다. GradCAM은 cv2/grad-cam 라이브러리 의존 없이 **순수 PyTorch + Pillow** 로 구현되어 컨테이너 이미지가 가볍다. 히트맵은 `blocks.4` LayerCAM 을 좌우 반전과 평균해 뽑고, 확대 히트맵(최대 3장)과 낮은 신뢰도일 때의 확대 재판정 결과를 함께 돌려준다 — 방식을 고른 측정(ISIC 정답 마스크 1,100장 병변 적중 91.5%, 공식 홀드아웃 재판정 효과)은 `fastapi/tests/baselines/README.md` ③ 에 있다.
 
 ### LLM 처방 코멘트 
 
@@ -616,7 +618,7 @@ GEMINI_API_KEY=
 | 검색 결과가 비어 있음 | 백엔드 첫 기동의 비동기 적재(`data-initializer` 스레드) 완료 여부, `resources/data/*.xlsx` 존재 여부 확인 |
 | S3 관련 오류 | 환경변수 미설정 시 `IMAGE_STORAGE_TYPE=local` 권장 |
 | GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] CAM 계산 실패` 또는 `[GradCAM] 히트맵 렌더링 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
-| 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(표시 임계값을 넘는 면적 비율)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 표시 범위는 `HEATMAP_DISPLAY_FLOOR`(기본 0.35)·`HEATMAP_ALPHA_MAX`(기본 0.60) 로 조절하며, 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
+| 히트맵이 넓게 퍼져 흐릿함 | 오염이 아니라 정직한 표시다 — 모델이 한 곳을 근거로 삼지 못하면 연한 큰 얼룩으로 보인다. 응답의 `heatmap_quality.focus_area`(격자 CAM 이 0.5 이상인 칸의 비율 — 흐림을 거친 화면의 맵과는 조금 다르다)·`peak_ratio`(상위 10% 가 담은 CAM 에너지)가 그 상태를 서술하지만, **이 값으로 좋다/나쁘다를 판정하지는 말 것** — 실측에서 품질과 상관이 없었다(`fastapi/main.py` 의 `_cam_quality` 독스트링). 색의 진하기는 `HEATMAP_ALPHA_MIN`(기본 0.25)·`HEATMAP_ALPHA_MAX`(기본 0.60), 흐림은 `HEATMAP_SMOOTH`(기본 0.03)로 조절한다 — 셋 다 색만 바꾼다. `HEATMAP_CROPS`(기본 3, 0~3)는 화면에 보여 줄 확대 히트맵 수만 바꾼다 — 확대 재판정은 이 값과 상관없이 최대 3곳으로 한다. 넷 다 `docker-compose.yml` 이 `.env` 에서 넘긴다. 현재 값과 CAM 레이어는 `/health` 가 돌려준다 |
 | Gemini 코멘트가 "키가 설정되지 않았습니다." | `GEMINI_API_KEY` 환경변수 설정 후 재기동 |
 | Gemini 503 | 1·2초 자동 재시도 후에도 실패 시 잠시 후 다시 시도 |
 | 잘못된 상태 전이 (`409 IllegalState`) | Visit 상태머신 위반 — 화면을 새로고침해 최신 상태 확인 |
