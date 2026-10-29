@@ -16,7 +16,7 @@ import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
 import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
-import { SearchModal, type SearchItem } from "../components/SearchModal";
+import { SearchModal } from "../components/SearchModal";
 import { Table } from "../components/Table";
 import { formatConfidence } from "../utils/confidence";
 
@@ -125,9 +125,9 @@ export default function Clinic() {
   type AnalysisCandidate = AnalysisResponse["top5"][number];
   type SelectedKcd = { id: number; code: string; nameKr: string; isPrimary: boolean; sourceDiseaseCode?: string };
   const [selectedKcds, setSelectedKcds] = useState<SelectedKcd[]>([]);
-  const [selectedDrug, setSelectedDrug] = useState<SearchItem | null>(null);
-  const [drugDosage, setDrugDosage] = useState("");
-  const [drugDays, setDrugDays] = useState("");
+  // 처방 약품은 여러 개다. 용법·기간은 약품마다 따로 적는다.
+  type SelectedDrug = { id: number; code: string; nameKr: string; dosage: string; days: string };
+  const [selectedDrugs, setSelectedDrugs] = useState<SelectedDrug[]>([]);
   const [doctorNotes, setDoctorNotes] = useState("");
   const [selectedAnalysisCandidateCodes, setSelectedAnalysisCandidateCodes] = useState<string[]>([]);
   const [resolvingCandidateCode, setResolvingCandidateCode] = useState<string | null>(null);
@@ -209,9 +209,7 @@ export default function Clinic() {
     setAiCommentError(null);
     commentRequestSeq.current += 1;
     setIsCommentLoading(false);
-    setSelectedDrug(null);
-    setDrugDosage("");
-    setDrugDays("");
+    setSelectedDrugs([]);
     setDoctorNotes("");
   }
 
@@ -349,7 +347,7 @@ export default function Clinic() {
   }
 
   async function handleSavePrescription() {
-    if (!selectedVisit || selectedKcds.length === 0 || !selectedDrug || !user) return;
+    if (!selectedVisit || selectedKcds.length === 0 || selectedDrugs.length === 0 || !user) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
     try {
       // 진단 확정 → 처방 저장 전이는 백엔드가 한 트랜잭션에서 처리한다(Visit.confirmDiagnosisAndPrescribe).
@@ -365,11 +363,11 @@ export default function Clinic() {
         aiCommentModel: aiComment?.model ?? null,
         aiCommentGeneratedAt: aiComment?.generatedAt ?? null,
         aiCommentEdited: aiComment?.edited ?? null,
-        details: [{
-          medicineName: selectedDrug.nameKr,
-          dosage: drugDosage.trim() || null,
-          durationDays: drugDays ? Number(drugDays) : null,
-        }],
+        details: selectedDrugs.map((d) => ({
+          medicineName: d.nameKr,
+          dosage: d.dosage.trim() || null,
+          durationDays: d.days ? Number(d.days) : null,
+        })),
       });
       setPrescription(saved);
       setSelectedVisit((cur) => cur ? { ...cur, status: "PRESCRIBED" } : cur);
@@ -537,7 +535,13 @@ export default function Clinic() {
       <SearchModal
         isOpen={isDrugModalOpen}
         onClose={() => setDrugModalOpen(false)}
-        onSelect={(item) => setSelectedDrug(item)}
+        onSelect={(item) => {
+          // 고를 때마다 한 줄씩 더한다. 이미 있는 약품이면 그대로 둔다(상병과 같은 규칙) — 적어 둔 용법·기간이 지워지지 않게.
+          setSelectedDrugs(prev => {
+            if (prev.find(d => d.id === item.id)) return prev;
+            return [...prev, { id: item.id, code: item.code, nameKr: item.nameKr, dosage: "", days: "" }];
+          });
+        }}
         title="약품 검색"
         placeholder="약품명 검색 (예: 타크로리무스, 스테로이드)"
         onSearch={searchDrugs}
@@ -1094,31 +1098,42 @@ export default function Clinic() {
                           <span>기간</span>
                           <span className="text-right">관리</span>
                         </div>
-                        {selectedDrug ? (
-                          <div className="grid grid-cols-[72px_1fr_1fr_58px_44px] items-center gap-1.5 border-t border-gray-800 px-2 py-1.5 text-xs">
-                            <span className="font-mono text-blue-300">{selectedDrug.code}</span>
-                            <span className="min-w-0 truncate text-white" title={selectedDrug.nameKr}>{selectedDrug.nameKr}</span>
-                            <input
-                              type="text"
-                              value={drugDosage}
-                              onChange={(e) => setDrugDosage(e.target.value)}
-                              placeholder="1일 2회 도포"
-                              className="min-w-0 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
-                            />
-                            <input
-                              type="number"
-                              value={drugDays}
-                              onChange={(e) => setDrugDays(e.target.value)}
-                              placeholder="일"
-                              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
-                            />
-                            <button
-                              onClick={() => setSelectedDrug(null)}
-                              className="text-right text-[10px] text-gray-400 transition-colors hover:text-red-400"
-                            >
-                              삭제
-                            </button>
-                          </div>
+                        {selectedDrugs.length > 0 ? (
+                          selectedDrugs.map((drug) => (
+                            <div key={drug.id} className="grid grid-cols-[72px_1fr_1fr_58px_44px] items-center gap-1.5 border-t border-gray-800 px-2 py-1.5 text-xs">
+                              <span className="font-mono text-blue-300">{drug.code}</span>
+                              <span className="min-w-0 truncate text-white" title={drug.nameKr}>{drug.nameKr}</span>
+                              <input
+                                type="text"
+                                value={drug.dosage}
+                                onChange={(e) => {
+                                  const dosage = e.target.value;
+                                  setSelectedDrugs(prev => prev.map(d => d.id === drug.id ? { ...d, dosage } : d));
+                                }}
+                                placeholder="1일 2회 도포"
+                                aria-label={`${drug.nameKr} 용법`}
+                                className="min-w-0 rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                              />
+                              <input
+                                type="number"
+                                value={drug.days}
+                                onChange={(e) => {
+                                  const days = e.target.value;
+                                  setSelectedDrugs(prev => prev.map(d => d.id === drug.id ? { ...d, days } : d));
+                                }}
+                                placeholder="일"
+                                aria-label={`${drug.nameKr} 기간(일)`}
+                                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => setSelectedDrugs(prev => prev.filter(d => d.id !== drug.id))}
+                                aria-label={`${drug.nameKr} 삭제`}
+                                className="text-right text-[10px] text-gray-400 transition-colors hover:text-red-400"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          ))
                         ) : (
                           <div className="border-t border-gray-800 px-2 py-2 text-center text-[11px] text-gray-500">
                             선택된 약품이 없습니다.
@@ -1129,7 +1144,7 @@ export default function Clinic() {
                         onClick={() => setDrugModalOpen(true)}
                         className="w-full px-2 py-1.5 rounded border border-dashed border-gray-600 text-xs text-gray-400 hover:border-blue-500 hover:text-blue-300 transition-colors text-left"
                       >
-                        + 약품 검색 (클릭하여 선택)
+                        + 약품 검색 (클릭하여 추가)
                       </button>
                     </div>
 
@@ -1147,7 +1162,7 @@ export default function Clinic() {
 
                     <Button
                       onClick={handleSavePrescription}
-                      disabled={selectedKcds.length === 0 || !selectedDrug || isActionLoading}
+                      disabled={selectedKcds.length === 0 || selectedDrugs.length === 0 || isActionLoading}
                       className="py-1.5 text-xs w-full"
                     >
                       처방 저장
