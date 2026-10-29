@@ -111,6 +111,11 @@ services:
       # 모델명이 빈 채로 넘어가면 요청 URL 에서 모델이 통째로 빠져 본문 없는 404 가 돌아오고,
       # 화면에는 "AI가 빈 응답을 반환했습니다" 로만 보인다.
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      # 1차 모델이 503(과부하)·429 를 내면 같은 키로 차례로 부를 모델들. 기본값을 여기 두는 이유는 위와 같다.
+      GEMINI_FALLBACK_MODELS: ${GEMINI_FALLBACK_MODELS:-gemini-3.5-flash-lite,gemini-flash-lite-latest}
+      # 보조 LLM(Claude). 키가 비어 있으면 이 단계만 빠진다. 키는 .env 에만 적는다.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-5-5}
 
       # 제증명(진단서·처방전 등) 문서 머리말에 찍히는 의료기관 정보.
       # 여기 나열하지 않으면 .env 에 적어도 컨테이너 안으로 전달되지 않는다.

@@ -7,7 +7,7 @@ import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.image.ImageStorageService;
 import com.artifact.diagnosis.patient.Patient;
 import com.artifact.diagnosis.patient.PatientRepository;
-import com.artifact.diagnosis.prescription.GeminiService;
+import com.artifact.diagnosis.prescription.AiCommentService;
 import com.artifact.diagnosis.visit.KioskTokenGenerator;
 import com.artifact.diagnosis.visit.Visit;
 import com.artifact.diagnosis.visit.VisitRepository;
@@ -52,7 +52,7 @@ public class KioskService {
     private final PreliminaryAnalysisRepository preliminaryAnalysisRepository;
     private final KioskTransactionService kioskTransactionService;
     private final ImageStorageService imageStorageService;
-    private final GeminiService geminiService;
+    private final AiCommentService aiCommentService;
     private final ObjectMapper objectMapper;
     private final KioskTokenGenerator kioskTokenGenerator;
     private final LowConfidenceCaution lowConfidenceCaution;
@@ -83,6 +83,7 @@ public class KioskService {
      * disease.name_ko 컬럼은 과거 초기 적재 시 인코딩이 깨져 있어(mojibake) 재조회 시 사용하지 않는다.
      * AnalysisService.DISEASE_NAME_KO 와 동일한 값 — 모델 클래스 코드 → 한글 병명 하드코딩 매핑.
      * 두 사본의 코드 집합과 값이 같은지는 fastapi/tests/test_model_contract.py [7] 이 대조한다.
+     * 키오스크 참고 소견 프롬프트에도 이 이름을 넘긴다 — 코드(nv, mel)를 그대로 주면 환자 화면에 영문 약어가 섞인다.
      *
      * 키오스크는 skin_lesion 모델만 부르므로(아래 callFastApi) facial 6종이 여기서 조회될 일은 아직 없지만,
      * 계약 테스트가 두 맵을 통째로 비교하므로 같은 14쌍을 둔다.
@@ -155,14 +156,15 @@ public class KioskService {
 
     /**
      * 태블릿에서 선택한 이미지로 예비분석을 수행한다.
-     * Top-K + GradCAM은 FastAPI에서, 참고 소견은 Gemini에서 받아 preliminary_analysis에 저장(upsert)한다.
+     * Top-K + GradCAM은 FastAPI에서, 참고 소견은 LLM(Gemini, 과부하 시 대체 모델·Claude)에서 받아
+     * preliminary_analysis에 저장(upsert)한다.
      * Visit 상태는 변경하지 않는다(RECEIVED 유지) — 정식 진료 흐름과 완전히 분리된 채널이다.
      *
      * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
      * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
      *
      * {@code @Transactional} 이 없는 것은 의도된 것이다. 한 번 호출에 외부 왕복이
-     * 세 번(FastAPI 추론 → 히트맵 업로드 → Gemini) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
+     * 세 번(FastAPI 추론 → 히트맵 업로드 → LLM) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
      * DB 커넥션을 붙잡는다. 태블릿 몇 대가 동시에 촬영하면 커넥션 풀이 말라 진료실 화면까지 멈춘다.
      * DB 쓰기는 마지막에 {@link KioskTransactionService#saveResult} 한 번으로 끝낸다.
      */
@@ -193,7 +195,7 @@ public class KioskService {
             gradcamKey = imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
         }
 
-        String aiComment = geminiService.generatePreliminaryComment(topK);
+        String aiComment = aiCommentService.generatePreliminaryComment(topK, DISEASE_NAME_KO);
 
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
         PreliminaryAnalysis entity = kioskTransactionService.saveResult(

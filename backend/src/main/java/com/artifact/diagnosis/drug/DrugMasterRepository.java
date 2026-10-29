@@ -23,6 +23,17 @@ public interface DrugMasterRepository extends JpaRepository<DrugMaster, Long> {
             """)
     Page<DrugMaster> searchByPattern(@Param("pattern") String pattern, Pageable pageable);
 
-    /** Gemini 프롬프트용 예시 약품 조회. 인자가 코드에 박힌 고정 문자열이라 사용자 입력이 닿지 않는다. */
-    List<DrugMaster> findByNameKrContaining(String keyword, Pageable pageable);
+    /**
+     * 성분명이 이름에 든 외용제(연고·크림·겔·로션·외용액·폼). 처방 코멘트 프롬프트의 참고 약품 후보용이다
+     * ({@code prescription.DrugCandidates}). 성분명은 코드에 박힌 고정 문자열이라 사용자 입력이 닿지 않는다.
+     * PK 순으로 정렬해 같은 상병이면 늘 같은 후보가 나오게 한다.
+     */
+    @Query("""
+            select d from DrugMaster d
+            where d.nameKr like concat('%', :ingredient, '%')
+              and (d.nameKr like '%연고%' or d.nameKr like '%크림%' or d.nameKr like '%겔%'
+                   or d.nameKr like '%로션%' or d.nameKr like '%외용액%' or d.nameKr like '%폼%')
+            order by d.id
+            """)
+    List<DrugMaster> findTopicalByIngredient(@Param("ingredient") String ingredient, Pageable pageable);
 }

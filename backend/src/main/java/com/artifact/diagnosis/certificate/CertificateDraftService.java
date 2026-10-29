@@ -1,8 +1,10 @@
 package com.artifact.diagnosis.certificate;
 
 import com.artifact.diagnosis.common.util.PiiMasker;
-import com.artifact.diagnosis.gemini.GeminiClient;
-import com.artifact.diagnosis.gemini.GeminiResult;
+import com.artifact.diagnosis.llm.LlmGateway;
+import com.artifact.diagnosis.llm.LlmMessages;
+import com.artifact.diagnosis.llm.LlmRequest;
+import com.artifact.diagnosis.llm.LlmResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -12,9 +14,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 증명서의 서술형 칸 초안을 만든다.
@@ -22,13 +22,14 @@ import java.util.Map;
  * 이 서비스가 건드리는 것은 소견·치료계획·의뢰사유뿐이다. 병명, KCD 코드, 약품명, 진료일,
  * 면허번호 같은 사실 항목은 프롬프트에 재료로만 들어가고 응답에서는 받지 않는다.
  * 모델이 병명 한 줄을 그럴듯하게 지어내면 그건 문서 초안이 아니라 허위진단서가 되기 때문이다.
- * 응답 스키마를 서술 필드로만 고정하는 것이 그 경계를 코드로 강제하는 방법이다.
+ * 응답 스키마를 서술 필드로만 고정하는 것이 그 경계를 코드로 강제하는 방법이다. 필드 목록은
+ * {@link LlmRequest#json} 으로 넘기고, Gemini·Claude 가 각자 자기 스키마 문법으로 바꿔 강제한다.
  *
  * 환자 이름·연락처는 프롬프트에 넣지 않는다. 나이는 연령대로만 준다. 자유 서술인 메모는
  * {@link PiiMasker} 를 거친다 — 외부 서버 로그에 환자 신원을 남기지 않기 위해서다.
  *
  * 실패는 예외로 던지지 않고 {@link CertificateDraftResponse#unavailable} 로 돌려준다.
- * 초안은 타자를 대신 쳐주는 편의 기능이라, Gemini가 죽어도 의사가 직접 써서 발급할 수 있어야 한다.
+ * 초안은 타자를 대신 쳐주는 편의 기능이라, AI 공급자가 모두 죽어도 의사가 직접 써서 발급할 수 있어야 한다.
  */
 @Slf4j
 @Service
@@ -36,7 +37,7 @@ import java.util.Map;
 public class CertificateDraftService {
 
     private final ObjectMapper objectMapper;
-    private final GeminiClient geminiClient;
+    private final LlmGateway llmGateway;
 
     /**
      * 서술 칸 초안 생성.
@@ -50,20 +51,17 @@ public class CertificateDraftService {
             return CertificateDraftResponse.unavailable(
                     type.getLabel() + "은(는) 서술 항목이 없어 AI 초안을 만들지 않습니다.");
         }
-        if (!geminiClient.hasApiKey()) {
-            return CertificateDraftResponse.unavailable("Gemini API 키가 설정되지 않았습니다. 직접 작성해 주세요.");
-        }
-
         String prompt = buildPrompt(facts, req);
 
-        // 응답 형식을 JSON 스키마로 못 박는다. 모델이 문단을 통째로 뱉거나 사실 항목을 끼워
-        // 넣을 여지를 구조적으로 없애기 위해서다. temperature는 낮게 — 같은 진료면 같은 문장이 낫다.
-        GeminiResult result = geminiClient.generate(prompt, "application/json", responseSchema(type), 0.2);
+        // 응답 형식을 서술 필드만 있는 JSON 으로 못 박는다. 모델이 문단을 통째로 뱉거나 사실 항목을
+        // 끼워 넣을 여지를 구조적으로 없애기 위해서다. temperature는 낮게 — 같은 진료면 같은 문장이 낫다
+        // (Gemini 에만 전달된다. Claude 최신 모델은 sampling 파라미터를 받지 않는다).
+        LlmResult result = llmGateway.generate(
+                LlmRequest.json("certificate-draft", prompt, type.getAiFields(), 0.2));
         if (!result.success()) {
-            log.error("Gemini API 실패(증명서 초안): {}", result.errorMessage());
-            String message = result.isOverloaded()
+            String message = result.isTemporaryFailure()
                     ? "AI 서버가 일시적으로 혼잡합니다. 직접 작성하거나 잠시 후 다시 시도해 주세요."
-                    : "AI 초안 생성에 실패했습니다. 직접 작성해 주세요.";
+                    : LlmMessages.reason(result) + " 직접 작성해 주세요.";
             return CertificateDraftResponse.unavailable(message);
         }
 
@@ -78,22 +76,9 @@ public class CertificateDraftService {
                     CertificateDraftResponse.DISCLAIMER
             );
         } catch (Exception e) {
-            log.error("Gemini 증명서 초안 응답 파싱 실패: {}", e.getMessage());
+            log.error("증명서 초안 응답 파싱 실패 (model={}): {}", result.model(), e.getMessage());
             return CertificateDraftResponse.unavailable("AI 초안 생성에 실패했습니다. 직접 작성해 주세요.");
         }
-    }
-
-    /** 종류가 쓰는 서술 필드만 스키마에 넣는다 — 그 외 필드는 모델이 반환할 수단 자체가 없다. */
-    private Map<String, Object> responseSchema(CertificateType type) {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        for (String field : type.getAiFields()) {
-            properties.put(field, Map.of("type", "STRING"));
-        }
-        return Map.of(
-                "type", "OBJECT",
-                "properties", properties,
-                "required", type.getAiFields()
-        );
     }
 
     private String buildPrompt(CertificateFacts facts, CertificateDraftRequest req) {
@@ -158,6 +143,7 @@ public class CertificateDraftService {
                 - 치료 기간이나 완치 시점을 단정하지 말고 "경과에 따라", "추적 관찰이 필요함" 같은 표현을 쓰세요.
                 - 환자 이름, 연락처, 주민등록번호를 문장에 넣지 마세요.
                 - 진단서 문어체(~함, ~됨, ~필요함)로 쓰고, 각 항목은 3문장을 넘기지 마세요.
+                - 한글로 쓰고 한자는 쓰지 마세요.
                 %s
                 """.formatted(type.getLabel(), String.join("\n", lines), fieldGuide(type));
     }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ANALYSIS_TYPE_LABELS, getLatestAnalysis, requestAnalysis, type AnalysisResponse, type AnalysisType } from "../api/analysis";
 import { getErrorMessage } from "../api/errors";
 import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
@@ -145,6 +145,11 @@ export default function Clinic() {
     edited: boolean;     // 의사가 저장 전 수정했으면 true
   } | null>(null);
   const [isCommentLoading, setIsCommentLoading] = useState(false);
+  // 코멘트를 못 받았을 때의 사유. 코멘트 칸과 따로 둔다 — 사유가 코멘트로 저장되면 처방 기록이 오염된다.
+  const [aiCommentError, setAiCommentError] = useState<string | null>(null);
+  // 코멘트 요청 번호. 대체 경로까지 돌면 응답이 수십 초 늦게 올 수 있다. 그사이 다른 진료로 옮겼거나
+  // 다시 요청했으면 늦게 온 응답을 버린다 — 앞 환자의 코멘트가 지금 환자의 처방에 섞여 저장되면 안 된다.
+  const commentRequestSeq = useRef(0);
 
   // 로딩 / 메시지
   const [isLoading, setIsLoading] = useState(false);
@@ -193,19 +198,30 @@ export default function Clinic() {
   }
 
   // ── 상세 로드 ────────────────────────────────────────────────────
+  /**
+   * 처방 입력 상태를 비운다. 진행 중인 AI 코멘트 요청도 무효로 만든다 — 늦게 온 응답이 다른 진료에
+   * 들어가지 않게 하기 위해서다(요청 번호가 바뀌면 그 응답은 버려진다).
+   */
+  function resetVisitForm() {
+    setSelectedKcds([]);
+    setSelectedAnalysisCandidateCodes([]);
+    setAiComment(null);
+    setAiCommentError(null);
+    commentRequestSeq.current += 1;
+    setIsCommentLoading(false);
+    setSelectedDrug(null);
+    setDrugDosage("");
+    setDrugDays("");
+    setDoctorNotes("");
+  }
+
   async function loadVisitDetail(visitId: number) {
     setIsActionLoading(true);
     setErrorMessage(null);
     setMessage(null);
     setPrescription(null);
     setPreliminaryAnalysis(null);
-    setSelectedKcds([]);
-    setSelectedAnalysisCandidateCodes([]);
-    setAiComment(null);
-    setSelectedDrug(null);
-    setDrugDosage("");
-    setDrugDays("");
-    setDoctorNotes("");
+    resetVisitForm();
 
     try {
       const visit = await getVisit(visitId);
@@ -223,6 +239,9 @@ export default function Clinic() {
           : null;
       const preliminary = await getPreliminaryAnalysis(visit.id).catch(() => null);
 
+      // 불러오는 동안에도 앞 진료 화면은 그대로 떠 있어 상병을 고르거나 코멘트를 요청할 수 있다.
+      // 화면이 실제로 바뀌는 이 지점에서 한 번 더 비워, 그사이 생긴 것이 새 진료로 넘어가지 않게 한다.
+      resetVisitForm();
       setSelectedVisit(visit);
       setSelectedPatient(patient);
       setImages(visitImages);
@@ -318,6 +337,10 @@ export default function Clinic() {
       setAnalysis(result);
       setSelectedAnalysisCandidateCodes([]);
       setSelectedKcds([]);
+      // 상병을 비웠으니, 앞 상병으로 요청해 둔 코멘트 응답도 받지 않는다.
+      commentRequestSeq.current += 1;
+      setAiComment(null);
+      setIsCommentLoading(false);
       setSelectedVisit((cur) => cur ? { ...cur, status: "ANALYZED" } : cur);
       await loadVisitLists();
       setMessage("AI 분석이 완료되었습니다. 결과를 확인하고 처방을 입력하세요.");
@@ -995,27 +1018,45 @@ export default function Clinic() {
                       <button
                         onClick={async () => {
                           if (!selectedVisit || selectedKcds.length === 0) return;
+                          commentRequestSeq.current += 1;
+                          const requestSeq = commentRequestSeq.current;
                           setIsCommentLoading(true);
                           try {
                             const result = await getAiPrescriptionComment(
                               selectedVisit.id,
                               selectedKcds.map(k => ({ kcdCode: k.code, kcdNameKr: k.nameKr, isPrimary: k.isPrimary }))
                             );
+                            if (requestSeq !== commentRequestSeq.current) return;
+                            if (result.available === false) {
+                              setAiComment(null);
+                              setAiCommentError(result.line1 || "AI 코멘트를 받지 못했습니다.");
+                              return;
+                            }
+                            setAiCommentError(null);
                             setAiComment({
-                              ...result,
-                              model: "gemini-3.1-flash-lite",
+                              line1: result.line1,
+                              line2: result.line2,
+                              // 모델명을 고정하지 않는다. 대체 경로로 다른 모델이 답할 수 있다.
+                              model: result.model ?? "AI",
                               // LocalDateTime은 Z(timezone) 없는 ISO 형식만 허용
                               generatedAt: new Date().toISOString().slice(0, 19),
                               edited: false,
                             });
-                          } catch { setAiComment(null); }
-                          finally { setIsCommentLoading(false); }
+                          } catch {
+                            if (requestSeq !== commentRequestSeq.current) return;
+                            setAiComment(null);
+                            setAiCommentError("AI 코멘트 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+                          }
+                          finally { if (requestSeq === commentRequestSeq.current) setIsCommentLoading(false); }
                         }}
-                        disabled={selectedKcds.length === 0 || isCommentLoading}
+                        disabled={selectedKcds.length === 0 || isCommentLoading || isActionLoading}
                         className="w-full px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isCommentLoading ? "AI 분석 중..." : "AI 처방 코멘트 생성"}
                       </button>
+                      {aiCommentError && !aiComment && (
+                        <p className="text-[11px] text-amber-300">{aiCommentError}</p>
+                      )}
                       {aiComment && (
                         <div className="rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1.5 flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
