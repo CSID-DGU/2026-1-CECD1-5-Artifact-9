@@ -20,13 +20,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Base64;
 
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Objects;
 
 @Slf4j
 @Service
@@ -38,6 +36,7 @@ public class AnalysisService {
     private final AnalysisImageRepository analysisImageRepository;
     private final DiseaseRepository diseaseRepository;
     private final ImageStorageService imageStorageService;
+    private final HeatmapStorage heatmapStorage;
     private final LowConfidenceCaution lowConfidenceCaution;
     private final ObjectMapper objectMapper;
 
@@ -180,7 +179,8 @@ public class AnalysisService {
                     .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
                     .toList();
 
-            AnalysisTransactionService.StoredHeatmap heatmap = uploadHeatmaps(visitId, prediction);
+            // 전체·확대 히트맵이 같은 접두어를 쓴다 — 스토리지에서 한 분석의 그림끼리 나란히 보인다.
+            StoredHeatmap heatmap = heatmapStorage.upload("heatmap/" + visitId + "/" + System.currentTimeMillis(), prediction);
 
             // 확대 재판정을 했으면 원본만 본 1순위를 함께 남긴다 — top1 이 그것과 다를 수 있다
             // ("원본만 보면 X 였는데 확대 영역까지 보고 Y 로 판정했다"를 나중에도 말할 수 있어야 한다).
@@ -243,32 +243,6 @@ public class AnalysisService {
                 .toList();
     }
 
-    /**
-     * 히트맵 저장 (키만 DB에 보관, URL은 응답 시 생성). 스토리지 왕복이므로 트랜잭션 밖에서 부른다.
-     *
-     * 확대 히트맵은 하나가 실패하면 그것만 건너뛴다. 확대 보기는 전체 히트맵을 거들 뿐이라 그 때문에
-     * 이미 끝난 추론까지 버리면 안 된다. 전체 히트맵은 지금까지처럼 실패하면 분석이 실패한다.
-     */
-    private AnalysisTransactionService.StoredHeatmap uploadHeatmaps(Long visitId, FastApiPredictResponse prediction) {
-        // 전체·확대 히트맵이 같은 접두어를 쓴다 — 스토리지에서 한 분석의 그림끼리 나란히 보인다.
-        String prefix = "heatmap/" + visitId + "/" + System.currentTimeMillis();
-        String key = prediction.heatmapBase64() == null ? null
-                : imageStorageService.uploadBytes(prefix + ".jpg",
-                        Base64.getDecoder().decode(prediction.heatmapBase64()), "image/jpeg");
-
-        List<HeatmapCrop> crops = new ArrayList<>();
-        for (FastApiCrop crop : Objects.requireNonNullElse(prediction.crops(), List.<FastApiCrop>of())) {
-            try {
-                String cropKey = imageStorageService.uploadBytes(prefix + "_crop" + crop.rank() + ".jpg",
-                        Base64.getDecoder().decode(crop.heatmapBase64()), "image/jpeg");
-                crops.add(new HeatmapCrop(crop.rank(), cropKey, crop.boxNorm(), crop.peak(), crop.source()));
-            } catch (RuntimeException e) {
-                log.warn("확대 히트맵 저장 실패 — 이 영역만 건너뛴다 visitId={} rank={}", visitId, crop.rank(), e);
-            }
-        }
-        return new AnalysisTransactionService.StoredHeatmap(key, prediction.heatmapStyle(), List.copyOf(crops));
-    }
-
     @Transactional(readOnly = true)
     public AnalysisResponse getLatest(Long visitId) {
         AnalysisResult result = analysisResultRepository
@@ -323,8 +297,7 @@ public class AnalysisService {
     public ResponseEntity<byte[]> getHeatmapCropContent(Long visitId, int rank) {
         HeatmapCrop crop = analysisResultRepository
                 .findFirstByVisitIdOrderByAnalyzedAtDesc(visitId)
-                .map(AnalysisResult::getHeatmapCrops)
-                .flatMap(crops -> crops.stream().filter(c -> c.rank() == rank).findFirst())
+                .map(r -> HeatmapStorage.findCrop(r.getHeatmapCrops(), rank))
                 .orElseThrow(() -> new NoSuchElementException("확대 히트맵이 없습니다: " + visitId + " #" + rank));
         return jpeg(imageStorageService.download(crop.key()));
     }
@@ -433,15 +406,8 @@ public class AnalysisService {
 
     /** 저장된 확대 히트맵을 화면용으로. 이 기능 전의 분석·확대 보기가 없는 분석은 빈 목록이다. */
     private static List<AnalysisResponse.HeatmapCropResult> heatmapCropResults(AnalysisResult result) {
-        if (result.getHeatmapCrops() == null) return List.of();
-        return result.getHeatmapCrops().stream()
-                .map(c -> new AnalysisResponse.HeatmapCropResult(
-                        c.rank(),
-                        "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap/crops/" + c.rank(),
-                        c.boxNorm(),
-                        c.peak(),
-                        c.source()))
-                .toList();
+        return HeatmapStorage.cropResults(result.getHeatmapCrops(),
+                "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap/crops/");
     }
 
     /** 재판정 전 원본 사진의 1순위 코드 — 경고 문구의 강도를 가를 때 함께 본다. 재판정하지 않았으면 null. */

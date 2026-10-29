@@ -14,7 +14,7 @@ import { completeVisit, getVisit, listVisits, startVisit, type Visit, type Visit
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
-import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
+import { AuthedHeatmapWithBoxes, CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
@@ -120,6 +120,9 @@ export default function Clinic() {
   // 다 받아진 이미지의 주소. 상자는 이미지 크기에 대한 비율이라, 이미지가 뜨기 전(높이 0)에 그리면
   // 상자가 납작하게 아래 범례 위로 겹친다. 받아진 주소가 지금 주소와 같을 때만 상자를 그린다.
   const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
+  // 같은 역할이지만 대기 중 예비분석 카드 몫이다. 두 카드의 번호는 서로 다른 분석의 것이라 섞지 않는다.
+  // 그 카드의 "받아짐" 표시는 AuthedHeatmapWithBoxes 가 들고 있다.
+  const [activePrelimCropRank, setActivePrelimCropRank] = useState<number | null>(null);
 
   // 처방 폼
   type AnalysisCandidate = AnalysisResponse["top5"][number];
@@ -262,6 +265,7 @@ export default function Clinic() {
   useEffect(() => { loadVisitLists(); }, []);
 
   useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); }, [analysis]);
+  useEffect(() => { setActivePrelimCropRank(null); }, [preliminaryAnalysis]);
 
   useEffect(() => {
     if (!selectedFile) { setPreviewUrl(null); return; }
@@ -581,23 +585,51 @@ export default function Clinic() {
                     <p className="mt-0.5 text-xs text-blue-100">
                       신뢰도 {formatConfidence(preliminaryAnalysis.topK[0].confidence)}
                     </p>
+                    {/* 태블릿에서 환자도 같은 안내를 봤다 — 확대 재판정을 했으면 원본만 본 답을 함께 적는다. */}
+                    {preliminaryAnalysis.fullImageTop1 && (
+                      <p className="mt-1 text-[11px] leading-snug text-amber-200">
+                        원본 사진만으로는 {preliminaryAnalysis.fullImageTop1.diseaseNameKo} {formatConfidence(preliminaryAnalysis.fullImageTop1.confidence)}
+                        로 판단이 어려워, 히트맵이 짚은 곳을 확대해 함께 보고 다시 판정했습니다.
+                        {preliminaryAnalysis.topK[0]
+                          && preliminaryAnalysis.fullImageTop1.diseaseCode !== preliminaryAnalysis.topK[0].diseaseCode
+                          && " 1순위가 바뀌어, 아래 히트맵과 확대 영역은 바뀐 1순위 기준으로 다시 그린 것입니다."}
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {preliminaryAnalysis.gradcamUrl && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-gray-400">AI 병변 분석 히트맵</span>
-                    <div className="rounded border border-gray-700 bg-gray-900 overflow-hidden">
-                      <AuthedImage
-                        // 히트맵 URL은 visitId 기반이라 재분석해도 같은 경로다.
-                        // analyzedAt을 쿼리로 붙여야 브라우저 캐시가 새 결과를 새 URL로 본다.
-                        src={`${preliminaryAnalysis.gradcamUrl}?t=${encodeURIComponent(preliminaryAnalysis.analyzedAt)}`}
-                        alt="키오스크 예비분석 GradCAM"
-                        className="w-full"
-                      />
+                {preliminaryAnalysis.gradcamUrl && (() => {
+                  const prelimCrops = preliminaryAnalysis.heatmapCrops ?? [];
+                  // 히트맵 URL은 visitId 기반이라 재분석해도 같은 경로다.
+                  // analyzedAt을 쿼리로 붙여야 브라우저 캐시가 새 결과를 새 URL로 본다.
+                  const prelimHeatmapUrl = `${preliminaryAnalysis.gradcamUrl}?t=${encodeURIComponent(preliminaryAnalysis.analyzedAt)}`;
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] text-gray-400">AI 병변 분석 히트맵</span>
+                      <div className="rounded border border-gray-700 bg-gray-900 overflow-hidden">
+                        {/* 진료 카드와 같은 이유로, 상자는 히트맵이 다 받아진 뒤에만 그린다.
+                            주소마다 새로 그린다(key) — 다른 접수를 눌렀다 바로 돌아와도 옛 "받아짐" 표시나
+                            이미 해제한 이미지를 다시 쓰지 않는다. */}
+                        <AuthedHeatmapWithBoxes
+                          key={prelimHeatmapUrl}
+                          src={prelimHeatmapUrl}
+                          alt="키오스크 예비분석 히트맵"
+                          crops={prelimCrops}
+                          activeRank={activePrelimCropRank}
+                        />
+                        <HeatmapLegend hasCrops={prelimCrops.length > 0} heatmapStyle={preliminaryAnalysis.heatmapStyle ?? null} />
+                      </div>
+                      {prelimCrops.length > 0 && (
+                        <CropGallery
+                          crops={prelimCrops}
+                          cacheKey={preliminaryAnalysis.analyzedAt}
+                          activeRank={activePrelimCropRank}
+                          onActiveChange={setActivePrelimCropRank}
+                        />
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div className="border border-gray-700 rounded overflow-hidden">
                   <div className="grid grid-cols-[34px_72px_1fr_64px] bg-gray-950 px-2 py-1.5 text-[10px] font-semibold text-gray-400">
