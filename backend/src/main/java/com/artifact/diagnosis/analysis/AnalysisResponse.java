@@ -77,12 +77,15 @@ public record AnalysisResponse(
      * @param imageUrl 확대 히트맵 JPEG 경로(인증 필요). 재분석해도 경로가 같으므로 화면은 analyzedAt 을 붙여 캐시를 피한다.
      * @param boxNorm  원본 이미지 기준 [x0, y0, x1, y1], 각 0~1
      * @param peak     그 영역의 히트맵 최댓값(0~1)
+     * @param source   "reinfer"(확대 영역을 모델에 다시 넣어 그림) 또는 "zoom"(전체 히트맵을 잘라 키움).
+     *                 화면의 설명 문구가 이 값을 따른다. 이 필드 전의 기록은 null
      */
     public record HeatmapCropResult(
             int rank,
             String imageUrl,
             List<Double> boxNorm,
-            Double peak
+            Double peak,
+            String source
     ) {}
 
     public record FullImageTop1(

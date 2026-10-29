@@ -11,10 +11,12 @@ import java.util.List;
  * @param key     스토리지 키
  * @param boxNorm 원본 이미지 기준 [x0, y0, x1, y1], 각 0~1
  * @param peak    그 영역의 히트맵 최댓값(0~1)
+ * @param source  "reinfer" 또는 "zoom" — {@link FastApiCrop#source()} 그대로. 이 필드 전의 기록은 null
  */
 public record HeatmapCrop(
         int rank,
         String key,
         List<Double> boxNorm,
-        Double peak
+        Double peak,
+        String source
 ) {}

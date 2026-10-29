@@ -14,10 +14,13 @@ import java.util.List;
  * @param boxNorm       원본 이미지 기준 [x0, y0, x1, y1], 각 0~1. 화면이 전체 이미지 위에 상자를 그릴 때 쓴다.
  * @param peak          그 영역의 히트맵 최댓값(0~1). 1번은 늘 1에 가깝다.
  * @param heatmapBase64 확대 영역의 히트맵 오버레이 JPEG.
+ * @param source        "reinfer"(확대 영역을 모델에 다시 넣어 그림) 또는 "zoom"(전체 히트맵을 잘라 키움 —
+ *                      안면부, 또는 재추론이 실패한 피부 병변). 이 필드 전의 FastAPI 는 보내지 않는다(null).
  */
 public record FastApiCrop(
         int rank,
         @JsonProperty("box_norm") List<Double> boxNorm,
         Double peak,
-        @JsonProperty("heatmap_base64") String heatmapBase64
+        @JsonProperty("heatmap_base64") String heatmapBase64,
+        String source
 ) {}

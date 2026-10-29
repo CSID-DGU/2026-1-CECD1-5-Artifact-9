@@ -261,7 +261,7 @@ public class AnalysisService {
             try {
                 String cropKey = imageStorageService.uploadBytes(prefix + "_crop" + crop.rank() + ".jpg",
                         Base64.getDecoder().decode(crop.heatmapBase64()), "image/jpeg");
-                crops.add(new HeatmapCrop(crop.rank(), cropKey, crop.boxNorm(), crop.peak()));
+                crops.add(new HeatmapCrop(crop.rank(), cropKey, crop.boxNorm(), crop.peak(), crop.source()));
             } catch (RuntimeException e) {
                 log.warn("확대 히트맵 저장 실패 — 이 영역만 건너뛴다 visitId={} rank={}", visitId, crop.rank(), e);
             }
@@ -301,7 +301,7 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), disease.getDiseaseCode()),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), disease.getDiseaseCode(), fullImageCode(result)),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
                 heatmapApiUrl(result),
@@ -416,7 +416,7 @@ public class AnalysisService {
                 ),
                 top5,
                 result.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), prediction.top1().diseaseCode()),
+                lowConfidenceCaution.messageFor(result.getConfidenceLevel(), prediction.top1().diseaseCode(), fullImageCode(result)),
                 result.getInferenceTimeMs(),
                 result.getAnalyzedAt(),
                 heatmapApiUrl(result),
@@ -439,8 +439,14 @@ public class AnalysisService {
                         c.rank(),
                         "/api/v1/visits/" + result.getVisitId() + "/analysis/heatmap/crops/" + c.rank(),
                         c.boxNorm(),
-                        c.peak()))
+                        c.peak(),
+                        c.source()))
                 .toList();
+    }
+
+    /** 재판정 전 원본 사진의 1순위 코드 — 경고 문구의 강도를 가를 때 함께 본다. 재판정하지 않았으면 null. */
+    private static String fullImageCode(AnalysisResult result) {
+        return result.getFullImageTop1() == null ? null : result.getFullImageTop1().code();
     }
 
     private static AnalysisResponse.FullImageTop1 fullImageTop1Result(AnalysisResult result) {

@@ -62,10 +62,26 @@ public class LowConfidenceCaution {
      * @param diseaseCode     Top-1 병명 코드 — 문구의 강도를 여기서 가른다
      */
     public String messageFor(String confidenceLevel, String diseaseCode) {
+        return messageFor(confidenceLevel, diseaseCode, null);
+    }
+
+    /**
+     * 확대 재판정을 거친 결과용. 원본 사진의 1순위가 위험군이면, 재판정으로 바뀐 1순위가 양성이어도
+     * 위험 문구를 쓴다.
+     *
+     * <p>재판정은 통계적으로 원본과 구별되지 않는다(fastapi/tests/baselines/README.md ③, McNemar p=0.67).
+     * 그래서 확신 낮음 등급을 원본 기준으로 남기는데, 문구의 강도만 재판정된 병명을 따르면 원본이 짚은
+     * 악성 가능성을 재판정이 "참고용으로만"으로 지워 버린다. 원본 1순위는 화면에도 함께 나간다.
+     *
+     * @param fullImageDiseaseCode 재판정 전 원본 사진의 1순위 코드. 재판정하지 않았으면 null
+     */
+    public String messageFor(String confidenceLevel, String diseaseCode, String fullImageDiseaseCode) {
         if (!LEVEL_LOW.equals(confidenceLevel)) {
             return null;
         }
-        return isDangerous(diseaseCode) ? CAUTION_DANGEROUS : CAUTION_DEFAULT;
+        boolean dangerous = isDangerous(diseaseCode)
+                || (fullImageDiseaseCode != null && isDangerous(fullImageDiseaseCode));
+        return dangerous ? CAUTION_DANGEROUS : CAUTION_DEFAULT;
     }
 
     /**

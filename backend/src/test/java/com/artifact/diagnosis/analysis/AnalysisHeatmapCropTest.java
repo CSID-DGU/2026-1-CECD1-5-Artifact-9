@@ -126,9 +126,9 @@ class AnalysisHeatmapCropTest {
                          {"rank":2,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.31}],
                  "heatmap_base64":"%s","model_version":"efficientnet_b0-test","task":"skin_lesion",
                  "heatmap_style":"layercam-flip-jet-v2",
-                 "crops":[{"rank":1,"box_norm":[0.1,0.2,0.5,0.6],"peak":1.0,"heatmap_base64":"%s"},
-                          {"rank":2,"box_norm":[0.6,0.1,0.9,0.4],"peak":0.8,"heatmap_base64":"@@ not base64 @@"},
-                          {"rank":3,"box_norm":[0.4,0.5,0.7,0.8],"peak":0.74,"heatmap_base64":"%s"}],
+                 "crops":[{"rank":1,"box_norm":[0.1,0.2,0.5,0.6],"peak":1.0,"heatmap_base64":"%s","source":"reinfer"},
+                          {"rank":2,"box_norm":[0.6,0.1,0.9,0.4],"peak":0.8,"heatmap_base64":"@@ not base64 @@","source":"reinfer"},
+                          {"rank":3,"box_norm":[0.4,0.5,0.7,0.8],"peak":0.74,"heatmap_base64":"%s","source":"reinfer"}],
                  "full_image_top1":{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.38}}
                 """.formatted(b64(FULL_HEATMAP), b64(CROP_1), b64(CROP_3)));
         Visit visit = visitWithImage();
@@ -142,6 +142,9 @@ class AnalysisHeatmapCropTest {
                         org.assertj.core.groups.Tuple.tuple(1, cropBase + 1),
                         org.assertj.core.groups.Tuple.tuple(3, cropBase + 3));
         assertThat(analyzed.heatmapCrops().get(1).boxNorm()).containsExactly(0.4, 0.5, 0.7, 0.8);
+        // 화면이 "AI가 다시 본 근거"라고 쓸지가 이 값에 달려 있다 — 저장했다 다시 읽어도 남아야 한다.
+        assertThat(analyzed.heatmapCrops()).extracting(AnalysisResponse.HeatmapCropResult::source)
+                .containsOnly("reinfer");
         assertThat(analyzed.heatmapStyle()).isEqualTo("layercam-flip-jet-v2");
         assertThat(analyzed.top1().diseaseCode()).isEqualTo("mel");
         assertThat(analyzed.confidenceLevel()).isEqualTo("low");
@@ -183,6 +186,41 @@ class AnalysisHeatmapCropTest {
         assertThat(saved.getFullImageTop1()).isNull();
         assertThatThrownBy(() -> analysisService.getHeatmapCropContent(visit.getId(), 1))
                 .isInstanceOf(NoSuchElementException.class);
+    }
+
+    /**
+     * 원본은 mel 40% 였는데 확대 영역을 섞자 nv 47% 가 1순위가 된 경우. 재판정은 통계적으로 확실하지 않아서
+     * 원본이 짚은 악성 가능성을 지우면 안 된다 — 경고는 "참고용으로만"이 아니라 위험 문구여야 한다.
+     * 같은 nv 47% 라도 재판정이 아니었다면 일반 문구다(아래 대조) — 문구를 가른 것이 원본 1순위라는 뜻이다.
+     */
+    @Test
+    void rejudgedAwayFromMalignantKeepsTheDangerCaution() {
+        RESPONSE.set("""
+                {"confidence_level":"low","low_confidence_threshold":0.45,
+                 "top1":{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.47},
+                 "top5":[{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.47},
+                         {"rank":2,"disease_code":"mel","disease_name_ko":"악성 흑색종","confidence":0.31}],
+                 "heatmap_base64":"%s","model_version":"efficientnet_b0-test","task":"skin_lesion",
+                 "heatmap_style":"layercam-flip-jet-v2","crops":[],
+                 "full_image_top1":{"rank":1,"disease_code":"mel","disease_name_ko":"악성 흑색종","confidence":0.40}}
+                """.formatted(b64(FULL_HEATMAP)));
+        Visit rejudged = visitWithImage();
+
+        AnalysisResponse analyzed = analysisService.analyze(rejudged.getId(), List.of(imageOf(rejudged)));
+
+        assertThat(analyzed.top1().diseaseCode()).isEqualTo("nv");
+        assertThat(analyzed.caution()).contains("악성·전암 가능성");
+        assertThat(analysisService.getLatest(rejudged.getId()).caution()).isEqualTo(analyzed.caution());
+
+        RESPONSE.set("""
+                {"confidence_level":"low","low_confidence_threshold":0.45,
+                 "top1":{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.42},
+                 "top5":[{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.42}],
+                 "heatmap_base64":"%s","model_version":"efficientnet_b0-test","task":"skin_lesion"}
+                """.formatted(b64(FULL_HEATMAP)));
+        Visit plain = visitWithImage();
+        AnalysisResponse benign = analysisService.analyze(plain.getId(), List.of(imageOf(plain)));
+        assertThat(benign.caution()).isNotNull().doesNotContain("악성·전암 가능성");
     }
 
     private Visit visitWithImage() {
