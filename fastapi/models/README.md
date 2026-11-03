@@ -14,7 +14,9 @@
 - 학습: Colab T4, `train.py --init repo --image-size 384 --batch-size 32 --epochs 15`, best epoch 13. 리포트 `tests/baselines/facial-train-2026-10-28.json`
 - 홀드아웃(`tests/baselines/facial-holdout.csv`, AI허브 Validation 1,200장): 전체 92.3% · 정면 84.7% · 측면 100%. 정상 피부 재현율 100%, 가장 약한 쪽은 주사(89.0%)·지루피부염(90.5%, 정밀도 81.2%) — 주로 서로 헷갈린다
 - 224 로 학습한 첫 모델은 전체 89.3% · 정면 79.8% 였다. 정면 사진(1024² 얼굴 전체)을 224 로 줄이면 작은 병변이 뭉개져서 384 로 올렸다
-- **합성 이미지끼리의 평가다.** 실제 환자 사진에서의 성능은 재지 않았다
+- **합성 이미지끼리의 평가다.** 실사진(SCIN 257장, `tests/baselines/facial-scin.csv`)에서는 1순위 27.2% · 상위 3 68.9% 다
+  (2026-11-03, 원본·좌우 반전 평균). 촬영이 조금만 달라도 1순위가 흔들려서, 분류는 원본과 좌우 반전의 평균으로 한다
+  (`main.py` TASKS `flip_tta`). 측정과 한계는 `tests/baselines/README.md` ④
 
 ## 규칙
 

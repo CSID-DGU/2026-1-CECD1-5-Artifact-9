@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.AnalysisType;
 import com.artifact.diagnosis.common.security.PublicEndpoint;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,12 +46,31 @@ public class KioskController {
     }
 
     @Operation(summary = "키오스크 예비분석",
-               description = "선택한 이미지를 AI 모델(source=clinic)로 분석해 preliminary_analysis에 저장한다. Visit 상태는 변경하지 않는다.")
+               description = "선택한 이미지를 방문자가 고른 AI 모델로 분석해 preliminary_analysis에 저장한다. Visit 상태는 변경하지 않는다. "
+                           + "참고 소견은 담기지 않는다(aiComment=null) — 결과를 그린 뒤 /comment 로 따로 받는다. "
+                           + "같은 접수의 분석이 이미 돌고 있으면 409.")
     @PostMapping(value = "/session/{token}/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PreliminaryAnalysisResponse analyze(
             @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token,
-            @Parameter(description = "분석할 이미지 파일") @RequestParam("file") MultipartFile file) {
-        return kioskService.analyze(token, file);
+            @Parameter(description = "분석할 이미지 파일") @RequestParam("file") MultipartFile file,
+            // multipart 폼 필드라 JSON 경로의 AnalysisType 역직렬화(@JsonCreator)를 타지 않는다 — 문자열로 받아 같은
+            // fromCode 로 바꾼다. 모르는 값은 IllegalArgumentException → 400. 생략하면 기본 태스크(이 필드가 생기기 전 동작).
+            @Parameter(description = "촬영 대상 모델: facial(얼굴 피부) / skin_lesion(점·피부 병변). 생략하면 skin_lesion")
+            @RequestParam(value = "analysisType", required = false) String analysisType) {
+        AnalysisType task = analysisType == null ? AnalysisType.DEFAULT : AnalysisType.fromCode(analysisType);
+        return kioskService.analyze(token, file, task);
+    }
+
+    @Operation(summary = "키오스크 AI 참고 소견",
+               description = "직전 예비분석으로 참고 소견을 만들어 저장하고 돌려준다. 분석 응답과 나눈 것은 LLM 이 재시도·대체 모델까지 "
+                           + "가면 수십 초가 걸려서, 결과 표시를 그만큼 붙잡을 이유가 없기 때문이다. 이미 소견이 있으면 다시 만들지 "
+                           + "않고 그대로 준다. 예비분석이 없으면 404, 같은 접수의 소견을 만드는 중이면 409.")
+    // GET 이 아니라 POST 인 이유: DB 쓰기와 유료 외부 API 호출이라는 부수효과가 있다.
+    // GET 으로 두면 브라우저·프록시가 마음대로 다시 부르거나 캐시해도 규격상 할 말이 없다.
+    @PostMapping("/session/{token}/comment")
+    public KioskCommentResponse comment(
+            @Parameter(description = "접수 시 발급된 키오스크 토큰") @PathVariable String token) {
+        return kioskService.generateComment(token);
     }
 
     @Operation(summary = "예비분석 GradCAM 히트맵 조회",

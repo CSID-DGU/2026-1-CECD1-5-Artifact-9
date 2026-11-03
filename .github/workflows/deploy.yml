@@ -63,14 +63,20 @@ jobs:
       # 그 뒤 ddl-auto=validate 가 엔티티와 실제 테이블을 대조하므로,
       # 마이그레이션을 빠뜨린 배포는 헬스체크까지 가지 못하고 여기서 멈춘다.
 
+      # 부스 기간(2026-11-16~)에는 AI 워커 여러 개 + 로드밸런서 구성을 덧붙인다(docker-compose.booth.yml).
+      # 저장소 변수 BOOTH_MODE 로 켜고 끈다 — 서버에 SSH 하지 않고 GitHub 화면에서 바꿀 수 있고, 부스 중에 누가
+      # main 에 머지해도 평소 구성으로 조용히 되돌아가지 않는다. 바꾼 뒤에는 이 워크플로를 수동 실행해 적용한다.
+      # --remove-orphans 는 부스를 끌 때 남는 fastapi2·ai-lb 를 지운다(지금 파일들에 없는 서비스만 지운다).
       - name: 빌드 · 재기동
         run: |
           cd ~/artifact
-          docker compose \
-            -f docker-compose.yml \
-            -f docker-compose.prod.yml \
-            -f docker-compose.https.yml \
-            up -d --build
+          FILES="-f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml"
+          if [ "${{ vars.BOOTH_MODE }}" = "true" ]; then
+            FILES="$FILES -f docker-compose.booth.yml"
+            echo "부스 구성으로 배포 (BOOTH_MODE=true)"
+          fi
+          echo "COMPOSE_FILES=$FILES" >> "$GITHUB_ENV"
+          docker compose $FILES up -d --build --remove-orphans
 
       - name: 헬스체크
         run: |
@@ -90,7 +96,7 @@ jobs:
 
           echo "❌ 200초 안에 200 을 받지 못했습니다."
           cd ~/artifact
-          COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml"
+          COMPOSE="docker compose $COMPOSE_FILES"
           $COMPOSE ps
 
           # 스키마 문제로 안 뜬 경우 원인 줄이 스택트레이스 수백 줄에 묻힌다.

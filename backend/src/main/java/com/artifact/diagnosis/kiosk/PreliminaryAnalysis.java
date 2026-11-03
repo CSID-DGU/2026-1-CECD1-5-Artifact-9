@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.AnalysisType;
 import com.artifact.diagnosis.analysis.HeatmapCrop;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.TopKItem;
@@ -31,6 +32,14 @@ public class PreliminaryAnalysis {
 
     @Column(name = "visit_id", nullable = false, unique = true)
     private Long visitId;
+
+    /**
+     * 어느 태스크(모델)로 본 결과인가 — {@link AnalysisType#code()} 문자열(V13). 방문자가 촬영 전에 고른다.
+     * String 인 이유와 {@code @Builder.Default} 가 필요한 이유는 AnalysisResult.analysisType 주석과 같다.
+     */
+    @Builder.Default
+    @Column(name = "analysis_type", nullable = false, length = 20)
+    private String analysisType = AnalysisType.DEFAULT.code();
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "top_k_json", columnDefinition = "json")

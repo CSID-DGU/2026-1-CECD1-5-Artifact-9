@@ -1,4 +1,4 @@
-import type { HeatmapCrop } from "./analysis";
+import type { AnalysisType, HeatmapCrop } from "./analysis";
 import { apiRequest } from "./client";
 
 /**
@@ -25,6 +25,11 @@ export type PreliminaryTopK = {
 
 export type PreliminaryAnalysis = {
   topK: PreliminaryTopK[];
+  /**
+   * 어느 모델로 본 결과인가(방문자가 고른 촬영 대상). 이 필드가 생기기 전의 백엔드는 보내지 않으므로 선택 필드로
+   * 두고, 없으면 "skin_lesion" 으로 본다 — 그때 키오스크는 피부 병변 모델만 썼다(백엔드 V13 의 DB 기본값도 같다).
+   */
+  analysisType?: AnalysisType;
   /** AI 신뢰도 등급. "low"면 caution 문구를 띄운다 — 자세한 배경은 api/analysis.ts 주석 참고. */
   confidenceLevel: "low" | "normal";
   /** 확신도가 낮을 때 띄울 문구. 경고할 것이 없으면 null. */
@@ -64,13 +69,28 @@ export function getKioskSession(token: string) {
   return apiRequest<KioskSession>(`/api/kiosk/session/${encodeURIComponent(token)}`);
 }
 
-export function analyzeKioskSession(token: string, file: File) {
+/**
+ * 예비분석. 응답의 aiComment 는 늘 비어 있다 — 결과를 그린 뒤 requestKioskComment 로 따로 받는다.
+ * 같은 접수의 분석이 이미 돌고 있으면 409(다른 기기에서 같은 QR 을 찍었거나, 응답이 늦어 다시 누른 경우).
+ */
+export function analyzeKioskSession(token: string, file: File, analysisType: AnalysisType) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("analysisType", analysisType);
 
   return apiRequest<PreliminaryAnalysis>(`/api/kiosk/session/${encodeURIComponent(token)}/analyze`, {
     method: "POST",
     body: formData,
+  });
+}
+
+/**
+ * 직전 예비분석의 AI 참고 소견. LLM 이라 몇 초에서 수십 초가 걸려 분석 응답과 나눴다.
+ * 생성에 실패해도 오류가 아니라 안내 문구가 온다. 이미 만들어 둔 소견이 있으면 다시 만들지 않고 그대로 준다.
+ */
+export function requestKioskComment(token: string) {
+  return apiRequest<{ aiComment: string }>(`/api/kiosk/session/${encodeURIComponent(token)}/comment`, {
+    method: "POST",
   });
 }
 

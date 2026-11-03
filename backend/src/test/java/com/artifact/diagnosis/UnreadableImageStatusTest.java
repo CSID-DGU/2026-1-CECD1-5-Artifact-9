@@ -48,12 +48,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * AI 서버가 사진을 열지 못했을 때 태블릿(키오스크 예비분석)과 진료실(분석)이 500 이 아니라 400 과
  * "다시 촬영해 달라"는 안내를 받는지. 가짜 FastAPI 가 정해 둔 상태 코드와 본문을 돌려준다
- * (KioskHeatmapCropTest 와 같은 방식).
+ * (KioskBoothFlowTest·KioskHeatmapCropTest 와 같은 방식 — 그쪽 가짜는 늘 200 이라 여기서는 상태 코드도 정한다).
  *
  * FastAPI 의 400 은 두 종류다 — 사진을 열 수 없다(detail.code = invalid_image)와, 백엔드가 요청을 잘못
  * 만들었다(깨진 base64·모르는 태스크 이름). 앞의 것만 화면에 400 으로 가고 뒤의 것은 500 으로 남는지 함께 고정한다
- * (이유는 FastApiErrors 주석). 실패한 뒤에 남는 것도 본다 — 예비분석 행은 생기지 않고, 진료실 접수는 분석 전 상태로
- * 돌아와 다른 사진으로 다시 분석할 수 있어야 한다.
+ * (이유는 FastApiErrors 주석). 실패한 뒤에 남는 것도 본다 — 예비분석 행은 생기지 않고, 안내대로 다시 찍으면 바로
+ * 분석된다(같은 접수의 분석이 아직 돌고 있다는 409 에 막히지 않는다). 진료실 접수는 분석 전 상태로 돌아와 다른 사진으로
+ * 다시 분석할 수 있어야 한다.
  *
  * HTTP 로 부른다(MockMvc). 화면이 받는 것은 서비스의 예외가 아니라 GlobalExceptionHandler 를 거친 상태 코드와 본문이다.
  */
@@ -78,6 +79,13 @@ class UnreadableImageStatusTest {
     /** fastapi/main.py get_task_model 이 가중치 없는 태스크에 내는 본문. */
     private static final String MODEL_NOT_LOADED = """
             {"detail":"분석 태스크 'skin_lesion' 의 모델이 로드되지 않았습니다 (가중치 파일: model.pth). 사유: 파일 없음"}
+            """;
+    /** 다시 찍은 사진은 열렸다 — 확대 보기 없는 가장 짧은 정상 응답. */
+    private static final String ANALYZED = """
+            {"confidence_level":"normal","low_confidence_threshold":0.45,
+             "top1":{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.91},
+             "top5":[{"rank":1,"disease_code":"nv","disease_name_ko":"멜라닌세포모반","confidence":0.91}],
+             "heatmap_base64":"aGVhdG1hcA==","model_version":"efficientnet_b0-test","task":"skin_lesion"}
             """;
 
     private static HttpServer fakeFastApi;
@@ -152,6 +160,20 @@ class UnreadableImageStatusTest {
         assertThat(preliminaryAnalysisRepository.existsByVisitId(visit.getId())).isFalse();
     }
 
+    /**
+     * 안내대로 바로 다시 찍으면 분석된다. 같은 접수의 분석이 겹치면 409 로 돌려보내는데(KioskService.analyzingVisits),
+     * 사진 오류로 끝난 분석이 그 표시를 남기면 환자는 다시 찍어도 "다른 화면에서 분석 중"만 보게 된다.
+     */
+    @Test
+    void tabletCanRetakeRightAfterAnUnreadablePhoto() throws Exception {
+        Visit visit = receivedVisit();
+        kioskAnalyze(visit, UNREADABLE_PHOTO, 400).andExpect(status().isBadRequest());
+
+        kioskAnalyze(visit, ANALYZED, 200).andExpect(status().isOk());
+
+        assertThat(preliminaryAnalysisRepository.existsByVisitId(visit.getId())).isTrue();
+    }
+
     /** 깨진 base64 는 FastAPI 에서 400 이지만 백엔드가 만든 요청이 틀린 것이다 — 태블릿에 "다시 촬영"을 띄우지 않는다. */
     @Test
     void tabletGetsServerErrorWhenFastApiRejectsTheRequestItself() throws Exception {
@@ -162,7 +184,7 @@ class UnreadableImageStatusTest {
         assertThat(preliminaryAnalysisRepository.existsByVisitId(visit.getId())).isFalse();
     }
 
-    /** 모델 미준비(503)는 진료실처럼 태블릿에도 503 이다. 전에는 키오스크만 500 이었다. */
+    /** 모델 미준비(503)는 진료실처럼 태블릿에도 503 이다 — 두 경로가 같은 규칙(FastApiErrors)을 쓰는지 본다. */
     @Test
     void tabletGetsServiceUnavailableWhenTheModelIsNotLoaded() throws Exception {
         Visit visit = receivedVisit();

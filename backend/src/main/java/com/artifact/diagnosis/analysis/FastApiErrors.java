@@ -10,7 +10,8 @@ import java.net.http.HttpResponse;
  * FastAPI 추론({@code /predict-base64})이 200 이 아닌 응답을 줬을 때 무엇으로 올릴지.
  *
  * 진료실 분석({@link AnalysisService})과 키오스크 예비분석({@code KioskService})이 이 한 곳을 같이 쓴다. 전에는
- * 각자 판정해서 503 처리가 진료실에만 있었다 — 같은 AI 서버 상태에 두 화면이 다른 상태 코드를 받았다.
+ * 두 서비스가 같은 판정을 각자 들고 있었다 — 한쪽만 고치면 같은 AI 서버 상태에 두 화면이 다른 상태 코드를 받는다
+ * (실제로 503 처리가 한동안 진료실에만 있었다). 화면마다 다른 것은 503 문구의 안내 한 마디뿐이라 인자로 받는다.
  *
  * <pre>
  *   400 + detail.code = "invalid_image"  → {@link InvalidImageException}         400  보낸 사진을 열 수 없다. 다른 사진이면 풀린다
@@ -39,11 +40,13 @@ public final class FastApiErrors {
     /**
      * 200 이 아닌 FastAPI 응답을 던질 예외로 바꾼다. 호출부는 돌려받은 것을 그대로 던진다.
      *
-     * @param task    요청한 태스크 코드. 503 문구와 로그에 쓴다
-     * @param context 로그에서 어느 화면의 호출인지 가르는 말 ("분석", "예비분석")
+     * @param task              요청한 태스크 코드. 503 문구와 로그에 쓴다
+     * @param context           로그에서 어느 화면의 호출인지 가르는 말 ("분석", "예비분석")
+     * @param unavailableAdvice 503 문구 끝에 붙일 안내. 진료실은 직원이 서버 상태를 볼 수 있고, 태블릿 앞에는
+     *                          환자가 있어 접수처로 보낸다
      */
     public static RuntimeException toException(HttpResponse<String> response, String task, String context,
-                                               ObjectMapper objectMapper) {
+                                               String unavailableAdvice, ObjectMapper objectMapper) {
         int status = response.statusCode();
         String body = response.body();
 
@@ -60,7 +63,7 @@ public final class FastApiErrors {
             // 로그에 FastAPI 본문을 남겨 어느 태스크가 빠졌는지 보이게 한다.
             log.error("FastAPI 503({}) task={} body={}", context, task, body);
             return new AiServiceUnavailableException(
-                    "AI 분석 서버에 '" + task + "' 모델이 준비되어 있지 않습니다. 서버 상태를 확인해주세요.");
+                    "AI 분석 서버에 '" + task + "' 모델이 준비되어 있지 않습니다. " + unavailableAdvice);
         }
         return new RuntimeException("FastAPI 오류(" + context + ") " + status + ": " + body);
     }

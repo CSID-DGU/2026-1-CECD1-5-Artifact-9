@@ -1,6 +1,7 @@
 package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AnalysisResponse;
+import com.artifact.diagnosis.analysis.AnalysisType;
 import com.artifact.diagnosis.common.jwt.JwtUtil;
 import com.artifact.diagnosis.disease.Disease;
 import com.artifact.diagnosis.disease.DiseaseRepository;
@@ -178,7 +179,7 @@ class KioskHeatmapCropTest {
         Visit visit = receivedVisit();
         String token = visit.getKioskToken();
 
-        PreliminaryAnalysisResponse tablet = kioskService.analyze(token, photo());
+        PreliminaryAnalysisResponse tablet = kioskService.analyze(token, photo(), AnalysisType.SKIN_LESION);
         int n = REQUESTS.get();
 
         String tabletBase = "/api/kiosk/session/" + token + "/heatmap/crops/";
@@ -193,6 +194,9 @@ class KioskHeatmapCropTest {
         assertThat(tablet.heatmapCrops()).extracting(AnalysisResponse.HeatmapCropResult::source).containsOnly("reinfer");
         // 이제 키오스크도 확대 보기·재판정을 켜서 부른다(그 결과를 담을 칸이 생겼다). 끈 채로 남으면 위 칸이 늘 비어 있다.
         assertThat(LAST_REQUEST.get()).doesNotContain("\"crops\"");
+        // 방문자가 고른 모델을 FastAPI 에 그대로 넘긴다 — 기본 태스크여도 명시한다(V13).
+        assertThat(LAST_REQUEST.get()).contains("\"task\":\"skin_lesion\"");
+        assertThat(tablet.analysisType()).isEqualTo("skin_lesion");
 
         // 의사 화면은 같은 내용을 접수 경로로 받는다.
         PreliminaryAnalysisResponse doctor = kioskService.findByVisitId(visit.getId());
@@ -236,10 +240,10 @@ class KioskHeatmapCropTest {
         Visit visit = receivedVisit();
         String token = visit.getKioskToken();
         RESPONSE.set(KioskHeatmapCropTest::rejudged);
-        kioskService.analyze(token, photo());
+        kioskService.analyze(token, photo(), AnalysisType.SKIN_LESION);
 
         RESPONSE.set(KioskHeatmapCropTest::withoutCrops);
-        PreliminaryAnalysisResponse retaken = kioskService.analyze(token, photo());
+        PreliminaryAnalysisResponse retaken = kioskService.analyze(token, photo(), AnalysisType.SKIN_LESION);
         int retake = REQUESTS.get();
 
         assertThat(retaken.heatmapCrops()).isEmpty();
@@ -260,10 +264,10 @@ class KioskHeatmapCropTest {
         Visit visit = receivedVisit();
         String token = visit.getKioskToken();
         RESPONSE.set(KioskHeatmapCropTest::rejudged);
-        kioskService.analyze(token, photo());
+        kioskService.analyze(token, photo(), AnalysisType.SKIN_LESION);
 
         RESPONSE.set(KioskHeatmapCropTest::singleCrop);
-        PreliminaryAnalysisResponse retaken = kioskService.analyze(token, photo());
+        PreliminaryAnalysisResponse retaken = kioskService.analyze(token, photo(), AnalysisType.SKIN_LESION);
         int retake = REQUESTS.get();
 
         assertThat(retaken.heatmapCrops()).extracting(AnalysisResponse.HeatmapCropResult::rank).containsExactly(1);
@@ -294,10 +298,10 @@ class KioskHeatmapCropTest {
 
         // 나중 접수를 먼저 분석한다 — 예비분석 행 id 가 접수 id 와 엇갈려야 접수 id 대신 행 id 로 찾는 실수가 드러난다.
         RESPONSE.set(KioskHeatmapCropTest::rejudged);
-        kioskService.analyze(second.getKioskToken(), photo());
+        kioskService.analyze(second.getKioskToken(), photo(), AnalysisType.SKIN_LESION);
         int secondN = REQUESTS.get();
         RESPONSE.set(KioskHeatmapCropTest::singleCrop);
-        kioskService.analyze(first.getKioskToken(), photo());
+        kioskService.analyze(first.getKioskToken(), photo(), AnalysisType.SKIN_LESION);
         int firstN = REQUESTS.get();
 
         String firstBase = "/api/kiosk/session/" + first.getKioskToken() + "/heatmap";
@@ -337,7 +341,7 @@ class KioskHeatmapCropTest {
                 """.formatted(b64(fullHeatmap(n))));
         Visit rejudged = receivedVisit();
 
-        PreliminaryAnalysisResponse tablet = kioskService.analyze(rejudged.getKioskToken(), photo());
+        PreliminaryAnalysisResponse tablet = kioskService.analyze(rejudged.getKioskToken(), photo(), AnalysisType.SKIN_LESION);
 
         assertThat(tablet.topK().get(0).diseaseCode()).isEqualTo("nv");
         assertThat(tablet.caution()).contains("악성·전암 가능성");
@@ -350,7 +354,7 @@ class KioskHeatmapCropTest {
                  "heatmap_base64":"%s","model_version":"efficientnet_b0-test","task":"skin_lesion"}
                 """.formatted(b64(fullHeatmap(n))));
         Visit plain = receivedVisit();
-        assertThat(kioskService.analyze(plain.getKioskToken(), photo()).caution())
+        assertThat(kioskService.analyze(plain.getKioskToken(), photo(), AnalysisType.SKIN_LESION).caution())
                 .isNotNull().doesNotContain("악성·전암 가능성");
     }
 
