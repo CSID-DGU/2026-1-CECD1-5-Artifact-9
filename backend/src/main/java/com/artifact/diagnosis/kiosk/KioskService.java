@@ -3,10 +3,12 @@ package com.artifact.diagnosis.kiosk;
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.AnalysisResponse;
 import com.artifact.diagnosis.analysis.AnalysisType;
+import com.artifact.diagnosis.analysis.FastApiErrors;
 import com.artifact.diagnosis.analysis.FastApiPredictResponse;
 import com.artifact.diagnosis.analysis.FastApiTop1;
 import com.artifact.diagnosis.analysis.HeatmapCrop;
 import com.artifact.diagnosis.analysis.HeatmapStorage;
+import com.artifact.diagnosis.analysis.InvalidImageException;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.StoredHeatmap;
 import com.artifact.diagnosis.analysis.TopKItem;
@@ -425,15 +427,11 @@ public class KioskService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() == 503) {
-                // 가중치가 없어 로드되지 않은 태스크가 이렇게 온다 — 우리 버그가 아니라 서버 준비 상태의 문제다
-                // (AnalysisService.callFastApi 와 같은 처리).
-                log.error("FastAPI 503(예비분석) task={} body={}", task.code(), response.body());
-                throw new AiServiceUnavailableException(
-                        "AI 분석 서버에 '" + task.code() + "' 모델이 준비되어 있지 않습니다. 접수처에 문의해 주세요.");
-            }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("FastAPI 오류 " + response.statusCode() + ": " + response.body());
+                // 진료실 분석과 같은 규칙이다(FastApiErrors) — 사진을 열 수 없으면 태블릿에 400 과 다시 찍으라는 안내가 가고,
+                // 모델 미준비(가중치가 없어 로드되지 않은 태스크)는 503, 그 밖은 500 으로 남는다.
+                // 태블릿 앞에는 환자가 있으므로 503 문구는 접수처로 안내한다.
+                throw FastApiErrors.toException(response, task.code(), "예비분석", "접수처에 문의해 주세요.", objectMapper);
             }
 
             FastApiPredictResponse prediction = objectMapper.readValue(response.body(), FastApiPredictResponse.class);
@@ -445,7 +443,8 @@ public class KioskService {
                         "AI 분석 서버가 요청한 분석 종류(" + task.code() + ")를 지원하지 않습니다. 접수처에 문의해 주세요.");
             }
             return prediction;
-        } catch (AiServiceUnavailableException e) {
+        } catch (AiServiceUnavailableException | InvalidImageException e) {
+            // 바로 위에서 던진 것. 아래 Exception 절에 잡혀 RuntimeException(500) 으로 둔갑하지 않게 그대로 올린다.
             throw e;
         } catch (HttpConnectTimeoutException | ConnectException e) {
             log.error("FastAPI 연결 실패(예비분석) url={}", fastapiUrl, e);

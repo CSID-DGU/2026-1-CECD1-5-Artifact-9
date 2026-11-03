@@ -627,6 +627,7 @@ ANTHROPIC_API_KEY=
 | MySQL 기동 실패 | 포트 `3306` 충돌 여부 확인 |
 | 코드 변경이 반영되지 않음 | `docker compose up --build` 로 컨테이너 재빌드 |
 | FastAPI 시작 실패 | `fastapi/model.pth` 누락 여부 확인 |
+| 분석 화면(태블릿·진료실)에 "사진을 읽을 수 없습니다. JPEG/PNG 사진으로 다시 촬영해 주세요." (400) | AI 서버가 올린 파일을 사진으로 열지 못했다 — 이미지가 아닌 파일, HEIC(FastAPI 에 HEIF 플러그인이 없다), 손상되거나 잘린 파일, 0바이트, 2억 화소를 넘는 사진. 정확한 사유는 백엔드 로그의 `FastAPI 가 사진을 열지 못함` WARN 줄에 FastAPI 본문(`detail.message`)으로 남는다. 같은 사유가 되풀이되면 촬영 기기 설정(예: 아이폰 카메라 "높은 호환성")이나 화면 쪽을 고친다. 같은 400 이라도 깨진 base64·모르는 태스크 이름은 사진이 아니라 백엔드 요청 문제라 500 으로 남는다(`FastApiErrors` 주석) |
 | 검색 결과가 비어 있음 | 백엔드 첫 기동의 비동기 적재(`data-initializer` 스레드) 완료 여부, `resources/data/*.xlsx` 존재 여부 확인 |
 | S3 관련 오류 | 환경변수 미설정 시 `IMAGE_STORAGE_TYPE=local` 권장 |
 | GradCAM 히트맵이 보이지 않음 | FastAPI 로그에서 `[GradCAM] CAM 계산 실패` 또는 `[GradCAM] 히트맵 렌더링 실패` 라인 확인 — 분석 결과 자체는 정상 동작 |
