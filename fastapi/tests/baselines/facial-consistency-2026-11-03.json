@@ -1,0 +1,914 @@
+{
+ "task": "facial",
+ "model_version": "efficientnet_b0-2d3a2141c3d2",
+ "input_size": 384,
+ "threshold": 0.45,
+ "perturbations": [
+  "mirror",
+  "tilt+8",
+  "tilt-8",
+  "dark",
+  "bright",
+  "closer",
+  "offset",
+  "portrait",
+  "landscape",
+  "jpeg70"
+ ],
+ "all": {
+  "squash/plain": {
+   "n": 257,
+   "accuracy": 0.2529,
+   "top3": 0.6926,
+   "recall": {
+    "acne": 0.1429,
+    "atopic": 0.25,
+    "psoriasis": 0.3864,
+    "rosacea": 0.4,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "atopic": 69,
+    "psoriasis": 66,
+    "normal": 60,
+    "rosacea": 31,
+    "acne": 27,
+    "seb_derm": 4
+   },
+   "mean_confidence": 0.7846,
+   "warning_rate": 0.0467,
+   "agreement": {
+    "mirror": 0.8016,
+    "tilt+8": 0.7782,
+    "tilt-8": 0.7549,
+    "dark": 0.8794,
+    "bright": 0.7821,
+    "closer": 0.821,
+    "offset": 0.8521,
+    "portrait": 0.8677,
+    "landscape": 0.6693,
+    "jpeg70": 0.8327
+   },
+   "mean_agreement": 0.8039,
+   "unstable_rate": 0.6304
+  },
+  "squash/tta": {
+   "n": 257,
+   "accuracy": 0.2724,
+   "top3": 0.6887,
+   "recall": {
+    "acne": 0.1714,
+    "atopic": 0.2857,
+    "psoriasis": 0.3864,
+    "rosacea": 0.4,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "atopic": 76,
+    "psoriasis": 63,
+    "normal": 55,
+    "rosacea": 31,
+    "acne": 28,
+    "seb_derm": 4
+   },
+   "mean_confidence": 0.7636,
+   "warning_rate": 0.0623,
+   "agreement": {
+    "mirror": 1.0,
+    "tilt+8": 0.7471,
+    "tilt-8": 0.7665,
+    "dark": 0.8949,
+    "bright": 0.7977,
+    "closer": 0.8366,
+    "offset": 0.8132,
+    "portrait": 0.8794,
+    "landscape": 0.7043,
+    "jpeg70": 0.856
+   },
+   "mean_agreement": 0.8296,
+   "unstable_rate": 0.5642
+  },
+  "center/plain": {
+   "n": 257,
+   "accuracy": 0.2607,
+   "top3": 0.7276,
+   "recall": {
+    "acne": 0.1714,
+    "atopic": 0.25,
+    "psoriasis": 0.4545,
+    "rosacea": 0.325,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "atopic": 76,
+    "psoriasis": 66,
+    "normal": 58,
+    "acne": 26,
+    "rosacea": 25,
+    "seb_derm": 6
+   },
+   "mean_confidence": 0.8051,
+   "warning_rate": 0.0428,
+   "agreement": {
+    "mirror": 0.8327,
+    "tilt+8": 0.751,
+    "tilt-8": 0.7276,
+    "dark": 0.8638,
+    "bright": 0.8016,
+    "closer": 0.8054,
+    "offset": 0.8093,
+    "portrait": 0.9183,
+    "landscape": 0.7549,
+    "jpeg70": 0.8444
+   },
+   "mean_agreement": 0.8109,
+   "unstable_rate": 0.5292
+  },
+  "center/tta": {
+   "n": 257,
+   "accuracy": 0.2607,
+   "top3": 0.7315,
+   "recall": {
+    "acne": 0.1857,
+    "atopic": 0.2619,
+    "psoriasis": 0.4318,
+    "rosacea": 0.3,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "atopic": 76,
+    "psoriasis": 63,
+    "normal": 56,
+    "acne": 28,
+    "rosacea": 27,
+    "seb_derm": 7
+   },
+   "mean_confidence": 0.7944,
+   "warning_rate": 0.0584,
+   "agreement": {
+    "mirror": 1.0,
+    "tilt+8": 0.786,
+    "tilt-8": 0.7588,
+    "dark": 0.8988,
+    "bright": 0.8171,
+    "closer": 0.8444,
+    "offset": 0.8599,
+    "portrait": 0.9066,
+    "landscape": 0.7743,
+    "jpeg70": 0.8444
+   },
+   "mean_agreement": 0.849,
+   "unstable_rate": 0.4942
+  },
+  "pad/plain": {
+   "n": 257,
+   "accuracy": 0.2802,
+   "top3": 0.6809,
+   "recall": {
+    "acne": 0.3143,
+    "atopic": 0.1905,
+    "psoriasis": 0.3182,
+    "rosacea": 0.475,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "normal": 60,
+    "psoriasis": 54,
+    "atopic": 52,
+    "acne": 52,
+    "rosacea": 37,
+    "seb_derm": 2
+   },
+   "mean_confidence": 0.795,
+   "warning_rate": 0.0545,
+   "agreement": {
+    "mirror": 0.8093,
+    "tilt+8": 0.786,
+    "tilt-8": 0.786,
+    "dark": 0.8716,
+    "bright": 0.7665,
+    "closer": 0.8482,
+    "offset": 0.8016,
+    "portrait": 0.8677,
+    "landscape": 0.6342,
+    "jpeg70": 0.8794
+   },
+   "mean_agreement": 0.8051,
+   "unstable_rate": 0.6265
+  },
+  "pad/tta": {
+   "n": 257,
+   "accuracy": 0.3074,
+   "top3": 0.6926,
+   "recall": {
+    "acne": 0.4,
+    "atopic": 0.1905,
+    "psoriasis": 0.3409,
+    "rosacea": 0.475,
+    "seb_derm": 0.0526
+   },
+   "predicted": {
+    "normal": 64,
+    "acne": 55,
+    "psoriasis": 54,
+    "atopic": 46,
+    "rosacea": 36,
+    "seb_derm": 2
+   },
+   "mean_confidence": 0.7769,
+   "warning_rate": 0.0739,
+   "agreement": {
+    "mirror": 1.0,
+    "tilt+8": 0.7549,
+    "tilt-8": 0.786,
+    "dark": 0.8872,
+    "bright": 0.7665,
+    "closer": 0.8638,
+    "offset": 0.7899,
+    "portrait": 0.8716,
+    "landscape": 0.6693,
+    "jpeg70": 0.8521
+   },
+   "mean_agreement": 0.8241,
+   "unstable_rate": 0.6031
+  }
+ },
+ "mcnemar_vs_current": {
+  "squash/tta": {
+   "current_only": 0,
+   "this_only": 5,
+   "p": 0.0625
+  },
+  "center/plain": {
+   "current_only": 12,
+   "this_only": 14,
+   "p": 0.845
+  },
+  "center/tta": {
+   "current_only": 13,
+   "this_only": 15,
+   "p": 0.8506
+  },
+  "pad/plain": {
+   "current_only": 18,
+   "this_only": 25,
+   "p": 0.3604
+  },
+  "pad/tta": {
+   "current_only": 18,
+   "this_only": 32,
+   "p": 0.0649
+  }
+ },
+ "by_group": {
+  "AT_AN_ANGLE": {
+   "squash/plain": {
+    "n": 82,
+    "accuracy": 0.2317,
+    "top3": 0.6707,
+    "recall": {
+     "acne": 0.0909,
+     "atopic": 0.2759,
+     "psoriasis": 0.3333,
+     "rosacea": 0.3077,
+     "seb_derm": 0.1667
+    },
+    "predicted": {
+     "atopic": 23,
+     "normal": 21,
+     "psoriasis": 19,
+     "rosacea": 9,
+     "acne": 8,
+     "seb_derm": 2
+    },
+    "mean_confidence": 0.783,
+    "warning_rate": 0.0366,
+    "agreement": {
+     "mirror": 0.8537,
+     "tilt+8": 0.7439,
+     "tilt-8": 0.7317,
+     "dark": 0.878,
+     "bright": 0.7683,
+     "closer": 0.8049,
+     "offset": 0.8415,
+     "portrait": 0.8293,
+     "landscape": 0.6951,
+     "jpeg70": 0.8293
+    },
+    "mean_agreement": 0.7976,
+    "unstable_rate": 0.6341
+   },
+   "squash/tta": {
+    "n": 82,
+    "accuracy": 0.2561,
+    "top3": 0.6829,
+    "recall": {
+     "acne": 0.0909,
+     "atopic": 0.3448,
+     "psoriasis": 0.3333,
+     "rosacea": 0.3077,
+     "seb_derm": 0.1667
+    },
+    "predicted": {
+     "atopic": 25,
+     "normal": 20,
+     "psoriasis": 17,
+     "acne": 9,
+     "rosacea": 9,
+     "seb_derm": 2
+    },
+    "mean_confidence": 0.7716,
+    "warning_rate": 0.0366,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7195,
+     "tilt-8": 0.7683,
+     "dark": 0.9024,
+     "bright": 0.7805,
+     "closer": 0.8171,
+     "offset": 0.7927,
+     "portrait": 0.8537,
+     "landscape": 0.7439,
+     "jpeg70": 0.8659
+    },
+    "mean_agreement": 0.8244,
+    "unstable_rate": 0.5976
+   },
+   "center/plain": {
+    "n": 82,
+    "accuracy": 0.2317,
+    "top3": 0.7073,
+    "recall": {
+     "acne": 0.1364,
+     "atopic": 0.3103,
+     "psoriasis": 0.4167,
+     "rosacea": 0.1538,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 23,
+     "normal": 23,
+     "psoriasis": 20,
+     "acne": 8,
+     "rosacea": 5,
+     "seb_derm": 3
+    },
+    "mean_confidence": 0.8125,
+    "warning_rate": 0.0122,
+    "agreement": {
+     "mirror": 0.8659,
+     "tilt+8": 0.7683,
+     "tilt-8": 0.7073,
+     "dark": 0.8659,
+     "bright": 0.7561,
+     "closer": 0.8171,
+     "offset": 0.8293,
+     "portrait": 0.9146,
+     "landscape": 0.7805,
+     "jpeg70": 0.8293
+    },
+    "mean_agreement": 0.8134,
+    "unstable_rate": 0.5732
+   },
+   "center/tta": {
+    "n": 82,
+    "accuracy": 0.2195,
+    "top3": 0.7195,
+    "recall": {
+     "acne": 0.1364,
+     "atopic": 0.2759,
+     "psoriasis": 0.4167,
+     "rosacea": 0.1538,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "normal": 25,
+     "atopic": 20,
+     "psoriasis": 20,
+     "acne": 8,
+     "rosacea": 6,
+     "seb_derm": 3
+    },
+    "mean_confidence": 0.799,
+    "warning_rate": 0.0366,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7439,
+     "tilt-8": 0.7073,
+     "dark": 0.9024,
+     "bright": 0.7927,
+     "closer": 0.8537,
+     "offset": 0.8415,
+     "portrait": 0.878,
+     "landscape": 0.7805,
+     "jpeg70": 0.8415
+    },
+    "mean_agreement": 0.8341,
+    "unstable_rate": 0.5488
+   },
+   "pad/plain": {
+    "n": 82,
+    "accuracy": 0.2683,
+    "top3": 0.6829,
+    "recall": {
+     "acne": 0.3182,
+     "atopic": 0.2069,
+     "psoriasis": 0.25,
+     "rosacea": 0.3846,
+     "seb_derm": 0.1667
+    },
+    "predicted": {
+     "normal": 22,
+     "psoriasis": 18,
+     "acne": 17,
+     "atopic": 15,
+     "rosacea": 9,
+     "seb_derm": 1
+    },
+    "mean_confidence": 0.7997,
+    "warning_rate": 0.0488,
+    "agreement": {
+     "mirror": 0.8171,
+     "tilt+8": 0.8659,
+     "tilt-8": 0.8537,
+     "dark": 0.8902,
+     "bright": 0.7439,
+     "closer": 0.878,
+     "offset": 0.8049,
+     "portrait": 0.8659,
+     "landscape": 0.6463,
+     "jpeg70": 0.9146
+    },
+    "mean_agreement": 0.828,
+    "unstable_rate": 0.5732
+   },
+   "pad/tta": {
+    "n": 82,
+    "accuracy": 0.3049,
+    "top3": 0.6829,
+    "recall": {
+     "acne": 0.3636,
+     "atopic": 0.2069,
+     "psoriasis": 0.3333,
+     "rosacea": 0.4615,
+     "seb_derm": 0.1667
+    },
+    "predicted": {
+     "normal": 23,
+     "psoriasis": 18,
+     "acne": 16,
+     "atopic": 12,
+     "rosacea": 12,
+     "seb_derm": 1
+    },
+    "mean_confidence": 0.7849,
+    "warning_rate": 0.0732,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7683,
+     "tilt-8": 0.8293,
+     "dark": 0.9512,
+     "bright": 0.7439,
+     "closer": 0.8902,
+     "offset": 0.7805,
+     "portrait": 0.8415,
+     "landscape": 0.7073,
+     "jpeg70": 0.8902
+    },
+    "mean_agreement": 0.8402,
+    "unstable_rate": 0.5976
+   }
+  },
+  "AT_DISTANCE": {
+   "squash/plain": {
+    "n": 59,
+    "accuracy": 0.2203,
+    "top3": 0.6949,
+    "recall": {
+     "acne": 0.0556,
+     "atopic": 0.2941,
+     "psoriasis": 0.3,
+     "rosacea": 0.4444,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 18,
+     "psoriasis": 13,
+     "normal": 12,
+     "rosacea": 9,
+     "acne": 7
+    },
+    "mean_confidence": 0.7707,
+    "warning_rate": 0.0508,
+    "agreement": {
+     "mirror": 0.7288,
+     "tilt+8": 0.7288,
+     "tilt-8": 0.7119,
+     "dark": 0.8644,
+     "bright": 0.8305,
+     "closer": 0.8136,
+     "offset": 0.8136,
+     "portrait": 0.8136,
+     "landscape": 0.6441,
+     "jpeg70": 0.8305
+    },
+    "mean_agreement": 0.778,
+    "unstable_rate": 0.661
+   },
+   "squash/tta": {
+    "n": 59,
+    "accuracy": 0.2373,
+    "top3": 0.678,
+    "recall": {
+     "acne": 0.1111,
+     "atopic": 0.2941,
+     "psoriasis": 0.3,
+     "rosacea": 0.4444,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 20,
+     "psoriasis": 13,
+     "normal": 10,
+     "rosacea": 9,
+     "acne": 7
+    },
+    "mean_confidence": 0.7379,
+    "warning_rate": 0.0339,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.6949,
+     "tilt-8": 0.6949,
+     "dark": 0.8644,
+     "bright": 0.8136,
+     "closer": 0.8644,
+     "offset": 0.7797,
+     "portrait": 0.8305,
+     "landscape": 0.661,
+     "jpeg70": 0.8136
+    },
+    "mean_agreement": 0.8017,
+    "unstable_rate": 0.6102
+   },
+   "center/plain": {
+    "n": 59,
+    "accuracy": 0.2373,
+    "top3": 0.6441,
+    "recall": {
+     "acne": 0.1667,
+     "atopic": 0.2353,
+     "psoriasis": 0.4,
+     "rosacea": 0.3333,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 20,
+     "psoriasis": 13,
+     "normal": 10,
+     "rosacea": 8,
+     "acne": 8
+    },
+    "mean_confidence": 0.8047,
+    "warning_rate": 0.0678,
+    "agreement": {
+     "mirror": 0.8305,
+     "tilt+8": 0.661,
+     "tilt-8": 0.6949,
+     "dark": 0.8475,
+     "bright": 0.8475,
+     "closer": 0.7966,
+     "offset": 0.8136,
+     "portrait": 0.9322,
+     "landscape": 0.6949,
+     "jpeg70": 0.8475
+    },
+    "mean_agreement": 0.7966,
+    "unstable_rate": 0.5424
+   },
+   "center/tta": {
+    "n": 59,
+    "accuracy": 0.1864,
+    "top3": 0.6441,
+    "recall": {
+     "acne": 0.1111,
+     "atopic": 0.1765,
+     "psoriasis": 0.3,
+     "rosacea": 0.3333,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 21,
+     "psoriasis": 12,
+     "rosacea": 10,
+     "normal": 8,
+     "acne": 7,
+     "seb_derm": 1
+    },
+    "mean_confidence": 0.8048,
+    "warning_rate": 0.0508,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7797,
+     "tilt-8": 0.7288,
+     "dark": 0.8983,
+     "bright": 0.8814,
+     "closer": 0.7966,
+     "offset": 0.8475,
+     "portrait": 0.8983,
+     "landscape": 0.7119,
+     "jpeg70": 0.8475
+    },
+    "mean_agreement": 0.839,
+    "unstable_rate": 0.4746
+   },
+   "pad/plain": {
+    "n": 59,
+    "accuracy": 0.2542,
+    "top3": 0.661,
+    "recall": {
+     "acne": 0.2222,
+     "atopic": 0.1765,
+     "psoriasis": 0.3,
+     "rosacea": 0.5556,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "normal": 14,
+     "rosacea": 13,
+     "psoriasis": 11,
+     "atopic": 11,
+     "acne": 10
+    },
+    "mean_confidence": 0.787,
+    "warning_rate": 0.0847,
+    "agreement": {
+     "mirror": 0.7797,
+     "tilt+8": 0.7288,
+     "tilt-8": 0.7966,
+     "dark": 0.8475,
+     "bright": 0.7966,
+     "closer": 0.7966,
+     "offset": 0.7966,
+     "portrait": 0.8136,
+     "landscape": 0.6102,
+     "jpeg70": 0.8475
+    },
+    "mean_agreement": 0.7814,
+    "unstable_rate": 0.7288
+   },
+   "pad/tta": {
+    "n": 59,
+    "accuracy": 0.322,
+    "top3": 0.678,
+    "recall": {
+     "acne": 0.3889,
+     "atopic": 0.2353,
+     "psoriasis": 0.3,
+     "rosacea": 0.5556,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "acne": 14,
+     "normal": 13,
+     "rosacea": 11,
+     "psoriasis": 11,
+     "atopic": 10
+    },
+    "mean_confidence": 0.7652,
+    "warning_rate": 0.0847,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7458,
+     "tilt-8": 0.7797,
+     "dark": 0.8814,
+     "bright": 0.7627,
+     "closer": 0.8475,
+     "offset": 0.7966,
+     "portrait": 0.8136,
+     "landscape": 0.661,
+     "jpeg70": 0.7627
+    },
+    "mean_agreement": 0.8051,
+    "unstable_rate": 0.6271
+   }
+  },
+  "CLOSE_UP": {
+   "squash/plain": {
+    "n": 116,
+    "accuracy": 0.2845,
+    "top3": 0.7069,
+    "recall": {
+     "acne": 0.2333,
+     "atopic": 0.2105,
+     "psoriasis": 0.4545,
+     "rosacea": 0.4444,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "psoriasis": 34,
+     "atopic": 28,
+     "normal": 27,
+     "rosacea": 13,
+     "acne": 12,
+     "seb_derm": 2
+    },
+    "mean_confidence": 0.7928,
+    "warning_rate": 0.0517,
+    "agreement": {
+     "mirror": 0.8017,
+     "tilt+8": 0.8276,
+     "tilt-8": 0.7931,
+     "dark": 0.8879,
+     "bright": 0.7672,
+     "closer": 0.8362,
+     "offset": 0.8793,
+     "portrait": 0.9224,
+     "landscape": 0.6638,
+     "jpeg70": 0.8362
+    },
+    "mean_agreement": 0.8216,
+    "unstable_rate": 0.6121
+   },
+   "squash/tta": {
+    "n": 116,
+    "accuracy": 0.3017,
+    "top3": 0.6983,
+    "recall": {
+     "acne": 0.2667,
+     "atopic": 0.2368,
+     "psoriasis": 0.4545,
+     "rosacea": 0.4444,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "psoriasis": 33,
+     "atopic": 31,
+     "normal": 25,
+     "rosacea": 13,
+     "acne": 12,
+     "seb_derm": 2
+    },
+    "mean_confidence": 0.7711,
+    "warning_rate": 0.0948,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.7931,
+     "tilt-8": 0.8017,
+     "dark": 0.9052,
+     "bright": 0.8017,
+     "closer": 0.8362,
+     "offset": 0.8448,
+     "portrait": 0.9224,
+     "landscape": 0.6983,
+     "jpeg70": 0.8707
+    },
+    "mean_agreement": 0.8474,
+    "unstable_rate": 0.5172
+   },
+   "center/plain": {
+    "n": 116,
+    "accuracy": 0.2931,
+    "top3": 0.7845,
+    "recall": {
+     "acne": 0.2,
+     "atopic": 0.2105,
+     "psoriasis": 0.5,
+     "rosacea": 0.4444,
+     "seb_derm": 0.125
+    },
+    "predicted": {
+     "psoriasis": 33,
+     "atopic": 33,
+     "normal": 25,
+     "rosacea": 12,
+     "acne": 10,
+     "seb_derm": 3
+    },
+    "mean_confidence": 0.8,
+    "warning_rate": 0.0517,
+    "agreement": {
+     "mirror": 0.8103,
+     "tilt+8": 0.7845,
+     "tilt-8": 0.7586,
+     "dark": 0.8707,
+     "bright": 0.8103,
+     "closer": 0.8017,
+     "offset": 0.7931,
+     "portrait": 0.9138,
+     "landscape": 0.7672,
+     "jpeg70": 0.8534
+    },
+    "mean_agreement": 0.8164,
+    "unstable_rate": 0.4914
+   },
+   "center/tta": {
+    "n": 116,
+    "accuracy": 0.3276,
+    "top3": 0.7845,
+    "recall": {
+     "acne": 0.2667,
+     "atopic": 0.2895,
+     "psoriasis": 0.5,
+     "rosacea": 0.3889,
+     "seb_derm": 0.125
+    },
+    "predicted": {
+     "atopic": 35,
+     "psoriasis": 31,
+     "normal": 23,
+     "acne": 13,
+     "rosacea": 11,
+     "seb_derm": 3
+    },
+    "mean_confidence": 0.786,
+    "warning_rate": 0.0776,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.819,
+     "tilt-8": 0.8103,
+     "dark": 0.8966,
+     "bright": 0.8017,
+     "closer": 0.8621,
+     "offset": 0.8793,
+     "portrait": 0.931,
+     "landscape": 0.8017,
+     "jpeg70": 0.8448
+    },
+    "mean_agreement": 0.8647,
+    "unstable_rate": 0.4655
+   },
+   "pad/plain": {
+    "n": 116,
+    "accuracy": 0.3017,
+    "top3": 0.6897,
+    "recall": {
+     "acne": 0.3667,
+     "atopic": 0.1842,
+     "psoriasis": 0.3636,
+     "rosacea": 0.5,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "atopic": 26,
+     "psoriasis": 25,
+     "acne": 25,
+     "normal": 24,
+     "rosacea": 15,
+     "seb_derm": 1
+    },
+    "mean_confidence": 0.7957,
+    "warning_rate": 0.0431,
+    "agreement": {
+     "mirror": 0.819,
+     "tilt+8": 0.7586,
+     "tilt-8": 0.7328,
+     "dark": 0.8707,
+     "bright": 0.7672,
+     "closer": 0.8534,
+     "offset": 0.8017,
+     "portrait": 0.8966,
+     "landscape": 0.6379,
+     "jpeg70": 0.8707
+    },
+    "mean_agreement": 0.8009,
+    "unstable_rate": 0.6121
+   },
+   "pad/tta": {
+    "n": 116,
+    "accuracy": 0.3017,
+    "top3": 0.7069,
+    "recall": {
+     "acne": 0.4333,
+     "atopic": 0.1579,
+     "psoriasis": 0.3636,
+     "rosacea": 0.4444,
+     "seb_derm": 0.0
+    },
+    "predicted": {
+     "normal": 28,
+     "psoriasis": 25,
+     "acne": 25,
+     "atopic": 24,
+     "rosacea": 13,
+     "seb_derm": 1
+    },
+    "mean_confidence": 0.7771,
+    "warning_rate": 0.069,
+    "agreement": {
+     "mirror": 1.0,
+     "tilt+8": 0.75,
+     "tilt-8": 0.7586,
+     "dark": 0.8448,
+     "bright": 0.7845,
+     "closer": 0.8534,
+     "offset": 0.7931,
+     "portrait": 0.9224,
+     "landscape": 0.6466,
+     "jpeg70": 0.8707
+    },
+    "mean_agreement": 0.8224,
+    "unstable_rate": 0.5948
+   }
+  }
+ }
+}

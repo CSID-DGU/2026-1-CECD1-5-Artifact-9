@@ -11,6 +11,8 @@
 | `evaluate_heatmap_loc.py` | **필요** (ISIC 2018 Task 1 마스크) | 화면에 나가는 히트맵과 확대 영역이 병변 자리를 짚는지 서빙 함수로 잰다. 원본 1순위로 그린 그림이다 — 재판정으로 1순위가 바뀐 경우는 따로 재지 않는다. 기록은 `baselines/README.md` ③. |
 | `make_holdout.py` | **필요** | 공식 홀드아웃 목록(`baselines/holdout.csv`)을 만든 스크립트. 컨테이너 밖에서 실행. |
 | `make_ood.py` | PAD 만 | 병변이 아닌 사진(OOD) 평가 세트를 만든다. 전부 경고가 붙는 것이 정답인 이미지들. |
+| `evaluate_consistency.py` | **필요** | 같은 사람을 조금 다르게 찍어도 같은 답이 나오는지 잰다 — 촬영 변형(미러링·기울기·밝기·구도·비율·압축)별 1순위 일치율을 전처리 정책별로. `--same-person-dir` 은 같은 사람을 여러 번 찍은 사진(라벨 불필요). 기록은 `baselines/README.md` ④. |
+| `make_scin_facial.py` | 없음(공개 데이터를 받는다) | 안면부 실사진 평가 목록(`baselines/facial-scin.csv`)을 만들고 SCIN 공개 버킷에서 이미지를 받는다. 표준 라이브러리만 쓴다. |
 | `baselines/` | — | 지금까지 잰 결과. `--compare` 의 대상. |
 
 ---
