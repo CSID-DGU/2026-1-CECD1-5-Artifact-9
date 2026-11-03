@@ -20,7 +20,7 @@ public record FastApiPredictResponse(
 
         /**
          * 실제로 추론한 태스크 코드("skin_lesion"/"facial"). 태스크 개념이 없던 구버전 FastAPI 는 이 필드를
-         * 안 보내므로 null 일 수 있다 — 그때는 기본 모델이 돈 것이다(AnalysisService.analyze 가 요청과 대조).
+         * 안 보내므로 null 일 수 있다 — 그때는 기본 모델이 돈 것이다({@link #servedAs} 가 요청과 대조).
          */
         String task,
 
@@ -36,6 +36,17 @@ public record FastApiPredictResponse(
          */
         @JsonProperty("full_image_top1") FastApiTop1 fullImageTop1
 ) {
+    /**
+     * 요청한 태스크로 실제로 추론했는가. 진료실 분석(AnalysisService)과 키오스크(KioskService)가 같은 규칙으로 본다.
+     *
+     * task 를 모르는 구버전 FastAPI 는 이 필드를 안 보내고 기본 모델로 돌린다. facial 을 요청했는데 skin_lesion 코드가
+     * 돌아와 facial 로 저장되면, 그 행은 top_k 의 코드가 다른 클래스 목록을 가리키는 거짓 기록이 된다.
+     * 기본 태스크 요청에 task 가 비어 오는 것만 과도기 호환으로 허용한다.
+     */
+    public boolean servedAs(AnalysisType requested) {
+        return task == null ? requested == AnalysisType.DEFAULT : task.equals(requested.code());
+    }
+
     /** model_version 컬럼은 NOT NULL 이라, 구버전 FastAPI가 필드를 안 보내는 과도기에도 저장이 깨지면 안 된다. */
     public String modelVersionOrDefault() {
         return modelVersion != null && !modelVersion.isBlank()

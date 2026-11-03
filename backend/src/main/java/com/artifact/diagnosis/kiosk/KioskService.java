@@ -2,6 +2,7 @@ package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.AnalysisResponse;
+import com.artifact.diagnosis.analysis.AnalysisType;
 import com.artifact.diagnosis.analysis.FastApiPredictResponse;
 import com.artifact.diagnosis.analysis.FastApiTop1;
 import com.artifact.diagnosis.analysis.HeatmapCrop;
@@ -41,11 +42,15 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 대기실 키오스크 예비분석 서비스.
  * Visit의 정식 진료 FSM과는 분리된 사이드 채널 — 여기서 만든 결과는 visit.status에 영향을 주지 않는다.
- * 현재는 데모 단순성을 위해 동기 처리한다(태블릿이 결과를 기다리는 화면이라 @Async로 분리할 이점이 적음).
+ *
+ * 분석은 동기로 처리한다(태블릿이 결과를 기다리는 화면이라 큐로 미룰 이점이 적다). 대신 오래 걸리는
+ * 참고 소견(LLM)은 분석 응답에서 떼어 냈다 — 화면이 결과를 먼저 그리고 {@link #generateComment} 를 따로 부른다.
  */
 @Slf4j
 @Service
@@ -90,9 +95,7 @@ public class KioskService {
      * AnalysisService.DISEASE_NAME_KO 와 동일한 값 — 모델 클래스 코드 → 한글 병명 하드코딩 매핑.
      * 두 사본의 코드 집합과 값이 같은지는 fastapi/tests/test_model_contract.py [7] 이 대조한다.
      * 키오스크 참고 소견 프롬프트에도 이 이름을 넘긴다 — 코드(nv, mel)를 그대로 주면 환자 화면에 영문 약어가 섞인다.
-     *
-     * 키오스크는 skin_lesion 모델만 부르므로(아래 callFastApi) facial 6종이 여기서 조회될 일은 아직 없지만,
-     * 계약 테스트가 두 맵을 통째로 비교하므로 같은 14쌍을 둔다.
+     * 키오스크도 두 모델을 다 쓴다(방문자가 촬영 대상을 고른다) — skin_lesion 8종과 facial 6종, 14쌍이다.
      * Map.of 가 아니라 Map.ofEntries 인 이유: Map.of 오버로드는 10쌍까지라 14쌍이 들어가지 않는다.
      */
     private static final Map<String, String> DISEASE_NAME_KO = Map.ofEntries(
@@ -113,6 +116,21 @@ public class KioskService {
             Map.entry("rosacea", "주사(장미증)"),
             Map.entry("seb_derm", "지루피부염")
     );
+
+    /**
+     * 지금 분석 중인 접수들. 같은 접수(토큰)의 분석이 겹치면 두 번째를 409 로 돌려보낸다.
+     *
+     * 겹치는 경우는 생각보다 흔하다 — 두 기기가 같은 QR 을 찍었을 때, 응답이 늦어 화면이 오류를 띄운 사이
+     * 환자가 다시 눌렀을 때(서버는 첫 요청을 아직 처리 중이다). 겹치게 두면 두 가지가 깨진다.
+     *   - 이 접수의 첫 저장이 둘 다 INSERT 를 시도해 visit_id UNIQUE 에 걸린 쪽이 500 으로 끝난다.
+     *   - 이미 행이 있으면 나중에 끝난 쪽이 통째로 덮어써서, 먼저 끝난 기기는 자기 병명 옆에 다른 사진의
+     *     히트맵을 받는다(히트맵 경로가 "그 접수의 지금 행"을 읽기 때문이다).
+     * 백엔드는 한 대라 메모리의 집합으로 충분하다. 백엔드를 여러 대로 늘리면 공유 저장소(Redis 등)로 옮겨야 한다.
+     */
+    private final Set<Long> analyzingVisits = ConcurrentHashMap.newKeySet();
+
+    /** 참고 소견을 만드는 중인 접수들. 같은 소견을 위해 유료 LLM 을 두 번 부르지 않는다. */
+    private final Set<Long> commentingVisits = ConcurrentHashMap.newKeySet();
 
     /**
      * QR 없이 자동 진입하는 폴백(/kiosk?auto=1)용 — 가장 최근 RECEIVED 상태이면서 예비분석이 없는 Visit 1건.
@@ -162,19 +180,24 @@ public class KioskService {
 
     /**
      * 태블릿에서 선택한 이미지로 예비분석을 수행한다.
-     * Top-K + GradCAM은 FastAPI에서, 참고 소견은 LLM(Gemini, 과부하 시 대체 모델·Claude)에서 받아
-     * preliminary_analysis에 저장(upsert)한다.
+     * Top-K + GradCAM 을 FastAPI 에서 받아 preliminary_analysis 에 저장(upsert)한다. 참고 소견은 여기서 만들지
+     * 않는다 — LLM 은 재시도·대체 모델까지 가면 수십 초가 걸리는데, 결과와 히트맵이 이미 손에 있는데도 환자가
+     * 그만큼 더 로딩 화면을 본다. 화면이 결과를 먼저 그리고 {@link #generateComment} 를 따로 부른다.
      * Visit 상태는 변경하지 않는다(RECEIVED 유지) — 정식 진료 흐름과 완전히 분리된 채널이다.
+     *
+     * task 는 방문자가 촬영 전에 고른 촬영 대상이다(얼굴 → facial, 점·피부 병변 → skin_lesion).
      *
      * visitId가 아니라 토큰을 받는 이유: 이 엔드포인트는 인증이 없어서, visitId(순차 정수)를 그대로
      * 받으면 같은 LAN의 누구나 임의 환자의 예비분석을 덮어쓸 수 있다.
      *
+     * 같은 접수의 분석이 이미 돌고 있으면 409 다({@link #analyzingVisits} 주석).
+     *
      * {@code @Transactional} 이 없는 것은 의도된 것이다. 한 번 호출에 외부 왕복이
-     * 세 번(FastAPI 추론 → 히트맵 업로드 → LLM) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
+     * 두 번(FastAPI 추론 → 히트맵 업로드) 들어가는데, 트랜잭션으로 감싸면 그 수 초 동안
      * DB 커넥션을 붙잡는다. 태블릿 몇 대가 동시에 촬영하면 커넥션 풀이 말라 진료실 화면까지 멈춘다.
      * DB 쓰기는 마지막에 {@link KioskTransactionService#saveResult} 한 번으로 끝낸다.
      */
-    public PreliminaryAnalysisResponse analyze(String token, MultipartFile file) {
+    public PreliminaryAnalysisResponse analyze(String token, MultipartFile file, AnalysisType task) {
         Long visitId = resolveToken(token).getId();
 
         byte[] imageBytes;
@@ -184,33 +207,74 @@ public class KioskService {
             throw new IllegalArgumentException("이미지 파일을 읽을 수 없습니다.");
         }
 
-        FastApiPredictResponse prediction = callFastApi(imageBytes);
+        if (!analyzingVisits.add(visitId)) {
+            throw new IllegalStateException("이 접수는 지금 다른 화면에서 분석 중입니다. 잠시 후 다시 시도해 주세요.");
+        }
+        try {
+            FastApiPredictResponse prediction = callFastApi(imageBytes, task);
 
-        // 신뢰도가 낮아도 막지 않는다 — 결과를 그대로 주고 "확신 낮음" 등급만 붙인다.
-        // 이유와 실측 근거는 LowConfidenceCaution / fastapi/main.py 주석 참고.
-        String confidenceLevel = lowConfidenceCaution.normalizeLevel(prediction.confidenceLevel());
+            // 신뢰도가 낮아도 막지 않는다 — 결과를 그대로 주고 "확신 낮음" 등급만 붙인다.
+            // 이유와 실측 근거는 LowConfidenceCaution / fastapi/main.py 주석 참고.
+            String confidenceLevel = lowConfidenceCaution.normalizeLevel(prediction.confidenceLevel());
 
-        List<TopKItem> topK = prediction.top5().stream()
-                .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
-                .toList();
+            List<TopKItem> topK = prediction.top5().stream()
+                    .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
+                    .toList();
 
-        // 전체·확대 히트맵을 같은 접두어로 올린다. 진료실 분석과 같은 부품이다 — 확대 히트맵 하나가
-        // 실패하면 그것만 건너뛰는 규칙이 두 화면에서 갈라지지 않는다(HeatmapStorage).
-        StoredHeatmap heatmap = heatmapStorage.upload(
-                "heatmap/preliminary/" + visitId + "/" + System.currentTimeMillis(), prediction);
-        // 확대 재판정을 했으면 원본만 본 1순위도 남긴다 — 태블릿과 의사 화면이 같은 사실을 보여 줘야 한다.
-        FastApiTop1 fullImage = prediction.fullImageTop1();
-        TopKItem fullImageTop1 = fullImage == null ? null : new TopKItem(fullImage.diseaseCode(), fullImage.confidence());
+            // 전체·확대 히트맵을 같은 접두어로 올린다. 진료실 분석과 같은 부품이다 — 확대 히트맵 하나가
+            // 실패하면 그것만 건너뛰는 규칙이 두 화면에서 갈라지지 않는다(HeatmapStorage).
+            // 같은 접수의 분석은 겹치지 않으므로(위 409) 밀리초까지 같은 키가 만들어질 일이 없다.
+            StoredHeatmap heatmap = heatmapStorage.upload(
+                    "heatmap/preliminary/" + visitId + "/" + System.currentTimeMillis(), prediction);
+            // 확대 재판정을 했으면 원본만 본 1순위도 남긴다 — 태블릿과 의사 화면이 같은 사실을 보여 줘야 한다.
+            FastApiTop1 fullImage = prediction.fullImageTop1();
+            TopKItem fullImageTop1 = fullImage == null ? null : new TopKItem(fullImage.diseaseCode(), fullImage.confidence());
 
-        String aiComment = aiCommentService.generatePreliminaryComment(topK, DISEASE_NAME_KO);
+            // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
+            PreliminaryAnalysis entity = kioskTransactionService.saveResult(
+                    visitId, task, topK, confidenceLevel, heatmap, fullImageTop1, prediction.modelVersionOrDefault());
 
-        // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
-        PreliminaryAnalysis entity = kioskTransactionService.saveResult(
-                visitId, topK, confidenceLevel, heatmap, fullImageTop1, aiComment, prediction.modelVersionOrDefault());
+            log.info("예비분석 완료 visitId={} task={} top1={}", visitId, task.code(), prediction.top1().diseaseCode());
 
-        log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
+            return toResponse(token, entity, prediction);
+        } finally {
+            analyzingVisits.remove(visitId);
+        }
+    }
 
-        return toResponse(token, entity, prediction);
+    /**
+     * 직전 예비분석에 대한 참고 소견을 만들어 저장하고 돌려준다. 태블릿이 결과를 그린 뒤 따로 부른다.
+     *
+     * 이미 소견이 있으면 LLM 을 부르지 않고 그대로 돌려준다 — 화면 재진입·두 번 누르기로 유료 호출을 반복하지 않는다.
+     * 생성이 실패해도 예외가 아니라 안내 문구가 돌아오고(AiCommentService), 그 문구도 소견으로 저장된다.
+     * 다시 만들려면 사진을 다시 찍으면 된다(재분석이 소견을 비운다).
+     *
+     * 소견을 만드는 동안 재촬영이 끝나면 들고 있는 소견은 이전 사진의 것이다 — 저장하지 않고, 응답만 준다
+     * ({@link KioskTransactionService#saveAiComment}). 그 화면은 곧 새 결과로 바뀐다.
+     *
+     * {@code @Transactional} 이 없는 것은 {@link #analyze} 와 같은 이유다 — LLM 왕복 동안 DB 커넥션을 쥐지 않는다.
+     */
+    public KioskCommentResponse generateComment(String token) {
+        Long visitId = resolveToken(token).getId();
+        PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
+                .orElseThrow(() -> new NoSuchElementException("예비분석 결과가 없습니다. 먼저 분석을 실행하세요."));
+        if (entity.getAiComment() != null) {
+            return new KioskCommentResponse(entity.getAiComment());
+        }
+        if (!commentingVisits.add(visitId)) {
+            throw new IllegalStateException("참고 소견을 만드는 중입니다. 잠시 후 다시 시도해 주세요.");
+        }
+        try {
+            String heatmapKey = entity.getGradcamUrl();
+            List<TopKItem> topK = entity.getTopKJson() == null ? List.of() : entity.getTopKJson();
+            String aiComment = aiCommentService.generatePreliminaryComment(topK, DISEASE_NAME_KO);
+            if (!kioskTransactionService.saveAiComment(visitId, heatmapKey, aiComment)) {
+                log.info("참고 소견 저장 건너뜀 — 소견을 만드는 사이 재분석됨 visitId={}", visitId);
+            }
+            return new KioskCommentResponse(aiComment);
+        } finally {
+            commentingVisits.remove(visitId);
+        }
     }
 
     /** 의사 진료 페이지 조회용. 예비분석이 없으면 404(NoSuchElementException). */
@@ -228,6 +292,7 @@ public class KioskService {
 
         return new PreliminaryAnalysisResponse(
                 topK,
+                entity.getAnalysisType(),
                 entity.getConfidenceLevel(),
                 lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), top1Code(entity), fullImageCode(entity)),
                 doctorHeatmapApiUrl(entity),
@@ -309,6 +374,7 @@ public class KioskService {
 
         return new PreliminaryAnalysisResponse(
                 topK,
+                entity.getAnalysisType(),
                 entity.getConfidenceLevel(),
                 lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), prediction.top1().diseaseCode(),
                         fullImageCode(entity)),
@@ -337,14 +403,16 @@ public class KioskService {
     }
 
     /** AnalysisService.callFastApi()와 동일한 방식 — 키오스크는 파일에서 바로 바이트를 받으므로 스토리지 다운로드 단계가 없다. */
-    private FastApiPredictResponse callFastApi(byte[] imageBytes) {
+    private FastApiPredictResponse callFastApi(byte[] imageBytes, AnalysisType task) {
         try {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-            // task 를 보내지 않는다 → FastAPI 기본값 skin_lesion. 태블릿 앞에는 어느 모델이 맞는지 고를 의사가
-            // 없고 preliminary_analysis 에도 태스크 컬럼이 없다(V10 머리말). 모델 선택은 진료실(AnalysisService)에서만.
+            // task 는 방문자가 고른 촬영 대상이다(V13). 기본 태스크여도 항상 명시해서 보낸다 — 기본값을 두 서버에
+            // 따로 두면 언젠가 한쪽만 바뀐다(AnalysisService 와 같은 규칙).
             // crops 를 보내지 않는다 → 확대 보기·확대 재판정이 켜진다. 확대 히트맵과 재판정 전 원본 1순위는
             // preliminary_analysis 의 heatmap_crops·full_image_top1 에 남는다(V12) — 그 칸이 생기기 전에는 false 로 껐다.
-            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
+            String requestBody = objectMapper.writeValueAsString(Map.of(
+                    "image_base64", base64Image,
+                    "task", task.code()));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
@@ -357,11 +425,28 @@ public class KioskService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+            if (response.statusCode() == 503) {
+                // 가중치가 없어 로드되지 않은 태스크가 이렇게 온다 — 우리 버그가 아니라 서버 준비 상태의 문제다
+                // (AnalysisService.callFastApi 와 같은 처리).
+                log.error("FastAPI 503(예비분석) task={} body={}", task.code(), response.body());
+                throw new AiServiceUnavailableException(
+                        "AI 분석 서버에 '" + task.code() + "' 모델이 준비되어 있지 않습니다. 접수처에 문의해 주세요.");
+            }
             if (response.statusCode() != 200) {
                 throw new RuntimeException("FastAPI 오류 " + response.statusCode() + ": " + response.body());
             }
 
-            return objectMapper.readValue(response.body(), FastApiPredictResponse.class);
+            FastApiPredictResponse prediction = objectMapper.readValue(response.body(), FastApiPredictResponse.class);
+            // 요청한 모델이 실제로 돌았는지 — 규칙은 FastApiPredictResponse.servedAs 주석.
+            if (!prediction.servedAs(task)) {
+                log.error("FastAPI 가 요청한 태스크로 추론하지 않았다(예비분석) requested={} served={}",
+                        task.code(), prediction.task());
+                throw new AiServiceUnavailableException(
+                        "AI 분석 서버가 요청한 분석 종류(" + task.code() + ")를 지원하지 않습니다. 접수처에 문의해 주세요.");
+            }
+            return prediction;
+        } catch (AiServiceUnavailableException e) {
+            throw e;
         } catch (HttpConnectTimeoutException | ConnectException e) {
             log.error("FastAPI 연결 실패(예비분석) url={}", fastapiUrl, e);
             throw new AiServiceUnavailableException("AI 분석 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");
