@@ -7,7 +7,7 @@ import torch
 import timm
 from torchvision import transforms
 from torchvision.ops import roi_align
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 import io
 import base64
 import os
@@ -812,6 +812,59 @@ def get_task_model(task: str) -> TaskModel:
     return tm
 
 
+# =============================================
+# 입력 사진 오류 — 모델이 아니라 보낸 쪽의 문제다
+# =============================================
+# 업로드된 파일이 사진으로 열리지 않으면(이미지가 아닌 파일, 이 서버가 못 읽는 HEIC, 손상되거나 잘린 파일, 0바이트)
+# 전에는 Image.open 의 예외가 그대로 올라가 500 이 났다. 백엔드도 따라서 500 을 내고 태블릿·진료실 화면에는
+# "서버 내부 오류"만 떴다 — 사진을 다시 찍으면 풀리는 일인데 사용자는 그것을 알 길이 없었다.
+#
+# 그래서 400 을 내고, 본문에 기계가 읽을 코드를 함께 싣는다: {"detail": {"code": "invalid_image", "message": ...}}.
+# 코드가 필요한 이유는 이 서버의 400 이 이것 하나가 아니기 때문이다. 모르는 태스크 이름(get_task_model)과 깨진
+# base64(predict_base64)도 400 인데, 그 둘은 백엔드가 요청을 잘못 만든 것이라 사진을 다시 찍어도 풀리지 않는다.
+# 백엔드는 이 코드가 있을 때만 화면에 "다시 촬영" 안내(400)를 내고, 나머지 400 은 자기 버그(500)로 남긴다.
+# 값을 바꾸면 백엔드 FastApiErrors.INVALID_IMAGE 도 함께 바꾼다 — tests/test_model_contract.py [8] 이 대조한다.
+INVALID_IMAGE = "invalid_image"
+
+
+def _invalid_image(message: str) -> HTTPException:
+    """보낸 것을 사진으로 쓸 수 없다는 400. message 는 무엇이 잘못됐는지다 — 백엔드가 로그에 남긴다."""
+    return HTTPException(status_code=400, detail={"code": INVALID_IMAGE, "message": message})
+
+
+def _open_image(image_bytes: bytes) -> Image.Image:
+    """
+    업로드된 바이트를 EXIF 회전을 적용한 RGB 이미지로 연다. 사진으로 열 수 없으면 400(INVALID_IMAGE)으로 끝낸다.
+
+    잡는 예외는 실측으로 정했다. 정상 JPEG·PNG·GIF·BMP·TIFF·WebP(PNG 는 IDAT 를 여러 청크로 나눈 것까지 두 벌)를
+    무작위로 자르고·덮어쓰고·지우고·끼워 넣은 21,000개(7벌 × 3,000개, Pillow 12.3 과 13.0 에서 각각)를
+    open → exif_transpose → convert 에 넣었을 때 나온 예외는 아래 셋뿐이었다.
+      OSError        형식을 못 알아봄(UnidentifiedImageError — 이미지가 아닌 파일·HEIC), 잘림
+                     ("image file is truncated"), 깨진 압축 데이터("broken data stream")
+      SyntaxError    깨진 PNG 청크("broken PNG file"), WebP·JPEG 안의 깨진 EXIF("not a TIFF file")
+      DecompressionBombError  화소 수가 Image.MAX_IMAGE_PIXELS 의 2배(약 1.79억)를 넘는다. OSError 계열이 아니라
+                     따로 적는다. 2억 화소 모드로 찍은 폰 사진(16320x12240)이 여기 걸린다.
+    잘린 파일은 open 이 아니라 exif_transpose(안에서 load 한다)에서 터지므로 세 호출을 한 try 에 둔다.
+    그 밖의 예외(MemoryError 등)는 잡지 않는다 — 입력 탓이라고 단정할 수 없어 500 으로 남아야 서버 쪽 문제가 보인다.
+    """
+    if not image_bytes:
+        raise _invalid_image("이미지가 비어 있습니다(0바이트).")
+    size = f"{len(image_bytes):,}바이트"
+    fmt = None
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        fmt = image.format
+        return ImageOps.exif_transpose(image).convert("RGB")
+    except Image.DecompressionBombError as e:
+        raise _invalid_image(f"사진의 화소 수가 너무 많아 열지 않습니다({size}): {e}") from e
+    except UnidentifiedImageError as e:
+        # Pillow 의 메시지("cannot identify image file <_io.BytesIO ...>")는 아무것도 알려 주지 않아 싣지 않는다.
+        raise _invalid_image(f"사진으로 알아볼 수 없는 파일입니다({size}). "
+                             "이미지가 아니거나 이 서버가 읽지 못하는 형식(예: HEIC)입니다.") from e
+    except (OSError, SyntaxError) as e:
+        raise _invalid_image(f"{fmt or '이미지'} 파일이 손상되었거나 잘려 끝까지 읽지 못했습니다({size}): {e}") from e
+
+
 def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK, crops: bool = True) -> dict:
     """
     EfficientNet-B0 추론. confidence_level / top1 / top5 / heatmap_base64 / crops 포함 결과 반환.
@@ -842,13 +895,15 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK, crops: bool = Tr
     (아래 confidence_level), 원본만 본 1순위를 full_image_top1 로 함께 내보내 화면과 경고 문구가 쓴다.
     """
     tm = get_task_model(task)
-    # EXIF 회전을 먼저 적용한다. 폰카 사진은 센서 방향 그대로 저장되고 회전 정보는
+    # _open_image 가 EXIF 회전을 먼저 적용한다. 폰카 사진은 센서 방향 그대로 저장되고 회전 정보는
     # EXIF 태그에만 들어 있다. 이걸 무시하면 두 가지가 동시에 깨진다:
     #  (1) 모델이 누운 이미지를 본다 — 학습 증강은 ±15도 회전뿐이라 90도는 분포 밖이다.
     #  (2) 히트맵 JPEG 에는 EXIF 가 없는데 브라우저는 원본 blob 에 EXIF 를 적용하므로,
     #      "히트맵 보기 ↔ 원본 이미지" 토글이 서로 다른 방향의 사진을 보여준다.
     # 모델 입력과 오버레이 베이스가 같은 이미지를 쓰게 되므로 둘 다 사라진다.
-    image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
+    # 사진으로 열 수 없으면 거기서 400(INVALID_IMAGE)으로 끝난다. 태스크 확인(위)이 먼저인 이유: 태스크가 틀린 것은
+    # 백엔드 버그라, 사진까지 깨져 있어도 "다시 촬영"이 아니라 그쪽이 드러나야 한다.
+    image = _open_image(image_bytes)
     tensor = tm.transform(image).unsqueeze(0).to(device)
 
     # ── 모델을 만지는 구간은 한 번에 하나씩만 (TaskModel 의 lock 설명 참고) ──
@@ -1016,7 +1071,7 @@ def predict(file: UploadFile = File(...), task: str = Form(DEFAULT_TASK)):
     """
     # content_type 은 클라이언트가 안 보내면 None 이다 (그대로 .startswith 하면 500)
     if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(status_code=400, detail="이미지 파일만 허용됩니다.")
+        raise _invalid_image(f"이미지 파일만 허용됩니다(받은 Content-Type: {file.content_type!r}).")
     contents = file.file.read()
     return run_inference(contents, task)
 
@@ -1024,5 +1079,15 @@ def predict(file: UploadFile = File(...), task: str = Form(DEFAULT_TASK)):
 @app.post("/predict-base64", dependencies=[Depends(verify_internal_secret)])
 def predict_base64(request: PredictRequest):
     """Spring Boot 내부 호출용 (JSON base64). 본문의 task 생략 시 기본 태스크."""
-    image_bytes = base64.b64decode(request.image_base64)
+    # validate=True 로 읽는다. 기본값(False)은 base64 알파벳 밖의 글자를 조용히 버리고 남은 것을 디코딩해서,
+    # 깨진 본문이 여기서 400 으로 끝나지 않고 엉뚱한 바이트가 되어 "사진이 손상됐다"(INVALID_IMAGE)로 오진된다.
+    # 백엔드는 Base64.getEncoder()(표준 알파벳, 패딩 있음, 줄바꿈 없음)로 보내므로 엄격하게 읽어도 잃는 것이 없다.
+    #
+    # INVALID_IMAGE 코드를 싣지 않는다. 백엔드가 인코딩한 base64 가 깨질 수는 없으니 이것은 사진이 아니라
+    # 호출한 쪽의 버그다 — 백엔드는 이 400 을 500 으로 남기고 화면에 "다시 촬영"을 띄우지 않는다.
+    try:
+        image_bytes = base64.b64decode(request.image_base64, validate=True)
+    except ValueError as e:  # binascii.Error(알파벳 밖 글자·패딩)도, ASCII 가 아닌 문자열도 ValueError 다
+        raise HTTPException(status_code=400,
+                            detail=f"image_base64 가 올바른 base64 문자열이 아닙니다: {e}") from e
     return run_inference(image_bytes, request.task, crops=request.crops)
