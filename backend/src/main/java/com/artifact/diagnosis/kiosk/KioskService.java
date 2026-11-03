@@ -2,10 +2,13 @@ package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
 import com.artifact.diagnosis.analysis.AnalysisResponse;
+import com.artifact.diagnosis.analysis.AnalysisType;
+import com.artifact.diagnosis.analysis.FastApiErrors;
 import com.artifact.diagnosis.analysis.FastApiPredictResponse;
 import com.artifact.diagnosis.analysis.FastApiTop1;
 import com.artifact.diagnosis.analysis.HeatmapCrop;
 import com.artifact.diagnosis.analysis.HeatmapStorage;
+import com.artifact.diagnosis.analysis.InvalidImageException;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.StoredHeatmap;
 import com.artifact.diagnosis.analysis.TopKItem;
@@ -358,10 +361,15 @@ public class KioskService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
-                throw new RuntimeException("FastAPI 오류 " + response.statusCode() + ": " + response.body());
+                // 진료실 분석과 같은 규칙이다(FastApiErrors) — 사진을 열 수 없으면 태블릿에 400 과 다시 찍으라는 안내가 가고,
+                // 그 밖의 오류는 503·500 으로 남는다. task 를 보내지 않았으니 FastAPI 는 기본 태스크로 판정했다.
+                throw FastApiErrors.toException(response, AnalysisType.DEFAULT.code(), "예비분석", objectMapper);
             }
 
             return objectMapper.readValue(response.body(), FastApiPredictResponse.class);
+        } catch (AiServiceUnavailableException | InvalidImageException e) {
+            // 바로 위에서 던진 것. 아래 Exception 절에 잡혀 RuntimeException(500) 으로 둔갑하지 않게 그대로 올린다.
+            throw e;
         } catch (HttpConnectTimeoutException | ConnectException e) {
             log.error("FastAPI 연결 실패(예비분석) url={}", fastapiUrl, e);
             throw new AiServiceUnavailableException("AI 분석 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");

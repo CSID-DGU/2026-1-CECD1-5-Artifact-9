@@ -334,20 +334,13 @@ public class AnalysisService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() == 503) {
-                // 등록은 됐지만 가중치 파일이 없어 로드되지 않은 태스크가 이렇게 온다(fastapi/main.py —
-                // CI·개발 환경에는 facial.pth 가 없다). 우리 버그가 아니라 그쪽 준비 상태의 문제이므로
-                // 500 이 아니라 503 으로 내보낸다. 로그에 FastAPI 본문을 남겨 어느 태스크가 빠졌는지 보이게 한다.
-                log.error("FastAPI 503 task={} body={}", task.code(), response.body());
-                throw new AiServiceUnavailableException(
-                        "AI 분석 서버에 '" + task.code() + "' 모델이 준비되어 있지 않습니다. 서버 상태를 확인해주세요.");
-            }
             if (response.statusCode() != 200) {
-                throw new RuntimeException("FastAPI 오류 " + response.statusCode() + ": " + response.body());
+                // 사진을 열 수 없음(400) · 모델 미준비(503) · 그 밖(500) — 키오스크 예비분석과 같은 규칙이다(FastApiErrors).
+                throw FastApiErrors.toException(response, task.code(), "분석", objectMapper);
             }
 
             return objectMapper.readValue(response.body(), FastApiPredictResponse.class);
-        } catch (AiServiceUnavailableException e) {
+        } catch (AiServiceUnavailableException | InvalidImageException e) {
             // 바로 위에서 던진 것. 아래 Exception 절에 잡혀 RuntimeException(500) 으로 둔갑하지 않게 그대로 올린다.
             throw e;
         } catch (HttpConnectTimeoutException | ConnectException e) {
