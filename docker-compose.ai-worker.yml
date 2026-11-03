@@ -1,0 +1,42 @@
+# =============================================
+# Team Artifact — AI 전용 워커 서버 (수평 확장, 선택)
+# =============================================
+# 메인 서버가 **아닌** 다른 EC2 에서 이 파일 하나로 FastAPI 워커만 띄운다. DB·백엔드·프론트는 없다.
+# 메인 서버의 로드밸런서(docker/ai-lb)가 이 서버의 8000 번으로 추론을 나눠 보낸다.
+#
+#   docker compose -f docker-compose.ai-worker.yml up -d --build
+#
+# 필요한 것: 이 파일, fastapi/ 폴더(가중치 포함), 그리고 같은 폴더의 .env 에 INTERNAL_API_SECRET 한 줄 —
+# 메인 서버 .env 의 값과 **같아야** 한다. 다르면 모든 요청이 401 이다.
+#
+# ⚠️ 8000 번을 인터넷에 열지 않는다. 보안 그룹 인바운드는 "메인 서버의 보안 그룹에서 오는 8000"만 허용한다.
+# 시크릿 헤더가 있어도, 추론 서버를 바깥에 열 이유는 없다. 절차는 docs/booth-operation-guide.md 의 "수평 확장".
+#
+# 붙이기: 메인 서버의 docker/ai-lb/remote.d/<이름>.conf 에
+#   server <이 서버의 사설 IP>:8000 max_fails=3 fail_timeout=15s;
+# 를 쓰고 `docker compose ... restart ai-lb`. 떼기: 그 파일을 지우고 다시 restart.
+# =============================================
+
+services:
+  fastapi:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: artifact-fastapi-remote
+    restart: unless-stopped
+    environment:
+      LOW_CONFIDENCE_THRESHOLD: ${LOW_CONFIDENCE_THRESHOLD:-0.45}
+      HEATMAP_ALPHA_MIN: ${HEATMAP_ALPHA_MIN:-0.25}
+      HEATMAP_ALPHA_MAX: ${HEATMAP_ALPHA_MAX:-0.60}
+      HEATMAP_SMOOTH: ${HEATMAP_SMOOTH:-0.03}
+      HEATMAP_CROPS: ${HEATMAP_CROPS:-3}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET이 없습니다. 메인 서버 .env 의 값과 같은 값을 .env 에 넣으세요.}
+      # TORCH_NUM_THREADS 는 주지 않는다 — 이 서버에는 워커가 하나뿐이라 코어를 다 쓰는 기본값이 맞다.
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
