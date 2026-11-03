@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getErrorMessage, isNotFound } from "../api/errors";
-import { analyzeKioskSession, getKioskSession, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
+import { getErrorMessage, isConflict, isNotFound } from "../api/errors";
+import type { AnalysisType } from "../api/analysis";
+import { analyzeKioskSession, getKioskSession, requestKioskComment, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { formatConfidence } from "../utils/confidence";
+import { shrinkForUpload } from "../utils/uploadImage";
 
 const DISCLAIMER =
   "⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.";
@@ -22,6 +24,32 @@ const SHORT_DISCLAIMER = "⚠️ AI 보조 참고용 결과입니다 · 의학�
 
 const MIN_ANALYSIS_LOADING_MS = 1200;
 
+/** 참고 소견 409(이전 사진의 소견을 아직 만드는 중) 때 다시 묻는 간격과 횟수 — 합쳐 20초쯤 기다린다. */
+const COMMENT_RETRY_MS = 4000;
+const COMMENT_MAX_TRIES = 6;
+
+/**
+ * 촬영 대상. 방문자가 고르는 것은 병명이 아니라 "무엇을 찍는가"다 — 그 답은 찍는 사람이 가장 잘 안다.
+ * 대상마다 모델이 다르다(얼굴 → 안면부 6종, 점·병변 → 피부 병변 8종). 부스에서는 얼굴이 기본이다.
+ * 얼굴은 셀카라 전면 카메라를, 점·병변은 다른 사람이 찍어 주기 쉬워 후면 카메라를 연다.
+ */
+const TARGETS: { type: AnalysisType; label: string; hint: string; guide: string; capture: "user" | "environment" }[] = [
+  {
+    type: "facial",
+    label: "얼굴 피부",
+    hint: "여드름·아토피 등",
+    guide: "얼굴 정면이 화면을 가득 채우도록, 밝은 곳에서 찍어 주세요. 앞머리와 안경은 가능하면 걷어 주세요.",
+    capture: "user",
+  },
+  {
+    type: "skin_lesion",
+    label: "점·피부 병변",
+    hint: "점, 몸의 피부 병변",
+    guide: "병변이 화면 가운데에 오도록 10~15cm 거리에서 초점을 맞춰 찍어 주세요.",
+    capture: "environment",
+  },
+];
+
 /**
  * QR로 진입한 환자 1명의 예비분석 화면. 경로의 토큰이 곧 대상 접수를 가리킨다.
  * 흐름: 세션 조회 → 본인 확인 → 사진 선택/촬영 → 분석 → 결과.
@@ -36,6 +64,8 @@ export default function KioskAnalyze() {
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
+  const [analysisType, setAnalysisType] = useState<AnalysisType>("facial");
+  const target = TARGETS.find((t) => t.type === analysisType) ?? TARGETS[0];
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,6 +73,9 @@ export default function KioskAnalyze() {
   const [error, setError] = useState<string | null>(null);
   const [gradcamError, setGradcamError] = useState(false);
   const [result, setResult] = useState<PreliminaryAnalysis | null>(null);
+  // 참고 소견은 결과보다 늦게 온다(LLM). 결과를 먼저 그리고 이 값이 채워지면 아래에 덧붙인다.
+  const [comment, setComment] = useState<string | null>(null);
+  const [commentLoading, setCommentLoading] = useState(false);
   const [imageViewMode, setImageViewMode] = useState<"heatmap" | "original">("heatmap");
   // 확대 히트맵 칸에 올린(누른) 번호 — 전체 히트맵의 같은 번호 상자를 노랗게 표시한다.
   const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
@@ -91,6 +124,7 @@ export default function KioskAnalyze() {
     const selected = e.target.files?.[0] ?? null;
     setFile(selected);
     setResult(null);
+    setComment(null);
     setError(null);
     setGradcamError(false);
     setGradcamLoading(false);
@@ -116,18 +150,49 @@ export default function KioskAnalyze() {
     }
   };
 
+  /**
+   * 결과를 그린 뒤 참고 소견을 따로 받는다. 실패해도 결과 화면은 그대로 둔다 — 소견은 없어도 되는 정보다.
+   *
+   * 409 는 같은 접수의 이전 사진 소견을 서버가 아직 만들고 있다는 뜻이다(같은 QR 로 바로 다시 찍었거나, 다른 기기가
+   * 같은 QR 을 찍었을 때). 그 소견은 서버가 저장하지 않고 버리므로, 끝날 때까지 몇 번 다시 물어 이 사진의 소견을 받는다.
+   * 여기서 포기하면 이 사진의 소견은 끝내 만들어지지 않아 진료실 화면에도 비어 있다.
+   */
+  const loadComment = async (sessionToken: string) => {
+    setCommentLoading(true);
+    try {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const data = await requestKioskComment(sessionToken);
+          setComment(data.aiComment);
+          return;
+        } catch (err) {
+          if (!isConflict(err) || attempt >= COMMENT_MAX_TRIES) {
+            setComment(null);
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, COMMENT_RETRY_MS));
+        }
+      }
+    } finally {
+      setCommentLoading(false);
+    }
+  };
+
   const handleAnalyze = async () => {
-    if (!file || !token) return;
+    if (!file || !token || loading) return;
     setLoading(true);
     setGradcamLoading(true);
     setGradcamError(false);
     setError(null);
+    setComment(null);
     try {
+      const upload = await shrinkForUpload(file);
       const [response] = await Promise.all([
-        analyzeKioskSession(token, file),
+        analyzeKioskSession(token, upload, analysisType),
         new Promise((resolve) => window.setTimeout(resolve, MIN_ANALYSIS_LOADING_MS)),
       ]);
       setResult(response);
+      loadComment(token);
     } catch (err) {
       setError(getErrorMessage(err));
       setGradcamLoading(false);
@@ -136,8 +201,13 @@ export default function KioskAnalyze() {
     }
   };
 
+  // 공용 기기라 다음 방문자가 '뒤로 가기'로 앞사람의 이름·결과 화면에 돌아오지 못하게, 이 화면을 기록에서 지운다.
+  const leaveToStart = () => {
+    navigate("/kiosk", { replace: true });
+  };
+
   const handleConfirm = () => {
-    navigate("/kiosk");
+    leaveToStart();
   };
 
   const renderLoadingOverlay = () => (
@@ -181,7 +251,7 @@ export default function KioskAnalyze() {
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <div className="text-3xl">⚠️</div>
           <p className="text-sm font-semibold text-red-300">{sessionError}</p>
-          <Button onClick={() => navigate("/kiosk")} className="w-full">
+          <Button onClick={leaveToStart} className="w-full">
             처음으로
           </Button>
         </div>
@@ -223,7 +293,7 @@ export default function KioskAnalyze() {
             </Button>
             <button
               type="button"
-              onClick={() => navigate("/kiosk")}
+              onClick={leaveToStart}
               className="w-full rounded border border-gray-400 px-3 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700 cursor-pointer"
             >
               아니오
@@ -251,6 +321,27 @@ export default function KioskAnalyze() {
 
           {!result && (
             <div className="flex flex-col items-center gap-3">
+              {/* 촬영 대상 고르기 — 고른 대상에 맞는 모델로 분석한다. 사진을 고른 뒤에 바꿔도 된다. */}
+              <div className="grid w-full grid-cols-2 gap-2" role="radiogroup" aria-label="촬영 대상">
+                {TARGETS.map((t) => (
+                  <button
+                    key={t.type}
+                    type="button"
+                    role="radio"
+                    aria-checked={analysisType === t.type}
+                    onClick={() => setAnalysisType(t.type)}
+                    disabled={loading}
+                    className={`rounded border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      analysisType === t.type
+                        ? "border-blue-400 bg-blue-500/20 text-white"
+                        : "border-gray-600 bg-gray-900 text-gray-300 hover:bg-gray-800"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">{t.label}</span>
+                    <span className="block text-[11px] text-gray-400">{t.hint}</span>
+                  </button>
+                ))}
+              </div>
               <input
                 ref={galleryInputRef}
                 type="file"
@@ -262,7 +353,7 @@ export default function KioskAnalyze() {
                 ref={cameraInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                capture={target.capture}
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -285,11 +376,9 @@ export default function KioskAnalyze() {
                 </button>
               </div>
               <p className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-center text-[11px] text-gray-300">
-                {file ? file.name : "갤러리에서 선택하거나 태블릿 카메라로 촬영해 주세요."}
+                {file ? file.name : "갤러리에서 선택하거나 카메라로 촬영해 주세요."}
               </p>
-              <p className="text-center text-[11px] text-gray-400">
-                사진 촬영은 태블릿의 후면 카메라를 열고, 파일 선택은 사진 보관함에서 이미지를 선택합니다.
-              </p>
+              <p className="text-center text-[11px] text-gray-400">{target.guide}</p>
               {previewUrl && (
                 <div className="w-full rounded border border-gray-700 bg-gray-900 overflow-hidden">
                   <img src={previewUrl} alt="선택한 사진 미리보기" className="max-h-64 w-full object-contain" />
@@ -318,7 +407,9 @@ export default function KioskAnalyze() {
 
               {result.topK[0] && (
                 <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
-                  <p className="text-xs text-gray-300">Top 1</p>
+                  <p className="text-xs text-gray-300">
+                    Top 1 · {TARGETS.find((t) => t.type === (result.analysisType ?? "skin_lesion"))?.label ?? "피부 사진"}
+                  </p>
                   <p className="mt-0.5 text-sm font-semibold text-white">
                     {result.topK[0].diseaseNameKo} ({result.topK[0].diseaseCode})
                   </p>
@@ -336,6 +427,15 @@ export default function KioskAnalyze() {
                     </p>
                   )}
                 </div>
+              )}
+
+              {/* 안면부 모델은 실제 사진에서 1순위가 넷 중 하나꼴로만 맞고, 확신 정도도 믿을 만하지 않다
+                  (fastapi/tests/baselines/README.md ④). "확신 낮음"이 안 붙어도 같으므로 결과마다 붙인다. */}
+              {result.analysisType === "facial" && (
+                <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-100">
+                  얼굴 사진 분석은 아직 실제 사진에서 정확도가 낮습니다. 1순위 하나보다 아래 상위 후보를 함께 참고하시고,
+                  반드시 진료에서 확인해 주세요.
+                </p>
               )}
 
               <p className="text-[11px] leading-relaxed text-yellow-200/90">{SHORT_DISCLAIMER}</p>
@@ -441,9 +541,16 @@ export default function KioskAnalyze() {
                 ))}
               </div>
 
-              {result.aiComment && (
-                <div className="rounded bg-gray-800 p-2 text-xs text-gray-200 leading-relaxed">
-                  {result.aiComment}
+              {/* 참고 소견은 결과보다 늦게 온다 — 오는 동안 자리만 잡아 두고, 실패하면 아무것도 보이지 않는다. */}
+              {commentLoading && (
+                <div className="flex items-center gap-2 rounded bg-gray-800 p-2 text-xs text-gray-400">
+                  <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-gray-500 border-t-blue-300" />
+                  <span>AI 참고 소견을 작성하고 있습니다...</span>
+                </div>
+              )}
+              {!commentLoading && comment && (
+                <div className="rounded bg-gray-800 p-2 text-xs text-gray-200 leading-relaxed whitespace-pre-line">
+                  {comment}
                 </div>
               )}
 
