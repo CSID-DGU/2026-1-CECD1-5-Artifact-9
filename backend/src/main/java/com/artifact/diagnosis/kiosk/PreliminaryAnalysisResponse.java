@@ -10,6 +10,11 @@ import java.util.List;
 public record PreliminaryAnalysisResponse(
         List<TopKResult> topK,
 
+        /** 어느 모델로 본 결과인가 — topK 의 코드가 어느 클래스 목록에 속하는지 화면이 이 값으로 안다(V13). */
+        @Schema(description = "분석 태스크(모델): skin_lesion=피부 병변 / facial=안면부 피부질환",
+                example = "facial", allowableValues = {"skin_lesion", "facial"})
+        String analysisType,
+
         /** AI 신뢰도 등급 — {@code "low"} 면 화면에 확신도 경고를 띄운다. */
         @Schema(description = "AI 신뢰도 등급", example = "normal", allowableValues = {"low", "normal"})
         String confidenceLevel,

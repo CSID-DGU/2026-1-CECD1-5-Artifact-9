@@ -1,0 +1,320 @@
+{
+  "task": "facial",
+  "model_version": "efficientnet_b0-2d3a2141c3d2",
+  "serving_threshold": 0.45,
+  "sample_count": 257,
+  "accuracy": 0.2723735408560311,
+  "per_class": {
+    "acne": {
+      "support": 70,
+      "predicted": 28,
+      "correct": 12,
+      "precision": 0.42857142857142855,
+      "recall": 0.17142857142857143,
+      "f1": 0.24489795918367346,
+      "rejected": 5,
+      "reject_rate": 0.07142857142857142
+    },
+    "atopic": {
+      "support": 84,
+      "predicted": 76,
+      "correct": 24,
+      "precision": 0.3157894736842105,
+      "recall": 0.2857142857142857,
+      "f1": 0.3,
+      "rejected": 6,
+      "reject_rate": 0.07142857142857142
+    },
+    "normal": {
+      "support": 0,
+      "predicted": 55,
+      "correct": 0,
+      "precision": 0.0,
+      "recall": null,
+      "f1": null,
+      "rejected": 0,
+      "reject_rate": null
+    },
+    "psoriasis": {
+      "support": 44,
+      "predicted": 63,
+      "correct": 17,
+      "precision": 0.2698412698412698,
+      "recall": 0.38636363636363635,
+      "f1": 0.3177570093457943,
+      "rejected": 2,
+      "reject_rate": 0.045454545454545456
+    },
+    "rosacea": {
+      "support": 40,
+      "predicted": 31,
+      "correct": 16,
+      "precision": 0.5161290322580645,
+      "recall": 0.4,
+      "f1": 0.4507042253521127,
+      "rejected": 1,
+      "reject_rate": 0.025
+    },
+    "seb_derm": {
+      "support": 19,
+      "predicted": 4,
+      "correct": 1,
+      "precision": 0.25,
+      "recall": 0.05263157894736842,
+      "f1": 0.08695652173913043,
+      "rejected": 2,
+      "reject_rate": 0.10526315789473684
+    }
+  },
+  "confusion": [
+    [
+      12,
+      25,
+      14,
+      13,
+      6,
+      0
+    ],
+    [
+      7,
+      24,
+      24,
+      23,
+      4,
+      2
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      5,
+      11,
+      7,
+      17,
+      3,
+      1
+    ],
+    [
+      4,
+      13,
+      5,
+      2,
+      16,
+      0
+    ],
+    [
+      0,
+      3,
+      5,
+      8,
+      2,
+      1
+    ]
+  ],
+  "classes": [
+    "acne",
+    "atopic",
+    "normal",
+    "psoriasis",
+    "rosacea",
+    "seb_derm"
+  ],
+  "serving": {
+    "reject_rate": 0.0622568093385214,
+    "rejected": 16
+  },
+  "danger": {
+    "total": 0,
+    "downgraded": 0,
+    "downgrade_rate": 0.0,
+    "mel_confused_with": []
+  },
+  "threshold_sweep": [
+    {
+      "threshold": 0.05,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.1,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.15,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.2,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.25,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.3,
+      "reject_rate": 0.0,
+      "accuracy_of_passed": 0.2723735408560311,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.35,
+      "reject_rate": 0.01556420233463035,
+      "accuracy_of_passed": 0.2727272727272727,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.4,
+      "reject_rate": 0.038910505836575876,
+      "accuracy_of_passed": 0.27530364372469635,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.45,
+      "reject_rate": 0.0622568093385214,
+      "accuracy_of_passed": 0.2697095435684647,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.5,
+      "reject_rate": 0.13229571984435798,
+      "accuracy_of_passed": 0.2600896860986547,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.55,
+      "reject_rate": 0.20233463035019456,
+      "accuracy_of_passed": 0.25853658536585367,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.6,
+      "reject_rate": 0.2490272373540856,
+      "accuracy_of_passed": 0.25906735751295334,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.65,
+      "reject_rate": 0.32684824902723736,
+      "accuracy_of_passed": 0.27167630057803466,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.7,
+      "reject_rate": 0.377431906614786,
+      "accuracy_of_passed": 0.26875,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.75,
+      "reject_rate": 0.4396887159533074,
+      "accuracy_of_passed": 0.2708333333333333,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.8,
+      "reject_rate": 0.5058365758754864,
+      "accuracy_of_passed": 0.2755905511811024,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.85,
+      "reject_rate": 0.5642023346303502,
+      "accuracy_of_passed": 0.2767857142857143,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.9,
+      "reject_rate": 0.6381322957198443,
+      "accuracy_of_passed": 0.25806451612903225,
+      "mel_recall": null,
+      "danger_recall": null
+    },
+    {
+      "threshold": 0.95,
+      "reject_rate": 0.7315175097276264,
+      "accuracy_of_passed": 0.2463768115942029,
+      "mel_recall": null,
+      "danger_recall": null
+    }
+  ],
+  "topk": {
+    "ks": [
+      1,
+      3,
+      5
+    ],
+    "danger_k": 3,
+    "overall": {
+      "sample_count": 257,
+      "top1": 0.2723735408560311,
+      "top3": 0.688715953307393,
+      "top5": 0.9221789883268483,
+      "danger_total": 0,
+      "danger_hit": 0,
+      "danger_rate": null
+    },
+    "danger_by_class": {},
+    "group_col": "shot_type",
+    "by_group": {
+      "AT_AN_ANGLE": {
+        "sample_count": 82,
+        "top1": 0.25609756097560976,
+        "top3": 0.6829268292682927,
+        "top5": 0.9024390243902439,
+        "danger_total": 0,
+        "danger_hit": 0,
+        "danger_rate": null
+      },
+      "AT_DISTANCE": {
+        "sample_count": 59,
+        "top1": 0.23728813559322035,
+        "top3": 0.6779661016949152,
+        "top5": 0.9152542372881356,
+        "danger_total": 0,
+        "danger_hit": 0,
+        "danger_rate": null
+      },
+      "CLOSE_UP": {
+        "sample_count": 116,
+        "top1": 0.3017241379310345,
+        "top3": 0.6982758620689655,
+        "top5": 0.9396551724137931,
+        "danger_total": 0,
+        "danger_hit": 0,
+        "danger_rate": null
+      }
+    }
+  }
+}

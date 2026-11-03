@@ -22,6 +22,8 @@
   [7] HEATMAP_SMOOTH 는 색만 바꾼다 — 확대 영역과 재판정은 그대로다
   [8] 요청의 crops=False 는 확대 보기와 재판정을 끈다
   [9] 1순위가 바뀌는 경로를 여러 스레드가 동시에 타도 결과가 한 줄로 돌릴 때와 같다
+  [10] 안면부 분류는 원본·좌우 반전의 평균이다 — 거울에 비친 같은 사진은 같은 답이고, 평가 함수와 같은 1순위다.
+       피부 병변은 그대로 원본 한 번의 판정이다
 
 실행
 ----
@@ -44,7 +46,7 @@ sys.path.insert(0, str(FASTAPI_DIR))
 os.environ.setdefault("INTERNAL_API_SECRET", "test_heatmap_crops.py-does-not-serve")
 
 import torch  # noqa: E402
-from PIL import Image, ImageDraw  # noqa: E402
+from PIL import Image, ImageDraw, ImageOps  # noqa: E402
 
 import main as serving  # noqa: E402
 
@@ -526,6 +528,42 @@ if target is not None:
           sequential[1][0]["disease_code"] == CLASSES[target], f"{sequential[1][0]}")
 else:
     skip("동시 실행 검사", "전제 실패 — 위에서 이미 실패로 셌다")
+
+# =============================================
+print("\n[10] 안면부 분류는 원본·좌우 반전의 평균이다")
+
+if "facial" in serving.TASK_MODELS:
+    FM = serving.TASK_MODELS["facial"]
+    source = Image.open(io.BytesIO(IMAGES[0])).convert("RGB")
+    # PNG 로 저장한다 — 뒤집은 그림을 JPEG 로 다시 압축하면 손실이 달라져 "같은 사진"이 아니게 된다.
+    as_png = {}
+    for name, img in (("original", source), ("mirrored", ImageOps.mirror(source))):
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        as_png[name] = buf.getvalue()
+    a = serving.run_inference(as_png["original"], "facial", crops=False)
+    b = serving.run_inference(as_png["mirrored"], "facial", crops=False)
+    check("거울에 비친 같은 사진은 같은 1순위·같은 신뢰도다 (셀카 미러링 설정에 흔들리지 않는다)",
+          a["top1"]["disease_code"] == b["top1"]["disease_code"]
+          and abs(a["top1"]["confidence"] - b["top1"]["confidence"]) < 1e-3,
+          f"{a['top1']} vs {b['top1']}")
+    with FM.lock:
+        shared = serving.classification_probs(FM.transform(source).unsqueeze(0).to(serving.device), FM)[0]
+    check("응답의 1순위가 평가 함수(classification_probs)의 1순위와 같다 — evaluate.py 가 서빙 그대로를 잰다",
+          a["top1"]["disease_code"] == FM.classes[int(shared.argmax())]
+          and abs(a["top1"]["confidence"] - float(shared.max())) < 1e-3,
+          f"{a['top1']} vs {FM.classes[int(shared.argmax())]} {float(shared.max()):.4f}")
+    check("안면부 응답에 히트맵이 있다 — 반전 평균의 1순위를 target 으로 그렸다", a["heatmap_base64"] is not None)
+else:
+    skip("안면부 반전 평균 검사", f"미로드 — {serving.TASK_LOAD_ERRORS.get('facial', '사유 불명')}")
+
+skin_tensor = tensor_of(Image.open(io.BytesIO(IMAGES[0])).convert("RGB"))
+with TM.lock:
+    with torch.no_grad():
+        plain = torch.softmax(TM.model(skin_tensor), dim=1)
+    shared_skin = serving.classification_probs(skin_tensor, TM)
+check("피부 병변은 원본 한 번의 판정 그대로다 (flip_tta 꺼짐 — baselines 의 HAM 점수가 그대로 유효하다)",
+      not TM.flip_tta and torch.equal(plain, shared_skin))
 
 # =============================================
 print()

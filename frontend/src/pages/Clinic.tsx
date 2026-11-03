@@ -64,6 +64,9 @@ const STATUS_COLORS: Record<VisitStatus, string> = {
 };
 
 // 대기 탭: 처방 전 / 완료 탭: 처방완료(PRESCRIBED) 이후
+/** 진료 전 접수를 열어 둔 동안 키오스크 예비분석을 다시 받는 간격. */
+const PRELIMINARY_POLL_MS = 10_000;
+
 const WAITING_STATUSES: VisitStatus[] = ["RECEIVED", "IN_PROGRESS", "ANALYZING", "ANALYZED", "DIAGNOSED"];
 const COMPLETED_STATUSES: VisitStatus[] = ["PRESCRIBED", "COMPLETED"];
 
@@ -266,6 +269,25 @@ export default function Clinic() {
 
   useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); }, [analysis]);
   useEffect(() => { setActivePrelimCropRank(null); }, [preliminaryAnalysis]);
+
+  // 아직 진료를 시작하지 않은 접수(RECEIVED)를 열어 둔 동안에는 키오스크 결과를 주기적으로 다시 받는다.
+  // 환자는 그 사이 대기실에서 찍고 있을 수 있고, 참고 소견은 결과보다 늦게 채워진다 — 다시 골라야 보이면 놓친다.
+  // 바뀐 것이 없으면 같은 객체를 두어 확대 상자 선택 같은 화면 상태를 흔들지 않는다.
+  useEffect(() => {
+    if (!selectedVisit || selectedVisit.status !== "RECEIVED") return;
+    const visitId = selectedVisit.id;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      const latest = await getPreliminaryAnalysis(visitId).catch(() => null);
+      if (cancelled || !latest) return;
+      setPreliminaryAnalysis((current) =>
+        current && current.analyzedAt === latest.analyzedAt && current.aiComment === latest.aiComment ? current : latest);
+    }, PRELIMINARY_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedVisit]);
 
   useEffect(() => {
     if (!selectedFile) { setPreviewUrl(null); return; }
@@ -575,10 +597,19 @@ export default function Clinic() {
                 </p>
 
                 <LowConfidenceBanner caution={preliminaryAnalysis.caution} />
+                {/* 환자도 태블릿에서 같은 안내를 봤다. 안면부는 실사진 1순위 약 27%, 상위 3개 약 69% 다(baselines ④). */}
+                {preliminaryAnalysis.analysisType === "facial" && (
+                  <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-amber-100">
+                    안면부 모델은 실제 사진에서 1순위 정확도가 약 27%(상위 3개 안 약 69%)입니다. 상위 후보를 참고 자료로만 보세요.
+                  </p>
+                )}
 
                 {preliminaryAnalysis.topK[0] && (
                   <div className="rounded border border-blue-500/30 bg-blue-500/10 p-2">
-                    <p className="text-xs text-gray-300">Top 1 (키오스크 예비분석)</p>
+                    {/* 방문자가 고른 모델이다. 구버전 응답(필드 없음)은 키오스크가 피부 병변 모델만 쓰던 때의 결과다. */}
+                    <p className="text-xs text-gray-300">
+                      Top 1 (키오스크 예비분석 · {ANALYSIS_TYPE_LABELS[preliminaryAnalysis.analysisType ?? "skin_lesion"]})
+                    </p>
                     <p className="mt-0.5 text-sm font-semibold text-white">
                       {preliminaryAnalysis.topK[0].diseaseNameKo} ({preliminaryAnalysis.topK[0].diseaseCode})
                     </p>

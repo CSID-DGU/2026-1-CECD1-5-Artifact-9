@@ -1,0 +1,110 @@
+# =============================================
+# Team Artifact — 부스 운영 오버라이드 (AI 워커 ×2 + 로드밸런서)
+# =============================================
+# 평소에는 쓰지 않는다. 부스 기간(2026-11-16~)에만 켠다. 켜는 방법은 둘이다.
+#
+#   ① GitHub 저장소 변수 BOOTH_MODE=true 를 만들고 Deploy 워크플로를 수동 실행한다 (권장 — SSH 가 필요 없다).
+#      .github/workflows/deploy.yml 이 이 파일을 맨 뒤에 붙인다. 부스가 끝나면 false 로 바꾸고 다시 실행한다.
+#   ② 서버에서 직접:
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                     -f docker-compose.https.yml -f docker-compose.booth.yml up -d --build --remove-orphans
+#
+# 이 파일이 가장 뒤여야 backend 의 FASTAPI_URL 을 덮어쓴다. 켜기 전에 합쳐진 결과를 보려면 up 대신 config.
+# 절차 전체(인스턴스 크기 변경 포함)는 docs/booth-operation-guide.md.
+#
+# ---------------------------------------------
+# ⚠️ 먼저 인스턴스를 키운다
+# ---------------------------------------------
+# 기준 사양: c7g.xlarge (4 vCPU / 8GB). 워커 2 × 약 1GB(두 모델) + JVM 약 1.3GB + MySQL 약 0.5GB ≈ 4.5GB.
+# t4g.small(2 vCPU / 2GB)에서는 켜지 않는다 — 스왑으로 밀려 추론 한 건이 십 초 단위가 된다.
+#
+# ---------------------------------------------
+# 무엇을 해결하는가 — 처리량보다 기다림의 공정성
+# ---------------------------------------------
+# FastAPI 한 프로세스는 태스크마다 한 번에 하나의 추론만 돌린다(Grad-CAM 이 모델에 훅을 거는 구간을 통째로
+# 직렬화한다 — fastapi/main.py 의 TaskModel.lock). 그래서 컨테이너 1개면 키오스크 두 대가 동시에 누를 때 뒤의
+# 한 대가 앞의 추론을 통째로 기다린다. CPU 추론의 총 처리량은 코어 수가 정하므로 워커를 늘려도 합계는 거의
+# 같지만, 두 번째 사람의 기다림이 "추론 시간 × 2" 에서 "× 1" 로 준다. 부스 기기 2~3대 기준으로 워커 2개다.
+#
+# 워커를 늘리려면 아래 fastapi3 블록을 되살리고 docker/ai-lb/nginx.conf 의 upstream 에 한 줄을 더한다.
+# 다른 EC2 에 띄운 AI 전용 워커(수평 확장)는 docker/ai-lb/remote.d/ 에 서버 한 줄을 두면 붙는다 —
+# docker-compose.ai-worker.yml 과 docs/booth-operation-guide.md 참고.
+# =============================================
+
+# 워커들이 완전히 같은 설정을 쓴다. 한 곳만 고쳐도 나머지가 따라오도록 앵커로 묶는다.
+# (`x-` 로 시작하는 최상위 키는 compose 가 서비스로 띄우지 않는다)
+x-ai-worker: &ai-worker
+  build:
+    context: ./fastapi
+    dockerfile: Dockerfile
+  # 같은 태그를 공유해 이미지는 하나만 남고 두 번째 빌드는 캐시 히트다.
+  image: artifact-fastapi:booth
+  restart: unless-stopped
+  environment:
+    LOW_CONFIDENCE_THRESHOLD: ${LOW_CONFIDENCE_THRESHOLD:-0.45}
+    HEATMAP_ALPHA_MIN: ${HEATMAP_ALPHA_MIN:-0.25}
+    HEATMAP_ALPHA_MAX: ${HEATMAP_ALPHA_MAX:-0.60}
+    HEATMAP_SMOOTH: ${HEATMAP_SMOOTH:-0.03}
+    HEATMAP_CROPS: ${HEATMAP_CROPS:-3}
+    INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET이 설정되지 않았습니다. .env.example을 참고해 .env에 추가하세요.}
+    # 워커 2개가 각자 코어를 전부 잡으려 들면 서로 밀어낸다. 4 vCPU 에 2개 → 2스레드씩.
+    # 두 값을 함께 주는 이유는 fastapi/main.py 의 "스레드 수 고정" 주석 참고.
+    OMP_NUM_THREADS: ${BOOTH_TORCH_THREADS:-2}
+    TORCH_NUM_THREADS: ${BOOTH_TORCH_THREADS:-2}
+  healthcheck:
+    # 이미지가 python:3.11-slim 이라 curl 도 wget 도 없다. 있는 것으로 찌른다. /health 는 시크릿을 요구하지 않는다.
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    # 기동 시 두 모델 생성 + 가중치 로드가 끝나야 응답한다. 짧게 잡으면 정상 기동 중인 워커가 unhealthy 로 찍힌다.
+    start_period: 90s
+  networks:
+    - artifact-network
+
+services:
+
+  fastapi:
+    # 기본 파일의 fastapi 위에 앵커를 덮어쓴다. container_name(artifact-fastapi)은 기본 파일 것이 남는다 —
+    # 기존 문서의 `docker exec artifact-fastapi ...` 가 계속 통한다.
+    <<: *ai-worker
+
+  fastapi2:
+    <<: *ai-worker
+    container_name: artifact-fastapi2
+
+  # 기기가 4대 이상이면 인스턴스를 c7g.2xlarge 로 올리고 이 블록과 nginx.conf 의 upstream 한 줄을 되살린다.
+  # fastapi3:
+  #   <<: *ai-worker
+  #   container_name: artifact-fastapi3
+
+  ai-lb:
+    # 설정 파일만 얹는 순수 프록시라 별도 Dockerfile 을 만들지 않는다.
+    image: nginx:1.27-alpine
+    container_name: artifact-ai-lb
+    restart: unless-stopped
+    volumes:
+      # :ro — 컨테이너가 이 파일들을 고칠 이유가 없다. 바꾼 뒤에는 `docker compose ... restart ai-lb`.
+      - ./docker/ai-lb/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 다른 EC2 의 AI 워커(수평 확장). 비어 있으면 아무것도 붙지 않는다.
+      - ./docker/ai-lb/remote.d:/etc/nginx/ai-lb.d:ro
+    depends_on:
+      # healthy 가 아니라 started 다. nginx 는 upstream 호스트명을 설정 로드 시점에 해석하므로 컨테이너가 있기만
+      # 하면 된다. healthy 까지 기다리게 하면 워커 하나가 끝내 못 뜰 때 AI 경로 전체가 안 뜬다 — 워커 하나로라도
+      # 굴러가야 하는 부스에서는 그쪽이 더 나쁘다. 아직 모델을 읽는 워커는 max_fails 가 잠깐 빼 뒀다가 되돌린다.
+      fastapi:
+        condition: service_started
+      fastapi2:
+        condition: service_started
+    # 호스트에 열지 않는다. backend 만 도커 내부 네트워크로 부른다.
+    expose:
+      - "8000"
+    networks:
+      - artifact-network
+
+  backend:
+    environment:
+      # AI 호출을 워커 하나가 아니라 로드밸런서로 보낸다. **이 한 줄이 위의 워커들을 실제로 연결한다.**
+      # 이 줄만 빠지면 워커들과 ai-lb 가 멀쩡히 떠 있는데도 요청은 전부 1번 워커로만 간다 — 컨테이너가 다 Up 이라
+      # 겉으로는 정상으로 보인다. 확인: docker compose ... exec backend env | grep FASTAPI_URL
+      FASTAPI_URL: http://ai-lb:8000

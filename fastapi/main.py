@@ -15,6 +15,28 @@ import threading
 import numpy as np
 import torch.nn.functional as F
 
+# =============================================
+# 스레드 수 고정 — 한 서버에 워커를 여러 개 띄울 때만 의미가 있다
+# =============================================
+# 한 프로세스는 태스크마다 한 번에 하나의 추론만 돌린다(TaskModel.lock). 그래서 동시 처리량은 **컨테이너를
+# 몇 개 띄우느냐**로 정해지는데(docker-compose.booth.yml), 그때 각 프로세스의 PyTorch 가 저마다 코어를 전부
+# 잡으려 들면 서로를 밀어낸다 — 4코어에 워커 2개 × 4스레드면 8스레드가 4코어를 놓고 싸우며 문맥 전환만 늘어난다.
+#
+# 값이 없으면 아무것도 하지 않는다. 워커가 하나뿐인 평소 운영과 로컬 개발에서는 코어를 다 쓰는 편이 빠르고,
+# 여기서 기본값을 정해 버리면 그 사실이 코드에 묻혀 "왜 느려졌지"가 된다.
+#
+# compose 에서 OMP_NUM_THREADS 를 **함께** 준다. OpenMP 런타임은 라이브러리가 로드될 때 그 값을 읽으므로
+# 이 코드가 실행될 때는 이미 늦을 수 있다.
+_torch_threads = os.getenv("TORCH_NUM_THREADS", "")
+if _torch_threads:
+    torch.set_num_threads(int(_torch_threads))
+    try:
+        # intra-op 와 달리 이쪽은 병렬 작업이 한 번이라도 시작된 뒤에는 RuntimeError 를 던진다 — 모델 로드보다 앞인 여기서 부른다.
+        torch.set_num_interop_threads(int(_torch_threads))
+    except RuntimeError as e:
+        # 이미 초기화된 경우. 위 set_num_threads 만으로도 목적(코어 독점 방지)은 이룬다.
+        print(f"[torch] interop 스레드 수 설정을 건너뜁니다: {e}")
+
 app = FastAPI(title="Artifact Medical AI", version="1.0.0")
 
 app.add_middleware(
@@ -83,6 +105,13 @@ TASKS: dict[str, dict] = {
         # SCIN 실사진 192장에서 확대 영역만으로 판정하면 정답률이 원본 24.5% → 20.3%(1번 영역)로
         # 떨어지고, 원본과 반반 섞어도 22.4% 다. 확대 보기는 전체 히트맵을 잘라 키운 것으로 보여 준다.
         "reinfer_crops": False,
+        # 분류를 원본과 좌우 반전의 평균으로 한다(classification_probs). 실사진(baselines/facial-scin.csv
+        # 257장)에서 지금 모델은 촬영이 조금만 달라도 1순위가 흔들린다 — 셀카 미러링(같은 사진의 좌우 반전)만으로
+        # 다섯 장 중 한 장의 1순위가 바뀌었다(일치 80.2%). 평균을 쓰면 미러링에 대해서는 정의상 같은 답이고,
+        # 열 가지 촬영 변형 전체의 평균 일치 80.4% → 83.0%, 하나라도 바뀌는 사진 63.0% → 56.4%,
+        # 정확도 25.3% → 27.2% 다(바뀐 5장 모두 오답→정답, McNemar p=0.06). 촬영 구도 세 갈래 모두 같은 방향이었다.
+        # 학습 증강에 좌우 반전이 들어 있어 반전 사진은 모델에게 낯선 입력이 아니다. 기록은 baselines/README.md ④.
+        "flip_tta": True,
     },
 }
 
@@ -350,6 +379,23 @@ class TaskModel:
         self.cam_layers = _select_cam_layers(self.model, self.input_size)
         self.cam_layer_names = [layer_name for layer_name, _ in self.cam_layers]
         self.reinfer_crops: bool = bool(spec.get("reinfer_crops", False))
+        self.flip_tta: bool = bool(spec.get("flip_tta", False))
+
+
+def classification_probs(batch: torch.Tensor, tm: TaskModel) -> torch.Tensor:
+    """
+    분류 확률 (N, 클래스 수). flip_tta 가 켜진 태스크는 원본과 좌우 반전의 softmax 평균이다.
+
+    서빙(run_inference)과 평가(tests/evaluate.py)가 **이 함수 하나**를 쓴다. 평가가 분류를 따로 다시 짜면
+    언젠가 서빙과 어긋나고, 그때부터 baselines 의 점수는 이 서버의 점수가 아니게 된다.
+    원본과 반전을 묶어 한 번에 넣지 않고 따로 넣는다 — 배치 크기가 바뀌면 CPU 합성곱이 다른 구현을 골라
+    같은 사진의 확률이 미세하게 달라진다(_crop_forward 주석). 반드시 tm.lock 을 잡은 채로 부른다.
+    """
+    with torch.no_grad():
+        probs = torch.softmax(tm.model(batch), dim=1)
+        if tm.flip_tta:
+            probs = (probs + torch.softmax(tm.model(torch.flip(batch, dims=[3])), dim=1)) / 2
+    return probs
 
 
 def _weights_path_for(name: str) -> str:
@@ -534,8 +580,9 @@ def _compute_gradcam(
 
     원본 1회와 좌우 반전 1회, 두 번 forward·backward 한다. 반전 쪽 CAM 을 되돌려 더하면
     한 번만 볼 때 생기는 칸 단위 잡음이 줄어 병변 적중이 오른다(_select_cam_layers 표 92.4% → 93.6%).
-    **분류는 원본 1회의 logits 만 쓴다** — 반전 평균으로 분류까지 바꾸면 tests/baselines 의
-    홀드아웃 점수가 더는 이 서버의 점수가 아니게 된다. 반전 쪽은 원본이 고른 클래스를 설명한다.
+    돌려주는 logits 는 원본 1회의 것이다. 반전 쪽은 원본이 고른 클래스(또는 target)를 설명하는 데만 쓴다.
+    분류를 반전 평균으로 하는 태스크(flip_tta)는 run_inference 가 classification_probs 로 따로 정하고 그 1순위를
+    target 으로 넘긴다 — 평가 스크립트도 같은 함수를 써서 baselines 의 점수가 계속 이 서버의 점수다.
     """
     logits, act = _forward_with_act(tensor, tm)
     cam = quality = None
@@ -853,9 +900,15 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK, crops: bool = Tr
 
     # ── 모델을 만지는 구간은 한 번에 하나씩만 (TaskModel 의 lock 설명 참고) ──
     # 분류와 Grad-CAM 이 같은 forward 를 공유하므로 호출 하나가 통째로 락 안에 있다.
+    # flip_tta 태스크는 분류를 원본·좌우 반전 평균으로 먼저 정하고, 히트맵은 그 1순위를 설명한다 — 원본만의
+    # 1순위로 그리면 화면의 병명과 다른 것을 설명하게 된다(확대 재판정에서 1순위가 바뀔 때와 같은 이유).
     with tm.lock:
-        logits, cam, heatmap_quality = _compute_gradcam(tensor, tm)
-        probs = torch.softmax(logits, dim=1)[0]
+        if tm.flip_tta:
+            probs = classification_probs(tensor, tm)[0]
+            _, cam, heatmap_quality = _compute_gradcam(tensor, tm, target=int(probs.argmax()))
+        else:
+            logits, cam, heatmap_quality = _compute_gradcam(tensor, tm)
+            probs = torch.softmax(logits, dim=1)[0]
     pred = int(probs.argmax())
     full_results = _top_k(probs, tm)
 
@@ -994,6 +1047,7 @@ def health():
                 "weights": _weights_path_for(name),
                 "input_size": spec["input_size"],
                 "reinfer_crops": bool(spec.get("reinfer_crops", False)),
+                "flip_tta": bool(spec.get("flip_tta", False)),
                 "error": TASK_LOAD_ERRORS.get(name),
             }
             for name, spec in TASKS.items()

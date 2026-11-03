@@ -77,6 +77,11 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+/** 같은 대상의 작업이 이미 돌고 있다 — 잠시 뒤 다시 물으면 풀리는 경우가 있다(키오스크 참고 소견). */
+export function isConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409;
+}
+
 /** 만료된 공개 열람 링크인가 (404 '없는 링크' 와 구분된다). */
 export function isGone(error: unknown): boolean {
   return error instanceof ApiError && error.status === 410;

@@ -159,13 +159,9 @@ public class AnalysisService {
             prediction = callFastApi(target.primaryImageUrl(), task);
             int inferenceMs = (int) (System.currentTimeMillis() - startMs);
 
-            // 응답의 task 로 "요청한 모델이 실제로 돌았는지" 확인한다. task 를 모르는 구버전 FastAPI 는
-            // 이 필드를 안 보내고 기본 모델로 돌리므로, facial 을 요청했는데 skin_lesion 코드가 돌아와
-            // facial 로 저장되는 사고를 여기서 막는다 — 그 행은 top_k 의 코드가 다른 클래스 목록을
-            // 가리키는 거짓 기록이 된다. 기본 태스크 요청에 task 가 비어 오는 것만 과도기 호환으로 허용한다.
-            String servedTask = prediction.task();
-            if (servedTask == null ? task != AnalysisType.DEFAULT : !servedTask.equals(task.code())) {
-                log.error("FastAPI 가 요청한 태스크로 추론하지 않았다 requested={} served={}", task.code(), servedTask);
+            // 응답의 task 로 "요청한 모델이 실제로 돌았는지" 확인한다 — 규칙은 FastApiPredictResponse.servedAs 주석.
+            if (!prediction.servedAs(task)) {
+                log.error("FastAPI 가 요청한 태스크로 추론하지 않았다 requested={} served={}", task.code(), prediction.task());
                 throw new AiServiceUnavailableException(
                         "AI 분석 서버가 요청한 분석 종류(" + task.code() + ")를 지원하지 않습니다. 서버 버전을 확인해주세요.");
             }

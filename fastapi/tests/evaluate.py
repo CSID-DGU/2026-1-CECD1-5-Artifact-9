@@ -234,7 +234,10 @@ def load_ood(ood_dirs: list[Path]):
 # 추론
 # =============================================
 def predict_all(paths, batch_size: int):
-    """확률 행렬 (N, 클래스 수) 을 만든다. 서빙과 같은 transform·같은 model 객체(TASK)를 쓴다."""
+    """
+    확률 행렬 (N, 클래스 수) 을 만든다. 서빙과 같은 transform·같은 model 객체(TASK)·같은 분류 함수
+    (main.classification_probs — 안면부는 원본·좌우 반전 평균)를 쓴다.
+    """
     chunks = []
     total = len(paths)
     for start in range(0, total, batch_size):
@@ -242,8 +245,7 @@ def predict_all(paths, batch_size: int):
         tensors = torch.stack([
             TASK.transform(Image.open(p).convert("RGB")) for p in batch
         ]).to(serving.device)
-        with torch.no_grad():
-            probs = torch.softmax(TASK.model(tensors), dim=1)
+        probs = serving.classification_probs(tensors, TASK)
         chunks.append(probs.cpu())
         done = min(start + batch_size, total)
         print(f"\r  추론 {done}/{total}", end="", flush=True)
