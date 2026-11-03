@@ -1,8 +1,13 @@
 package com.artifact.diagnosis.kiosk;
 
 import com.artifact.diagnosis.analysis.AiServiceUnavailableException;
+import com.artifact.diagnosis.analysis.AnalysisResponse;
 import com.artifact.diagnosis.analysis.FastApiPredictResponse;
+import com.artifact.diagnosis.analysis.FastApiTop1;
+import com.artifact.diagnosis.analysis.HeatmapCrop;
+import com.artifact.diagnosis.analysis.HeatmapStorage;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
+import com.artifact.diagnosis.analysis.StoredHeatmap;
 import com.artifact.diagnosis.analysis.TopKItem;
 import com.artifact.diagnosis.image.ImageStorageService;
 import com.artifact.diagnosis.patient.Patient;
@@ -56,6 +61,7 @@ public class KioskService {
     private final ObjectMapper objectMapper;
     private final KioskTokenGenerator kioskTokenGenerator;
     private final LowConfidenceCaution lowConfidenceCaution;
+    private final HeatmapStorage heatmapStorage;
 
     /** 요청마다 새로 만들지 않고 공유한다 — {@code HttpClientConfig} 참고. 연결 타임아웃이 걸려 있다. */
     private final HttpClient httpClient;
@@ -188,18 +194,19 @@ public class KioskService {
                 .map(r -> new TopKItem(r.diseaseCode(), r.confidence()))
                 .toList();
 
-        String gradcamKey = null;
-        if (prediction.heatmapBase64() != null) {
-            byte[] heatmapBytes = Base64.getDecoder().decode(prediction.heatmapBase64());
-            String key = "heatmap/preliminary/" + visitId + "/" + System.currentTimeMillis() + ".jpg";
-            gradcamKey = imageStorageService.uploadBytes(key, heatmapBytes, "image/jpeg");
-        }
+        // 전체·확대 히트맵을 같은 접두어로 올린다. 진료실 분석과 같은 부품이다 — 확대 히트맵 하나가
+        // 실패하면 그것만 건너뛰는 규칙이 두 화면에서 갈라지지 않는다(HeatmapStorage).
+        StoredHeatmap heatmap = heatmapStorage.upload(
+                "heatmap/preliminary/" + visitId + "/" + System.currentTimeMillis(), prediction);
+        // 확대 재판정을 했으면 원본만 본 1순위도 남긴다 — 태블릿과 의사 화면이 같은 사실을 보여 줘야 한다.
+        FastApiTop1 fullImage = prediction.fullImageTop1();
+        TopKItem fullImageTop1 = fullImage == null ? null : new TopKItem(fullImage.diseaseCode(), fullImage.confidence());
 
         String aiComment = aiCommentService.generatePreliminaryComment(topK, DISEASE_NAME_KO);
 
         // 여기까지가 외부 호출 구간. DB는 아래 한 줄(짧은 트랜잭션)에서만 만진다.
         PreliminaryAnalysis entity = kioskTransactionService.saveResult(
-                visitId, topK, confidenceLevel, gradcamKey, aiComment, prediction.modelVersionOrDefault());
+                visitId, topK, confidenceLevel, heatmap, fullImageTop1, aiComment, prediction.modelVersionOrDefault());
 
         log.info("예비분석 완료 visitId={} top1={}", visitId, prediction.top1().diseaseCode());
 
@@ -222,10 +229,14 @@ public class KioskService {
         return new PreliminaryAnalysisResponse(
                 topK,
                 entity.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), top1Code(entity)),
+                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), top1Code(entity), fullImageCode(entity)),
                 doctorHeatmapApiUrl(entity),
                 entity.getAiComment(),
-                entity.getAnalyzedAt()
+                entity.getAnalyzedAt(),
+                entity.getHeatmapStyle(),
+                HeatmapStorage.cropResults(entity.getHeatmapCrops(),
+                        "/api/v1/visits/" + entity.getVisitId() + "/preliminary/heatmap/crops/"),
+                fullImageTop1Result(entity)
         );
     }
 
@@ -239,6 +250,16 @@ public class KioskService {
         return heatmapResponse(visitId);
     }
 
+    /** 태블릿용 확대 히트맵 — 토큰이 가리키는 접수의 것만 준다. 인증 없이 열리는 경로다. */
+    public ResponseEntity<byte[]> getHeatmapCropContentByToken(String token, int rank) {
+        return heatmapCropResponse(resolveToken(token).getId(), rank);
+    }
+
+    /** 의사 진료 페이지용 확대 히트맵 — JWT 인증 경로(/api/v1/visits/{visitId}/preliminary/heatmap/crops/{rank}). */
+    public ResponseEntity<byte[]> getHeatmapCropContentByVisitId(Long visitId, int rank) {
+        return heatmapCropResponse(visitId, rank);
+    }
+
     /**
      * 트랜잭션을 열지 않는다 — 아래 {@code download()} 는 S3 왕복이라 트랜잭션 안에 두면
      * 이미지 한 장 내려주는 동안 DB 커넥션을 붙잡게 된다. 조회는 쿼리 한 번이라 트랜잭션이 필요 없다.
@@ -248,7 +269,19 @@ public class KioskService {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .filter(p -> p.getGradcamUrl() != null)
                 .orElseThrow(() -> new NoSuchElementException("예비분석 히트맵이 없습니다. visitId=" + visitId));
-        byte[] bytes = imageStorageService.download(entity.getGradcamUrl());
+        return jpegResponse(imageStorageService.download(entity.getGradcamUrl()));
+    }
+
+    /** heatmapResponse 와 같은 이유로 트랜잭션을 열지 않는다. */
+    private ResponseEntity<byte[]> heatmapCropResponse(Long visitId, int rank) {
+        HeatmapCrop crop = preliminaryAnalysisRepository.findByVisitId(visitId)
+                .map(p -> HeatmapStorage.findCrop(p.getHeatmapCrops(), rank))
+                .orElseThrow(() -> new NoSuchElementException(
+                        "예비분석 확대 히트맵이 없습니다. visitId=" + visitId + " #" + rank));
+        return jpegResponse(imageStorageService.download(crop.key()));
+    }
+
+    private static ResponseEntity<byte[]> jpegResponse(byte[] bytes) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "image/jpeg")
                 // 환자 병변 이미지다. 공유 캐시(nginx·프록시)에 남지 않도록 private 로 제한한다.
@@ -277,10 +310,15 @@ public class KioskService {
         return new PreliminaryAnalysisResponse(
                 topK,
                 entity.getConfidenceLevel(),
-                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), prediction.top1().diseaseCode()),
+                lowConfidenceCaution.messageFor(entity.getConfidenceLevel(), prediction.top1().diseaseCode(),
+                        fullImageCode(entity)),
                 kioskHeatmapApiUrl(token, entity),
                 entity.getAiComment(),
-                entity.getAnalyzedAt()
+                entity.getAnalyzedAt(),
+                entity.getHeatmapStyle(),
+                // 태블릿에는 JWT 가 없다 — 확대 히트맵도 전체 히트맵처럼 토큰 경로로 내려준다.
+                HeatmapStorage.cropResults(entity.getHeatmapCrops(), "/api/kiosk/session/" + token + "/heatmap/crops/"),
+                fullImageTop1Result(entity)
         );
     }
 
@@ -304,9 +342,9 @@ public class KioskService {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
             // task 를 보내지 않는다 → FastAPI 기본값 skin_lesion. 태블릿 앞에는 어느 모델이 맞는지 고를 의사가
             // 없고 preliminary_analysis 에도 태스크 컬럼이 없다(V10 머리말). 모델 선택은 진료실(AnalysisService)에서만.
-            // crops=false: 확대 보기·확대 재판정을 아직 끈다. preliminary_analysis 에는 확대 히트맵도 재판정 전 원본
-            // 1순위도 담을 칸이 없어서, 켜 두면 재판정된 순위만 남고 원본 판정은 기록 없이 사라진다.
-            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image, "crops", false));
+            // crops 를 보내지 않는다 → 확대 보기·확대 재판정이 켜진다. 확대 히트맵과 재판정 전 원본 1순위는
+            // preliminary_analysis 의 heatmap_crops·full_image_top1 에 남는다(V12) — 그 칸이 생기기 전에는 false 로 껐다.
+            String requestBody = objectMapper.writeValueAsString(Map.of("image_base64", base64Image));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(fastapiUrl + "/predict-base64"))
@@ -337,6 +375,18 @@ public class KioskService {
         } catch (Exception e) {
             throw new RuntimeException("FastAPI 예비분석 요청 실패: " + e.getMessage(), e);
         }
+    }
+
+    private static AnalysisResponse.FullImageTop1 fullImageTop1Result(PreliminaryAnalysis entity) {
+        TopKItem item = entity.getFullImageTop1();
+        if (item == null) return null;
+        return new AnalysisResponse.FullImageTop1(
+                item.code(), DISEASE_NAME_KO.getOrDefault(item.code(), item.code()), item.confidence());
+    }
+
+    /** 재판정 전 원본 사진의 1순위 코드. 원본이 악성·전암이면 재판정 뒤에도 위험 문구를 쓴다. 재판정하지 않았으면 null. */
+    private static String fullImageCode(PreliminaryAnalysis entity) {
+        return entity.getFullImageTop1() == null ? null : entity.getFullImageTop1().code();
     }
 
     /**

@@ -1,3 +1,4 @@
+import type { HeatmapCrop } from "./analysis";
 import { apiRequest } from "./client";
 
 /**
@@ -35,6 +36,19 @@ export type PreliminaryAnalysis = {
   gradcamUrl: string | null;
   aiComment: string | null;
   analyzedAt: string;
+  /** 히트맵을 그린 방식. 이 기록 전의 예비분석·구버전 백엔드는 null 이거나 없다. */
+  heatmapStyle?: string | null;
+  /**
+   * 히트맵이 짚은 곳을 확대한 히트맵. gradcamUrl 처럼 서버가 호출자에 맞는 경로를 내려준다 —
+   * 태블릿은 토큰 경로(무인증), 의사 화면은 접수 경로(JWT). 없으면 빈 배열이고 구버전 백엔드는 필드가 없다.
+   */
+  heatmapCrops?: HeatmapCrop[];
+  /** 원본만으로는 신뢰도가 낮아 확대 영역까지 보고 다시 판정했을 때만: 원본 사진만 본 1순위. */
+  fullImageTop1?: {
+    diseaseCode: string;
+    diseaseNameKo: string;
+    confidence: number;
+  } | null;
 };
 
 /**

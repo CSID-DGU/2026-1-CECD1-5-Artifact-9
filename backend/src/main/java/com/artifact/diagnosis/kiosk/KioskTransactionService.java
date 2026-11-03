@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.StoredHeatmap;
 import com.artifact.diagnosis.analysis.TopKItem;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,12 +35,18 @@ class KioskTransactionService {
      */
     @Transactional
     public PreliminaryAnalysis saveResult(Long visitId, List<TopKItem> topK, String confidenceLevel,
-                                          String gradcamKey, String aiComment, String modelVersion) {
+                                          StoredHeatmap heatmap, TopKItem fullImageTop1,
+                                          String aiComment, String modelVersion) {
         PreliminaryAnalysis entity = preliminaryAnalysisRepository.findByVisitId(visitId)
                 .orElseGet(() -> PreliminaryAnalysis.builder().visitId(visitId).source(SOURCE).build());
         entity.setTopKJson(topK);
         entity.setConfidenceLevel(confidenceLevel);
-        entity.setGradcamUrl(gradcamKey);
+        entity.setGradcamUrl(heatmap.key());
+        // 재촬영하면 확대 히트맵·재판정 기록도 새 분석의 것으로 통째로 바꾼다 — 비어 있으면 비운다.
+        // 옛 확대 히트맵이 남으면 새 히트맵 위에 옛 사진의 상자가 그려진다.
+        entity.setHeatmapCrops(heatmap.cropsOrNull());
+        entity.setHeatmapStyle(heatmap.style());
+        entity.setFullImageTop1(fullImageTop1);
         entity.setAiComment(aiComment);
         entity.setModelVersion(modelVersion);
         entity.setAnalyzedAt(LocalDateTime.now());

@@ -41,4 +41,14 @@ public class PreliminaryAnalysisController {
             @Parameter(description = "접수 ID") @PathVariable Long visitId) {
         return kioskService.getHeatmapContentByVisitId(visitId);
     }
+
+    /** 태블릿용 /api/kiosk/session/{token}/heatmap/crops/{rank} 의 의사 화면 입구 — 위 heatmap 과 같은 이유다. */
+    @Operation(summary = "예비분석 확대 히트맵 조회",
+               description = "해당 접수의 예비분석 확대 히트맵 하나를 반환한다. rank 는 heatmapCrops[].rank 다. 없으면 404.")
+    @GetMapping("/heatmap/crops/{rank}")
+    public ResponseEntity<byte[]> heatmapCrop(
+            @Parameter(description = "접수 ID") @PathVariable Long visitId,
+            @Parameter(description = "확대 히트맵 번호(1부터)") @PathVariable int rank) {
+        return kioskService.getHeatmapCropContentByVisitId(visitId, rank);
+    }
 }

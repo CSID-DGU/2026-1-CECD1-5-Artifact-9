@@ -175,6 +175,38 @@ class EndpointAuthorizationTest {
 	}
 
 	/**
+	 * 확대 히트맵 입구 세 곳은 각자 옆의 전체 히트맵과 같은 문을 써야 한다.
+	 *   - 태블릿 경로는 JWT 없이 열린다(SecurityConfig permitAll). 토큰이 틀리면 401 이 아니라 404 다 —
+	 *     401 이 나오면 permitAll 이 빠진 것이고, 태블릿은 확대 히트맵 자리에 빈칸만 본다.
+	 *   - 의사 화면의 예비분석 경로는 진료 직군만(@MedicalAccess) — 접수 직원은 403, 간호사·의사는 통과.
+	 *   - 진료실 분석 경로는 로그인이 필요하다 — 익명은 401. 환자 병변 사진이라 permitAll 이면 안 된다.
+	 *     로그인한 직원은 전체 히트맵처럼 통과한다(@StaffAccess).
+	 *
+	 * 통과는 없는 접수(999999)로 본다 — 문을 지나 "그런 접수 없음"(404)까지 가야 경로가 있고 그 직군이 들어간 것이다.
+	 * 403 이면 간호사 화면의 확대 칸이 영영 비고, 500 이면 경로가 없는 것이다.
+	 */
+	@Test
+	void cropHeatmapEndpointsUseTheSameGatesAsTheirHeatmaps() throws Exception {
+		mockMvc.perform(get("/api/kiosk/session/{token}/heatmap/crops/{rank}", "NOSUCHTOKEN1", 1))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(get("/api/v1/visits/{visitId}/preliminary/heatmap/crops/{rank}", 999_999L, 1)
+						.header("Authorization", "Bearer " + tokenFor(MemberRole.STAFF)))
+				.andExpect(status().isForbidden());
+		for (MemberRole role : List.of(MemberRole.NURSE, MemberRole.DOCTOR)) {
+			mockMvc.perform(get("/api/v1/visits/{visitId}/preliminary/heatmap/crops/{rank}", 999_999L, 1)
+							.header("Authorization", "Bearer " + tokenFor(role)))
+					.andExpect(status().isNotFound());
+		}
+
+		mockMvc.perform(get("/api/v1/visits/{visitId}/analysis/heatmap/crops/{rank}", 999_999L, 1))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/visits/{visitId}/analysis/heatmap/crops/{rank}", 999_999L, 1)
+						.header("Authorization", "Bearer " + tokenFor(MemberRole.STAFF)))
+				.andExpect(status().isNotFound());
+	}
+
+	/**
 	 * 간호사는 진료를 도울 수 있지만 처방·진단 확정은 의사의 행위다.
 	 *
 	 * 처방 body는 검증을 통과하는 값이어야 한다. 빈 배열을 보내면 {@code @Valid}가

@@ -83,6 +83,24 @@ export function CropBoxes({ crops, activeRank }: { crops: HeatmapCrop[]; activeR
   );
 }
 
+/**
+ * 로그인이 필요한 히트맵 이미지와 그 위의 확대 영역 상자. 상자는 이 이미지가 다 받아진 뒤에만 그린다 —
+ * 받기 전에는 이미지 높이가 0 이라 비율 좌표의 상자가 납작한 띠가 되어 아래 범례 위에 겹친다.
+ * "받아짐" 표시를 이 컴포넌트가 들고 있어서, 카드가 다시 뜨면 주소가 같아도 처음부터 다시 기다린다.
+ * 부모가 들고 있으면 카드를 내리는 모든 곳에서 표시를 지워야 하고, 한 곳만 빠져도 상자가 먼저 그려진다.
+ */
+export function AuthedHeatmapWithBoxes({ src, alt, crops, activeRank }: {
+  src: string; alt: string; crops: HeatmapCrop[]; activeRank: number | null;
+}) {
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  return (
+    <div className="relative">
+      <AuthedImage src={src} alt={alt} className="w-full" style={{ display: "block" }} onLoad={() => setLoadedSrc(src)} />
+      {loadedSrc === src && <CropBoxes crops={crops} activeRank={activeRank} />}
+    </div>
+  );
+}
+
 type CropGalleryProps = {
   crops: HeatmapCrop[];
   /** 재분석해도 확대 히트맵 경로가 같으므로 붙여서 브라우저 캐시를 피한다(전체 히트맵과 같은 방식). */
@@ -94,12 +112,27 @@ type CropGalleryProps = {
    * 서버가 crops[].source 를 주면 그쪽을 따른다 — 피부 병변도 재추론이 실패하면 잘라 키운 그림이 온다.
    */
   zoomOnly?: boolean;
+  /**
+   * 이미지에 로그인 토큰을 실어 받는가. 대기실 태블릿은 JWT 가 없고 서버가 키오스크 토큰 경로를 내려주므로
+   * false 로 일반 <img> 를 쓴다 — 전체 히트맵과 같은 방식이다(KioskAnalyze). 태블릿 브라우저에 남은 직원
+   * 토큰이 만료돼 있으면 AuthedImage 는 세션 만료로 처리해 버린다.
+   */
+  authed?: boolean;
 };
+
+/** 인증이 필요한 경로면 AuthedImage, 아니면 일반 <img>. */
+function CropImage({ src, alt, className, authed, fallback }: {
+  src: string; alt: string; className: string; authed: boolean; fallback?: React.ReactNode;
+}) {
+  return authed
+    ? <AuthedImage src={src} alt={alt} className={className} fallback={fallback} />
+    : <img src={src} alt={alt} className={className} />;
+}
 
 /**
  * 확대 히트맵 목록. 칸에 올리면 전체 이미지의 같은 번호 상자가 노랗게 바뀌고, 누르면 크게 본다.
  */
-export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomOnly = false }: CropGalleryProps) {
+export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomOnly = false, authed = true }: CropGalleryProps) {
   const [expanded, setExpanded] = useState<HeatmapCrop | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -150,10 +183,11 @@ export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomO
             className={`relative overflow-hidden rounded border bg-gray-950 ${crop.rank === activeRank ? "border-yellow-300" : "border-gray-700"}`}
             aria-label={`확대 히트맵 ${crop.rank} 크게 보기`}
           >
-            <AuthedImage
+            <CropImage
               src={src(crop)}
               alt={`확대 히트맵 ${crop.rank}`}
               className="aspect-square w-full object-cover"
+              authed={authed}
               fallback={<div className="aspect-square w-full animate-pulse bg-gray-900" />}
             />
             <span className="absolute left-0 top-0 bg-black/70 px-1 text-[10px] font-semibold text-white">{crop.rank}</span>
@@ -180,7 +214,7 @@ export function CropGallery({ crops, cacheKey, activeRank, onActiveChange, zoomO
                 닫기
               </button>
             </div>
-            <AuthedImage src={src(expanded)} alt={`확대 히트맵 ${expanded.rank}`} className="max-h-[75vh] w-full rounded object-contain" />
+            <CropImage src={src(expanded)} alt={`확대 히트맵 ${expanded.rank}`} className="max-h-[75vh] w-full rounded object-contain" authed={authed} />
             <HeatmapLegend hasCrops={false} />
           </div>
         )}

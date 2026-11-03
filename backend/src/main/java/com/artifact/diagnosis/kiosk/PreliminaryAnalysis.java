@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.kiosk;
 
+import com.artifact.diagnosis.analysis.HeatmapCrop;
 import com.artifact.diagnosis.analysis.LowConfidenceCaution;
 import com.artifact.diagnosis.analysis.TopKItem;
 import jakarta.persistence.*;
@@ -68,4 +69,18 @@ public class PreliminaryAnalysis {
     /** 재분석 시 갱신되어야 하므로 CreationTimestamp 대신 서비스에서 직접 설정한다. */
     @Column(name = "analyzed_at", nullable = false)
     private LocalDateTime analyzedAt;
+
+    /** 확대 히트맵들 — AnalysisResult.heatmapCrops 와 같은 모양이다(V12). 이 기능 전의 행은 null. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "heatmap_crops", columnDefinition = "json")
+    private List<HeatmapCrop> heatmapCrops;
+
+    /** 히트맵을 그린 방식(fastapi/main.py HEATMAP_STYLE). 이 기록 전의 행은 null. */
+    @Column(name = "heatmap_style", length = 40)
+    private String heatmapStyle;
+
+    /** 확대 재판정을 했을 때만 채운다: 원본 사진만 보고 낸 1순위(V12). 이때 top_k_json 은 재판정한 결과다. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "full_image_top1", columnDefinition = "json")
+    private TopKItem fullImageTop1;
 }
