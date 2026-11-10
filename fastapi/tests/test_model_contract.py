@@ -25,6 +25,11 @@
 태스크끼리 코드가 겹치는 것. 백엔드 disease 테이블은 태스크 구분 없이 코드 하나로 행을 찾으므로,
 두 태스크가 같은 코드를 다른 병명으로 쓰면 한쪽 화면이 다른 쪽 병명을 보여준다. 여기서 잡는다.
 
+백엔드와 주고받는 오류의 모양도 같은 종류라 [8] 에서 본다. 사진으로 열 수 없는 입력은 400 에
+detail.code = "invalid_image" 를 싣고, 백엔드는 그 코드가 있을 때만 화면에 "다시 촬영" 안내를 낸다.
+코드가 빠지거나 두 쪽 문자열이 어긋나도 서버는 멀쩡히 뜬다 — 화면만 조용히 "서버 내부 오류"로 돌아간다.
+여기에 쓰는 입력은 디코딩 단계에서 끝나는 바이트들이라 모델을 돌리지 않는다.
+
 실행
 ----
     docker compose exec -T fastapi python tests/test_model_contract.py
@@ -660,6 +665,182 @@ else:
               not mismatched_main,
               "; ".join(f"{c}: main='{a}' vs java='{b}'"
                         for c, (a, b) in mismatched_main.items()))
+
+# =============================================
+print("\n[8] 입력 사진 오류 — 400, 그리고 사진 탓일 때만 invalid_image")
+
+# 업로드한 파일을 사진으로 열 수 없을 때 500 이 나가면 백엔드도 500 을 내고, 태블릿·진료실 화면에는 "서버 내부 오류"만
+# 뜬다 — 다시 찍으면 풀리는 일인데 사용자는 그것을 알 길이 없다(main.py INVALID_IMAGE 주석). 백엔드는 400 본문의
+# detail.code 로 "사진 문제(→ 화면에 400)"와 "자기가 요청을 잘못 만든 것(→ 500)"을 가르므로, 코드가 붙어야 하는 곳과
+# 붙으면 안 되는 곳을 둘 다 본다. 코드가 빠지거나 이름이 어긋나도 서버는 멀쩡히 뜬다 — 화면만 다시 500 으로 돌아간다.
+# 모델은 돌지 않는다. 전부 디코딩 단계에서 끝나는 입력이다(태스크 확인 → 디코딩 → 모델 순서).
+import base64  # noqa: E402
+import struct  # noqa: E402
+import zlib  # noqa: E402
+
+from fastapi import HTTPException, UploadFile  # noqa: E402
+from PIL import Image, ImageOps, UnidentifiedImageError  # noqa: E402
+from starlette.datastructures import Headers  # noqa: E402
+
+
+def http_error(call) -> tuple[int | None, object]:
+    """call() 이 HTTPException 으로 끝나면 (상태 코드, detail). 아니면 (None, 무엇으로 끝났는지)."""
+    try:
+        call()
+    except HTTPException as exc:
+        return exc.status_code, exc.detail
+    except Exception as exc:  # noqa: BLE001 — FastAPI 가 500 으로 내보낼 예외는 무엇이든 실패로 본다
+        return None, f"{type(exc).__name__}: {exc}"
+    return None, "예외 없이 끝남"
+
+
+def is_invalid_image(detail) -> bool:
+    return (isinstance(detail, dict) and detail.get("code") == serving.INVALID_IMAGE
+            and bool(detail.get("message")))
+
+
+def png_chunk(cid: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + cid + data + struct.pack(">I", zlib.crc32(cid + data))
+
+
+def sample_image(size=(256, 192)) -> Image.Image:
+    """압축이 잘 안 되는 무늬 — 압축 데이터가 길어야 '중간에 잘림'이 헤더가 아니라 픽셀 데이터에서 일어난다."""
+    w, h = size
+    return Image.frombytes("RGB", size, bytes((x * 7 + y * 13 + (x * y) % 251) % 256
+                                             for y in range(h) for x in range(w * 3)))
+
+
+def jpeg_bytes(exif_orientation: int | None = None) -> bytes:
+    buf = io.BytesIO()
+    image = sample_image()
+    if exif_orientation is None:
+        image.save(buf, "JPEG", quality=95)
+    else:
+        exif = Image.Exif()
+        exif[0x0112] = exif_orientation
+        image.save(buf, "JPEG", quality=95, exif=exif.tobytes())
+    return buf.getvalue()
+
+
+def png_parts() -> tuple[bytes, bytes]:
+    """PNG 의 IHDR 본문과 이어 붙인 IDAT 본문."""
+    buf = io.BytesIO()
+    sample_image().save(buf, "PNG")
+    data, pos, ihdr, idat = buf.getvalue(), 8, b"", b""
+    while pos < len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        cid, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + length]
+        ihdr = body if cid == b"IHDR" else ihdr
+        idat += body if cid == b"IDAT" else b""
+        pos += 12 + length
+    return ihdr, idat
+
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_ihdr, _idat = png_parts()
+_half = len(_idat) // 2
+_jpeg = jpeg_bytes()
+
+# 잡는 예외 갈래(main.py _open_image 독스트링)마다 하나씩 둔다 — 갈래 하나를 except 에서 빼면 그 줄이 실패한다.
+bad_photos = {
+    # UnidentifiedImageError 보다 앞에서 따로 거른다.
+    "0바이트 파일": b"",
+    # UnidentifiedImageError — Image.open 이 형식을 못 알아본다.
+    "이미지가 아닌 바이트": b"this is definitely not an image\n" * 8,
+    "HEIC(아이폰 기본 형식 — 이 서버에는 HEIF 플러그인이 없다)":
+        b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + b"\x00" * 64,
+    # OSError — 헤더는 멀쩡해 open 은 통과하고 픽셀을 읽는 exif_transpose(load) 에서 터진다.
+    "끝부분이 잘린 JPEG": _jpeg[: len(_jpeg) * 3 // 4],
+    # SyntaxError — 첫 IDAT 를 다 읽은 디코더가 다음 청크 이름을 읽다가 "broken PNG file" 을 낸다. OSError 가 아니다.
+    "청크 이름이 깨진 PNG": (PNG_SIGNATURE + png_chunk(b"IHDR", _ihdr) + png_chunk(b"IDAT", _idat[:_half])
+                         + struct.pack(">I", len(_idat) - _half) + b"\x00\x00\x00\x00" + _idat[_half:]
+                         + b"\x00\x00\x00\x00" + png_chunk(b"IEND", b"")),
+    # DecompressionBombError — OSError 계열이 아니다. 2억 화소 폰 사진(16320x12240)이 이 크기다. 헤더만 키워 둔다.
+    "화소 수가 Pillow 한도의 2배를 넘는 PNG": (PNG_SIGNATURE
+                                     + png_chunk(b"IHDR", struct.pack(">II", 16320, 12240) + _ihdr[8:])
+                                     + png_chunk(b"IDAT", _idat) + png_chunk(b"IEND", b"")),
+}
+
+for label, data in bad_photos.items():
+    status, detail = http_error(lambda: serving.run_inference(data))
+    check(f"{label} → 400 invalid_image", status == 400 and is_invalid_image(detail),
+          f"상태={status}, detail={detail!r}")
+
+
+def pillow_failure(data: bytes) -> tuple[str, Exception | None]:
+    """main.py 를 거치지 않고 Pillow 만으로 열어 본다 — 어느 단계에서 무엇으로 끝나는지."""
+    stage = "open"
+    try:
+        image = Image.open(io.BytesIO(data))
+        stage = "exif_transpose"
+        image = ImageOps.exif_transpose(image)
+        stage = "convert"
+        image.convert("RGB")
+    except Exception as exc:  # noqa: BLE001
+        return stage, exc
+    return "끝까지", None
+
+
+# 위 갈래가 정말 서로 다른 예외인지 전제를 확인한다. Pillow 가 바뀌어 셋이 모두 같은 예외로 끝나게 되면
+# 위 검사는 갈래 하나만 재고도 통과한다. 잘린 JPEG 은 open 을 통과해야 한다 — 그래야 "세 호출을 한 try 에"의 근거가 된다.
+for label, want_stage, want_type in (
+        ("끝부분이 잘린 JPEG", "exif_transpose", OSError),
+        ("청크 이름이 깨진 PNG", None, SyntaxError),
+        ("화소 수가 Pillow 한도의 2배를 넘는 PNG", "open", Image.DecompressionBombError)):
+    stage, raised = pillow_failure(bad_photos[label])
+    where = f"{want_stage} 단계에서 " if want_stage else ""
+    check(f"전제: {label} — Pillow 가 {where}{want_type.__name__} 로 끝난다",
+          isinstance(raised, want_type) and not isinstance(raised, UnidentifiedImageError)
+          and (want_stage is None or stage == want_stage),
+          f"실제: {stage} 단계, {type(raised).__name__ if raised else '예외 없음'}: {raised}")
+
+# 정상 사진은 그대로 열리고 EXIF 회전도 전처럼 적용된다(_open_image 로 옮기면서 바뀌지 않았다).
+# Orientation=6 은 "시계 방향 90도로 돌려 보라" — 256x192 가 192x256 이 되어야 한다.
+opened = serving._open_image(jpeg_bytes(exif_orientation=6))
+check("정상 JPEG 은 열리고 EXIF 회전이 적용된 RGB 다", opened.mode == "RGB" and opened.size == (192, 256),
+      f"mode={opened.mode}, size={opened.size}")
+
+# base64 는 맞는데 내용이 사진이 아니면 사진 문제다.
+status, detail = http_error(lambda: serving.predict_base64(
+    serving.PredictRequest(image_base64=base64.b64encode(b"not an image at all").decode())))
+check("/predict-base64: base64 는 맞고 내용이 사진이 아님 → 400 invalid_image",
+      status == 400 and is_invalid_image(detail), f"상태={status}, detail={detail!r}")
+
+# base64 자체가 깨진 것은 사진이 아니라 호출한 쪽의 버그다 — 400 이되 invalid_image 가 아니어야 백엔드가 500 으로 남긴다.
+_jpeg_b64 = base64.b64encode(_jpeg).decode()
+broken_base64 = {
+    "base64 알파벳이 아닌 글자": "@@@@",
+    "패딩이 틀림": "abc",
+    "ASCII 가 아닌 문자열": "사진",
+    # 예전 기본값(validate=False)은 '!' 를 조용히 버리고 정상 JPEG 로 읽었다 — 깨진 본문이 그대로 추론까지 갔다.
+    "정상 JPEG 의 base64 중간에 끼어든 글자": _jpeg_b64[:16] + "!" + _jpeg_b64[16:],
+}
+for label, payload in broken_base64.items():
+    status, detail = http_error(lambda: serving.predict_base64(serving.PredictRequest(image_base64=payload)))
+    check(f"/predict-base64: {label} → 400, invalid_image 아님",
+          status == 400 and isinstance(detail, str) and "base64" in detail, f"상태={status}, detail={detail!r}")
+
+# 태스크 확인이 디코딩보다 먼저다 — 태스크가 틀린 것(백엔드 버그)이 사진 문제에 가려지면 안 된다.
+status, detail = http_error(lambda: serving.run_inference(b"not an image", "no_such_task"))
+check("모르는 태스크 + 사진이 아닌 바이트 → 태스크 오류(400, invalid_image 아님)가 먼저 난다",
+      status == 400 and isinstance(detail, str) and "no_such_task" in detail, f"상태={status}, detail={detail!r}")
+
+# Swagger·curl 용 multipart 경로도 같은 규칙이다.
+status, detail = http_error(lambda: serving.predict(
+    file=UploadFile(file=io.BytesIO(b"hello"), filename="note.txt", headers=Headers({"content-type": "text/plain"})),
+    task=DEFAULT_TASK))
+check("/predict: 이미지가 아닌 Content-Type → 400 invalid_image", status == 400 and is_invalid_image(detail),
+      f"상태={status}, detail={detail!r}")
+
+FASTAPI_ERRORS_JAVA = REPO_ROOT / "backend/src/main/java/com/artifact/diagnosis/analysis/FastApiErrors.java"
+if not FASTAPI_ERRORS_JAVA.is_file():
+    skip("백엔드 INVALID_IMAGE 대조", "컨테이너 안에는 백엔드 소스가 없습니다 (체크아웃에서 실행하면 돕니다)")
+else:
+    java_code = re.search(r'INVALID_IMAGE\s*=\s*"([^"]*)"', FASTAPI_ERRORS_JAVA.read_text(encoding="utf-8"))
+    check("백엔드 FastApiErrors.INVALID_IMAGE 가 main.py INVALID_IMAGE 와 같다",
+          java_code is not None and java_code.group(1) == serving.INVALID_IMAGE,
+          f"java={java_code.group(1) if java_code else '(상수를 못 찾음)'!r} / main.py={serving.INVALID_IMAGE!r} — "
+          "어긋나면 백엔드가 사진 문제를 알아보지 못해 화면이 다시 500 을 받는다")
 
 # =============================================
 print()
