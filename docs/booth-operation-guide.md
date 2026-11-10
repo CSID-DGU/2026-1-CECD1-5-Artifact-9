@@ -183,20 +183,37 @@ AI 서버(FastAPI)는 한 프로세스가 한 번에 한 장씩만 추론한다.
 
 ## 5. 리허설 (11/14)
 
-### 5-1. 점검 스크립트 — 동시 분석·섞임·대기 시간
+### 5-1. 점검 스크립트 — 부스 시나리오·동시 분석·대기 시간
 
-여러 기기가 **같은 순간에** 분석해도 결과·히트맵이 접수끼리 섞이지 않는지, 의사 화면이 기기와 같은 결과를 보는지,
-얼마나 기다리는지를 실제 서버에서 잰다. 팀원 맥에서 돌린다(파이썬 표준 라이브러리만 쓴다).
+부스에서 쓰는 환자는 **운영진 이름의 3명(이권형·김경섭·모수진)뿐**이다. 방문객 개인정보를 받지 않고, 방문객이 올 때마다
+이 중 한 명으로 새로 접수한다. 두 스크립트 모두 이 3명을 쓰므로 **접수 화면에서 먼저 등록해 둔다**(없으면 멈춘다).
+팀원 맥에서 돌린다(파이썬 표준 라이브러리만 쓴다).
+
+**① 부스 시나리오** — 운영진 3명이 동시에 접수부터 증명서까지 가고, 같은 링크 두 폰·같은 환자 두 방문객·재촬영·
+잘못된 파일·닫힌 링크·인쇄까지 실제 서버에서 일으킨다(시나리오 S1~S7 은 스크립트 머리말).
 
 ```bash
-# 저장소 루트에서. 사진 폴더에는 서로 다른 사진이 5장 이상 (얼굴 사진이면 더 좋다)
-export BOOTH_LOGIN_ID=admin            # ADMIN 또는 DOCTOR 계정
+# 저장소 루트에서. 사진 폴더에는 서로 다른 사진이 4장 이상 (얼굴 사진이면 더 좋다)
+export BOOTH_LOGIN_ID=doctor           # DOCTOR 또는 ADMIN 계정
 export BOOTH_PASSWORD='...'
-python3 scripts/booth/kiosk_load_check.py --base-url https://artifact-prod.duckdns.org \
-    --images ~/booth-photos --devices 3 --rounds 3 --task mixed
+python3 scripts/booth/booth_scenarios.py --base-url https://artifact-prod.duckdns.org \
+    --images ~/booth-photos --allow-print
 ```
 
-- 접수를 3건 만들고(접수증이 출력된다 — 프린터 점검을 겸한다) 끝나면 취소한다
+- **통과 기준**: 마지막 줄이 `✅ 부스 시나리오 통과`. ⚠️(LLM 이 답하지 않음 등)은 읽고 판단한다
+- `--allow-print` 는 프린터 점검을 겸할 때 준다 — 접수증 5장·진료요약 3장·발급확인증 3장이 나온다. 종이 없이
+  돌리려면 맥북의 print-agent 를 끄고 1분 반 뒤에 돌린다(자세한 것은 스크립트 머리말)
+- S1 의 접수 3건은 '진료 완료' 기록으로 남는다(메모 "부스 리허설 자동 점검"). 남기기 싫으면 `--kiosk-only`
+- 유료 LLM 을 아끼려면 `--no-llm`
+
+**② 동시 분석 부하** — 여러 라운드를 돌려 대기 시간을 잰다.
+
+```bash
+python3 scripts/booth/kiosk_load_check.py --base-url https://artifact-prod.duckdns.org \
+    --images ~/booth-photos --devices 3 --rounds 3 --task mixed --patients operators
+```
+
+- 운영진 3명에게 접수를 3건 만들고(접수증이 출력된다 — 프린터 점검을 겸한다) 끝나면 취소한다
 - **통과 기준**: 마지막 줄이 `✅ 섞임·오류 없음`, 동시 분석 대기 p95 가 **15초 이하**
 - p95 가 15초를 넘으면 → 인스턴스를 `c7g.2xlarge` 로 올리고 `docker-compose.booth.yml` 의 `fastapi3` 를 되살리거나,
   6단계 수평 확장
