@@ -61,6 +61,14 @@ function formatDateTime(value?: string) {
   return d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+/** 휴대전화 번호를 숫자 11자리와 010-0000-0000 형식으로 제한한다. */
+function formatMobilePhone(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+}
+
 // ─── 하위 컴포넌트 ────────────────────────────────────────
 function SelectField({
   label, value, onChange, options, disabled = false,
@@ -352,10 +360,11 @@ export default function Reception() {
   function handleNewPatient() {
     setSelectedPatient(null);
     setMode("new");
-    setName(searchName); // 검색에 입력한 이름을 폼에 미리 채움
-    setGender("");
-    setBirthDate("");
-    setPhone("");
+    // 환자 검색에서 이미 입력한 정보는 신규 등록 폼에 그대로 이어준다.
+    setName(searchName);
+    setGender(searchGender);
+    setBirthDate(searchBirthDate);
+    setPhone(searchPhone);
     setMemo("");
     setSearchResults([]);
     setHasSearched(false);
@@ -556,7 +565,8 @@ export default function Reception() {
             <SearchInput
               placeholder="전화번호"
               value={searchPhone}
-              onChange={setSearchPhone}
+              onChange={(value) => setSearchPhone(formatMobilePhone(value))}
+              type="tel"
               onEnter={handleSearch}
             />
           </div>
@@ -674,7 +684,9 @@ export default function Reception() {
               label="휴대폰번호"
               placeholder="010-0000-0000"
               value={phone}
-              onChange={setPhone}
+              onChange={(value) => setPhone(formatMobilePhone(value))}
+              type="tel"
+              maxLength={13}
               disabled={formDisabled}
             />
             <MockField label="주민번호" value="●●●●●●-●●●●●●●" />
