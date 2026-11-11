@@ -77,6 +77,10 @@ services:
       # 값이 다른 값일 이유가 없으므로, 배포에 실려 가는 이 파일에서 못박아 서버에
       # 무엇이 남아 있든 항상 큐 모드로 뜨게 한다.
       # direct 로 돌아갈 일이 생기면 이 줄을 고쳐 배포한다 — 서버에 들어가지 않는다.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_PUBLIC_BASE_URL: ${TELEGRAM_PUBLIC_BASE_URL:-}
       PRINT_MODE: queue
       PRINT_AGENT_ENABLED: "true"
 

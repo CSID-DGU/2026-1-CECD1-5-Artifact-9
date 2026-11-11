@@ -2,6 +2,7 @@ package com.artifact.diagnosis.visit;
 
 import com.artifact.diagnosis.common.security.DoctorAccess;
 import com.artifact.diagnosis.print.PrintService;
+import com.artifact.diagnosis.notification.TelegramNotificationService;
 import com.artifact.diagnosis.common.security.MedicalAccess;
 import com.artifact.diagnosis.common.security.StaffAccess;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +40,7 @@ public class VisitController {
 
     private final VisitService visitService;
     private final PrintService printService;
+    private final TelegramNotificationService telegramNotificationService;
 
     @Operation(summary = "진료 접수 생성", description = "환자 ID를 받아 새 접수를 생성합니다. 초기 상태: RECEIVED.")
     @ApiResponse(responseCode = "201", description = "접수 생성 성공")
@@ -53,6 +55,7 @@ public class VisitController {
             @RequestHeader(value = PrintService.KIOSK_BASE_URL_HEADER, required = false)
             String kioskBaseUrl) {
         VisitResponse created = visitService.create(request);
+        telegramNotificationService.notifyReception(created, kioskBaseUrl);
         // 접수증 자동 출력. 프린터가 꺼져 있어도 접수는 이미 끝났으므로 실패는 로그만 남는다.
         printService.printTicketAsync(created, kioskBaseUrl);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
