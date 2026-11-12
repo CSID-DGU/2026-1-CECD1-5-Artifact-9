@@ -42,7 +42,8 @@
   걸린 출력은 2분 동안 대기열에 남는다 — 끝나고 2분이 지난 뒤에 다시 켠다(그 전에 켜면 밀린 종이가 한꺼번에 나온다).
 
 계정은 의사(DOCTOR) 또는 관리자(ADMIN)여야 한다 — 처방·증명서 무효 처리가 의사 권한이다.
-비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게).
+비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게). 이미 발급받은 로그인 토큰(JWT, 24시간 유효)이
+있으면 BOOTH_LOGIN_ID / BOOTH_PASSWORD 대신 BOOTH_TOKEN 하나만 줘도 된다.
 
 사용법
 ------
@@ -76,7 +77,8 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kiosk_load_check import IMAGE_SUFFIXES, OPERATORS, Api, find_patients, pct, same_answer, topk  # noqa: E402
+from kiosk_load_check import (  # noqa: E402
+    IMAGE_SUFFIXES, OPERATORS, Api, authenticate, find_patients, pct, same_answer, topk)
 
 MEMO = "부스 리허설 자동 점검"
 ALL_SCENARIOS = ("S1", "S2", "S3", "S4", "S5", "S6", "S7")
@@ -571,12 +573,13 @@ def main() -> int:
     photos = distinct_photos(args.images)
     if len(photos) < len(OPERATORS) + 1:
         raise SystemExit(f"서로 다른 사진이 {len(photos)}장뿐이다. {len(OPERATORS) + 1}장 이상 필요하다(운영진 3명 + 재촬영 1장).")
-    login_id, password = os.environ.get("BOOTH_LOGIN_ID"), os.environ.get("BOOTH_PASSWORD")
-    if not login_id or not password:
-        raise SystemExit("BOOTH_LOGIN_ID / BOOTH_PASSWORD 환경변수가 필요하다 (DOCTOR 또는 ADMIN 계정).")
-
     api = Api(args.base_url, args.timeout)
-    api.token = api.json("POST", "/api/v1/auth/login", {"loginId": login_id, "password": password}, auth=False)["token"]
+    login_id = authenticate(api)
+    # 의사 권한인지 먼저 본다 — 직원 계정이면 S1 이 처방 단계에서야 403 으로 멈춰, 접수만 잔뜩 남는다.
+    status, _, _ = api.call("GET", "/api/v1/prescriptions/doctor-patients", auth=True)
+    if status in (401, 403):
+        raise SystemExit("로그인 토큰이 만료됐거나(401) 의사·관리자 계정이 아니다(403). "
+                         f"HTTP {status} — DOCTOR 또는 ADMIN 계정으로 다시 준비한다.")
 
     queue = api.json("GET", "/api/v1/print/jobs/status")
     connected = bool(queue.get("agentConnected"))

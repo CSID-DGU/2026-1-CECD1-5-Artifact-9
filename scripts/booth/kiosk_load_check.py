@@ -26,7 +26,8 @@ Caddy → nginx → 백엔드 → AI 로드밸런서 → 실제 모델 워커 �
 출력하지 않으려면 접수 화면에서 미리 만든 접수의 토큰을 --tokens 로 넘긴다.
 
 계정은 ADMIN 또는 DOCTOR 여야 한다 — 접수 생성(직원 권한)과 의사 화면 조회(진료 권한)를 둘 다 쓴다.
-비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게).
+비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게). 이미 발급받은 로그인 토큰(JWT)이 있으면
+BOOTH_LOGIN_ID / BOOTH_PASSWORD 대신 BOOTH_TOKEN 하나만 줘도 된다.
 
 사용법
 ------
@@ -118,6 +119,24 @@ class Api:
             return status, data[:200].decode(errors="replace"), took
 
 
+def authenticate(api: Api) -> str:
+    """
+    로그인 토큰을 얻어 api 에 꽂고, 화면에 찍을 계정 설명을 돌려준다.
+
+    BOOTH_TOKEN 이 있으면 그 값을 그대로 쓴다 — 이미 발급받은 JWT(유효 24시간)다. 비밀번호를 환경변수에 두지 않아도
+    되고, 비밀번호를 모르는 사람에게 점검만 맡길 수도 있다. 없으면 BOOTH_LOGIN_ID / BOOTH_PASSWORD 로 로그인한다.
+    """
+    token = os.environ.get("BOOTH_TOKEN")
+    if token:
+        api.token = token
+        return "토큰(BOOTH_TOKEN)"
+    login_id, password = os.environ.get("BOOTH_LOGIN_ID"), os.environ.get("BOOTH_PASSWORD")
+    if not login_id or not password:
+        raise SystemExit("BOOTH_TOKEN, 또는 BOOTH_LOGIN_ID / BOOTH_PASSWORD 환경변수가 필요하다 (DOCTOR 또는 ADMIN 계정).")
+    api.token = api.json("POST", "/api/v1/auth/login", {"loginId": login_id, "password": password}, auth=False)["token"]
+    return login_id
+
+
 def find_patients(api: Api, names: list[str] | tuple[str, ...], create: bool = False) -> list[dict]:
     """
     이름이 **정확히** 같은 환자를 찾아 [{"id", "name"}] 로 돌려준다(검색 API 는 부분 일치라 다시 거른다).
@@ -137,8 +156,8 @@ def find_patients(api: Api, names: list[str] | tuple[str, ...], create: bool = F
             continue
         if not create:
             raise SystemExit(f"환자 '{name}' 이(가) 없다. 접수 화면에서 먼저 등록하거나 --create-patients 를 준다.")
-        created = api.json("POST", "/api/v1/patients",
-                           {"name": name, "birthDate": "2000-01-01", "gender": "M", "memo": "부스 운영진 테스트 환자"})
+        # 생년월일·성별은 비워 둔다 — 둘 다 선택 항목이고, 이름만 보고 지어 넣을 값이 아니다.
+        created = api.json("POST", "/api/v1/patients", {"name": name, "memo": "부스 운영진 테스트 환자"})
         print(f"  환자 '{name}' 을(를) 만들었다 id={created['id']}")
         found.append({"id": created["id"], "name": name})
     return found
@@ -180,12 +199,8 @@ def main() -> int:
         raise SystemExit(f"사진이 {len(images)}장뿐이다. 기기 수({args.devices}) 이상 필요하다.")
     # 라운드마다 한 칸씩 돌려 맡기므로 '기기 수 + 라운드 - 1' 장이면 라운드마다 조합이 다르다. 더 쓰면 기준 분석만 길어진다.
     images = images[: args.devices + args.rounds - 1]
-    login_id, password = os.environ.get("BOOTH_LOGIN_ID"), os.environ.get("BOOTH_PASSWORD")
-    if not login_id or not password:
-        raise SystemExit("BOOTH_LOGIN_ID / BOOTH_PASSWORD 환경변수가 필요하다 (ADMIN 또는 DOCTOR 계정).")
-
     api = Api(args.base_url, args.timeout)
-    api.token = api.json("POST", "/api/v1/auth/login", {"loginId": login_id, "password": password}, auth=False)["token"]
+    authenticate(api)
 
     # ── 접수 준비 ─────────────────────────────────────────────
     created: list[int] = []
