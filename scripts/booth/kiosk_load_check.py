@@ -18,18 +18,24 @@ Caddy → nginx → 백엔드 → AI 로드밸런서 → 실제 모델 워커 �
 
 접수 만들기
 -----------
-기본은 이 스크립트가 "부스점검-NN" 환자와 접수를 기기 수만큼 만들고, 끝나면 접수를 취소한다(--keep 이면 남긴다).
+부스에서는 운영진 이름의 환자 3명(이권형·김경섭·모수진)만 쓴다 — --patients operators 로 그 3명에게 접수를 만든다.
+환자는 접수 화면에서 미리 등록해 둔다(없으면 멈춘다. --create-patients 를 주면 만든다).
+--patients 를 주지 않으면 이 스크립트가 "부스점검-NN" 환자를 기기 수만큼 새로 만든다.
+어느 쪽이든 만든 접수는 끝나면 취소한다(--keep 이면 남긴다).
 ⚠️ 접수를 만들면 접수증이 자동 출력된다(백엔드 VisitController.create). 프린터 점검을 겸하려면 그대로 두고,
 출력하지 않으려면 접수 화면에서 미리 만든 접수의 토큰을 --tokens 로 넘긴다.
 
 계정은 ADMIN 또는 DOCTOR 여야 한다 — 접수 생성(직원 권한)과 의사 화면 조회(진료 권한)를 둘 다 쓴다.
-비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게).
+비밀번호는 명령줄이 아니라 환경변수로 받는다(셸 기록에 남지 않게). 이미 발급받은 로그인 토큰(JWT)이 있으면
+BOOTH_LOGIN_ID / BOOTH_PASSWORD 대신 BOOTH_TOKEN 하나만 줘도 된다.
 
 사용법
 ------
     export BOOTH_LOGIN_ID=admin BOOTH_PASSWORD='...'
     python3 scripts/booth/kiosk_load_check.py --base-url https://artifact-prod.duckdns.org \\
-        --images ~/booth-photos --devices 3 --rounds 3 --task facial
+        --images ~/booth-photos --devices 3 --rounds 3 --task facial --patients operators
+
+    ... --patients 이권형,김경섭  # 이름을 직접 적어도 된다. 기기가 환자보다 많으면 돌아가며 같은 환자에게 접수를 더 만든다
 
     ... --task mixed            # 기기마다 얼굴·점 모델을 번갈아
     ... --tokens AbC123xyZ789,QwE456rtY012,ZxC789vbN345   # 이미 있는 접수를 쓴다(접수증 출력 없음, 취소도 안 함)
@@ -53,14 +59,19 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 # 같은 사진이라도 워커마다 스레드 수가 달라 소수 넷째 자리가 다를 수 있다(부동소수 합의 순서). 그 이상은 다른 답이다.
 CONF_TOLERANCE = 0.01
+# 부스에서 쓰는 환자는 이 3명뿐이다 — 운영진 이름이다. 방문객 개인정보를 받지 않고, 방문객이 올 때마다 이 중 한 명으로
+# 새로 접수한다(운영진 한 명이 자기 이름의 환자로 방문객을 맡는다).
+OPERATORS = ("이권형", "김경섭", "모수진")
 
 
 class Api:
@@ -84,7 +95,7 @@ class Api:
         except urllib.error.HTTPError as e:
             return e.code, e.read(), time.monotonic() - started
 
-    def json(self, method: str, path: str, payload: dict | None = None, auth: bool = True) -> dict:
+    def json(self, method: str, path: str, payload: dict | None = None, auth: bool = True) -> Any:
         body = json.dumps(payload).encode() if payload is not None else None
         status, data, _ = self.call(method, path, body, "application/json" if body else None, auth)
         if status >= 300:
@@ -106,6 +117,50 @@ class Api:
             return status, json.loads(data), took
         except ValueError:
             return status, data[:200].decode(errors="replace"), took
+
+
+def authenticate(api: Api) -> str:
+    """
+    로그인 토큰을 얻어 api 에 꽂고, 화면에 찍을 계정 설명을 돌려준다.
+
+    BOOTH_TOKEN 이 있으면 그 값을 그대로 쓴다 — 이미 발급받은 JWT(유효 24시간)다. 비밀번호를 환경변수에 두지 않아도
+    되고, 비밀번호를 모르는 사람에게 점검만 맡길 수도 있다. 없으면 BOOTH_LOGIN_ID / BOOTH_PASSWORD 로 로그인한다.
+    """
+    token = os.environ.get("BOOTH_TOKEN")
+    if token:
+        api.token = token
+        return "토큰(BOOTH_TOKEN)"
+    login_id, password = os.environ.get("BOOTH_LOGIN_ID"), os.environ.get("BOOTH_PASSWORD")
+    if not login_id or not password:
+        raise SystemExit("BOOTH_TOKEN, 또는 BOOTH_LOGIN_ID / BOOTH_PASSWORD 환경변수가 필요하다 (DOCTOR 또는 ADMIN 계정).")
+    api.token = api.json("POST", "/api/v1/auth/login", {"loginId": login_id, "password": password}, auth=False)["token"]
+    return login_id
+
+
+def find_patients(api: Api, names: list[str] | tuple[str, ...], create: bool = False) -> list[dict]:
+    """
+    이름이 **정확히** 같은 환자를 찾아 [{"id", "name"}] 로 돌려준다(검색 API 는 부분 일치라 다시 거른다).
+
+    같은 이름이 여럿이면 가장 먼저 등록한(id 가 작은) 사람을 쓰고 알린다 — 운영진 환자를 두 번 등록한 경우다.
+    없으면 create 일 때만 만든다. 기본은 멈춘다: 운영진 환자는 접수 화면에서 사람이 등록해 두는 것이 원칙이고,
+    점검 스크립트가 이름만 같은 환자를 몰래 늘리면 부스 당일 접수 검색에 같은 이름이 둘 뜬다.
+    """
+    found = []
+    for name in names:
+        hits = api.json("GET", "/api/v1/patients/search?name=" + urllib.parse.quote(name))
+        exact = sorted((p for p in hits if p.get("name") == name), key=lambda p: p["patientId"])
+        if exact:
+            if len(exact) > 1:
+                print(f"  ⚠ 환자 '{name}' 이(가) {len(exact)}명이다 — 가장 먼저 등록한 id={exact[0]['patientId']} 를 쓴다")
+            found.append({"id": exact[0]["patientId"], "name": name})
+            continue
+        if not create:
+            raise SystemExit(f"환자 '{name}' 이(가) 없다. 접수 화면에서 먼저 등록하거나 --create-patients 를 준다.")
+        # 생년월일·성별은 비워 둔다 — 둘 다 선택 항목이고, 이름만 보고 지어 넣을 값이 아니다.
+        created = api.json("POST", "/api/v1/patients", {"name": name, "memo": "부스 운영진 테스트 환자"})
+        print(f"  환자 '{name}' 을(를) 만들었다 id={created['id']}")
+        found.append({"id": created["id"], "name": name})
+    return found
 
 
 def topk(result: dict) -> list[tuple[str, float]]:
@@ -131,6 +186,9 @@ def main() -> int:
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--task", choices=["facial", "skin_lesion", "mixed"], default="facial")
     ap.add_argument("--tokens", help="쉼표로 구분한 기존 키오스크 토큰. 주면 접수를 만들지도 취소하지도 않는다")
+    ap.add_argument("--patients", help="이 이름의 환자들에게 접수를 만든다(쉼표 구분). 'operators' 면 운영진 3명 "
+                                       f"({', '.join(OPERATORS)})")
+    ap.add_argument("--create-patients", action="store_true", help="--patients 의 환자가 없으면 만든다")
     ap.add_argument("--comment", action="store_true", help="참고 소견(LLM)까지 동시에 요청한다")
     ap.add_argument("--keep", action="store_true", help="만든 접수를 취소하지 않고 남긴다")
     ap.add_argument("--timeout", type=float, default=90.0)
@@ -141,12 +199,8 @@ def main() -> int:
         raise SystemExit(f"사진이 {len(images)}장뿐이다. 기기 수({args.devices}) 이상 필요하다.")
     # 라운드마다 한 칸씩 돌려 맡기므로 '기기 수 + 라운드 - 1' 장이면 라운드마다 조합이 다르다. 더 쓰면 기준 분석만 길어진다.
     images = images[: args.devices + args.rounds - 1]
-    login_id, password = os.environ.get("BOOTH_LOGIN_ID"), os.environ.get("BOOTH_PASSWORD")
-    if not login_id or not password:
-        raise SystemExit("BOOTH_LOGIN_ID / BOOTH_PASSWORD 환경변수가 필요하다 (ADMIN 또는 DOCTOR 계정).")
-
     api = Api(args.base_url, args.timeout)
-    api.token = api.json("POST", "/api/v1/auth/login", {"loginId": login_id, "password": password}, auth=False)["token"]
+    authenticate(api)
 
     # ── 접수 준비 ─────────────────────────────────────────────
     created: list[int] = []
@@ -157,10 +211,17 @@ def main() -> int:
         visit_ids = [api.json("GET", f"/api/kiosk/session/{t}", auth=False)["visitId"] for t in tokens]
     else:
         tokens, visit_ids = [], []
-        stamp = time.strftime("%H%M")
+        if args.patients:
+            names = list(OPERATORS) if args.patients == "operators" else [n.strip() for n in args.patients.split(",") if n.strip()]
+            patients = find_patients(api, names, create=args.create_patients)
+        else:
+            stamp = time.strftime("%H%M")
+            patients = [api.json("POST", "/api/v1/patients",
+                                 {"name": f"부스점검-{stamp}-{i + 1:02d}", "birthDate": "2000-01-01", "gender": "M"})
+                        for i in range(args.devices)]
         for i in range(args.devices):
-            patient = api.json("POST", "/api/v1/patients",
-                               {"name": f"부스점검-{stamp}-{i + 1:02d}", "birthDate": "2000-01-01", "gender": "M"})
+            # 기기가 환자보다 많으면 돌아가며 같은 환자에게 접수를 하나 더 만든다(한 운영진이 방문객 둘을 맡는 경우).
+            patient = patients[i % len(patients)]
             visit = api.json("POST", "/api/v1/visits", {"patientId": patient["id"], "receptionMemo": "부스 동시성 점검"})
             tokens.append(visit["kioskToken"])
             visit_ids.append(visit["id"])

@@ -42,6 +42,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -343,6 +344,97 @@ class KioskBoothFlowTest {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * 부스는 방문객 개인정보를 받지 않고, 운영진 이름의 환자 3명(이권형·김경섭·모수진)을 방문객마다 다시 접수해 쓴다.
+     * 운영진 한 명이 방문객 둘을 겹쳐 맡으면 같은 환자의 접수가 동시에 둘 열린다. 예비분석은 환자가 아니라
+     * 접수(visit_id)에 붙으므로, 둘을 같은 순간에 분석해도 결과·히트맵·운영진 폰의 확인 화면이 접수별로 따로여야 한다.
+     */
+    @Test
+    void sameOperatorPatientReceivedTwiceKeepsEachVisitsResult() throws Exception {
+        Patient operator = patient("이권형");
+        Visit first = receivedVisit(operator);
+        Visit second = receivedVisit(operator);
+        // 31 % 6 = 1(atopic), 32 % 6 = 2(normal) — 답이 서로 달라서 두 접수가 바뀌면 내용으로 드러난다.
+        String firstAnswer = FACIAL.get(31 % FACIAL.size());
+        String secondAnswer = FACIAL.get(32 % FACIAL.size());
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            Future<PreliminaryAnalysisResponse> a = pool.submit(() -> {
+                start.await();
+                return kioskService.analyze(first.getKioskToken(), photo(31), AnalysisType.FACIAL);
+            });
+            Future<PreliminaryAnalysisResponse> b = pool.submit(() -> {
+                start.await();
+                return kioskService.analyze(second.getKioskToken(), photo(32), AnalysisType.FACIAL);
+            });
+            start.countDown();
+            // 같은 환자라도 접수가 다르면 서로 기다리지 않는다(409 는 같은 접수끼리만).
+            assertThat(a.get(20, TimeUnit.SECONDS).topK().get(0).diseaseCode()).isEqualTo(firstAnswer);
+            assertThat(b.get(20, TimeUnit.SECONDS).topK().get(0).diseaseCode()).isEqualTo(secondAnswer);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(kioskService.findByVisitId(first.getId()).topK().get(0).diseaseCode()).isEqualTo(firstAnswer);
+        assertThat(kioskService.findByVisitId(second.getId()).topK().get(0).diseaseCode()).isEqualTo(secondAnswer);
+
+        // 운영진 폰의 확인 화면 — 이름은 같고 접수번호로 갈린다.
+        mockMvc.perform(get("/api/kiosk/session/{token}", first.getKioskToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.patientName").value("이권형"))
+                .andExpect(jsonPath("$.receptionNumber").value("V%05d".formatted(first.getId())))
+                .andExpect(jsonPath("$.analyzed").value(true));
+        mockMvc.perform(get("/api/kiosk/session/{token}", second.getKioskToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.patientName").value("이권형"))
+                .andExpect(jsonPath("$.receptionNumber").value("V%05d".formatted(second.getId())));
+
+        mockMvc.perform(get("/api/kiosk/session/{token}/heatmap", first.getKioskToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(heatmapOf("photo-31")));
+        mockMvc.perform(get("/api/kiosk/session/{token}/heatmap", second.getKioskToken()))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(heatmapOf("photo-32")));
+    }
+
+    /**
+     * 텔레그램·접수증 QR 로 운영진 폰에 간 링크는 그 방문객의 진료가 끝나거나(완료) 접수를 취소하면 닫힌다.
+     * 같은 운영진 환자를 다음 방문객에게 다시 쓰는 부스에서, 지난 방문객의 링크로 찍은 사진이 기록에 들어가면 안 된다.
+     * 진료 중에는 열려 있다 — 의사 앞에서 다시 찍는 경로이고 지금 설계가 그렇다(VisitRepository.findActiveByKioskToken).
+     */
+    @Test
+    void operatorLinkClosesWhenTheVisitIsCompletedOrCancelled() throws Exception {
+        Visit visit = receivedVisit(patient("김경섭"));
+        String token = visit.getKioskToken();
+        kioskService.analyze(token, photo(41), AnalysisType.FACIAL);
+
+        advance(visit, Visit::startConsultation);
+        mockMvc.perform(get("/api/kiosk/session/{token}", token)).andExpect(status().isOk());
+
+        advance(visit, v -> {
+            v.confirmDiagnosisAndPrescribe();
+            v.markCompleted();
+        });
+        mockMvc.perform(get("/api/kiosk/session/{token}", token)).andExpect(status().isNotFound());
+        mockMvc.perform(multipart("/api/kiosk/session/{token}/analyze", token)
+                        .file(photo(42)).param("analysisType", "facial"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/kiosk/session/{token}/comment", token)).andExpect(status().isNotFound());
+        // 닫힌 링크로 온 사진은 기록을 바꾸지 않았다.
+        assertThat(kioskService.findByVisitId(visit.getId()).topK().get(0).diseaseCode())
+                .isEqualTo(FACIAL.get(41 % FACIAL.size()));
+
+        Visit cancelled = receivedVisit(patient("모수진"));
+        advance(cancelled, Visit::cancel);
+        mockMvc.perform(get("/api/kiosk/session/{token}", cancelled.getKioskToken())).andExpect(status().isNotFound());
+        mockMvc.perform(multipart("/api/kiosk/session/{token}/analyze", cancelled.getKioskToken())
+                        .file(photo(43)).param("analysisType", "facial"))
+                .andExpect(status().isNotFound());
+        assertThat(preliminaryAnalysisRepository.findByVisitId(cancelled.getId())).isEmpty();
+    }
+
     private static byte[] heatmapOf(String photo) {
         return ("heat-" + photo).getBytes(StandardCharsets.UTF_8);
     }
@@ -355,9 +447,16 @@ class KioskBoothFlowTest {
         return new MockMultipartFile("file", "photo.jpg", "image/jpeg", ("photo-" + n).getBytes(StandardCharsets.UTF_8));
     }
 
+    private Patient patient(String name) {
+        return patientRepository.save(Patient.builder()
+                .name(name).birthDate(LocalDate.of(2001, 3, 3)).gender(Gender.F).build());
+    }
+
     private Visit receivedVisit() {
-        Patient patient = patientRepository.save(Patient.builder()
-                .name("부스방문자").birthDate(LocalDate.of(2001, 3, 3)).gender(Gender.F).build());
+        return receivedVisit(patient("부스방문자"));
+    }
+
+    private Visit receivedVisit(Patient patient) {
         // CHAR(12) — 실제 발급 토큰처럼 12자로 맞춘다.
         String token = "KIOSKBOOTH%02d".formatted(TOKEN_SEQ.incrementAndGet());
         return visitRepository.save(Visit.builder()
@@ -366,6 +465,13 @@ class KioskBoothFlowTest {
                 .status(VisitStatus.RECEIVED)
                 .kioskToken(token)
                 .build());
+    }
+
+    /** 진료실 화면이 밟는 상태 전이를 엔티티 메서드 그대로 밟는다 — 규칙(어느 상태에서 어디로)은 Visit 이 정한다. */
+    private void advance(Visit visit, Consumer<Visit> step) {
+        Visit current = visitRepository.findById(visit.getId()).orElseThrow();
+        step.accept(current);
+        visitRepository.save(current);
     }
 
     private String tokenFor(MemberRole role) {
