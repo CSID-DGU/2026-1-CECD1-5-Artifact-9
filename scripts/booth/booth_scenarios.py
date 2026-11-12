@@ -419,7 +419,8 @@ class Booth:
         if self.second is None:
             self.r.add("S3", "FAIL", "두 번째 접수를 만들 수 없다")
             return
-        pairs = [(self.scratch, self.photos[1]), (self.second, self.photos[2])]
+        # 기준 답이 있는 운영진 사진 두 장을 쓴다(운영진이 두 명뿐이어도 된다). 서로 달라야 바뀌면 드러난다.
+        pairs = [(self.scratch, self.photos[1]), (self.second, self.photos[0])]
         barrier = threading.Barrier(len(pairs))
 
         def one(visit: dict, photo: Path) -> tuple[int, Any, float]:
@@ -563,6 +564,7 @@ def main() -> int:
     ap.add_argument("--kiosk-only", action="store_true", help="S1 을 의사 화면 확인까지만 — 진료 완료 기록을 남기지 않는다")
     ap.add_argument("--allow-print", action="store_true", help="맥북 print-agent 가 붙어 있어도 진행한다(종이가 나온다)")
     ap.add_argument("--create-patients", action="store_true", help="운영진 환자가 없으면 만든다")
+    ap.add_argument("--patients", help="쉼표로 구분한 운영진 환자 이름(2명 이상). 기본은 " + ", ".join(OPERATORS))
     ap.add_argument("--timeout", type=float, default=90.0)
     args = ap.parse_args()
 
@@ -570,16 +572,22 @@ def main() -> int:
     unknown = [s for s in selected if s not in ALL_SCENARIOS]
     if unknown:
         raise SystemExit(f"모르는 시나리오: {unknown} (가능: {', '.join(ALL_SCENARIOS)})")
+    names = [n.strip() for n in args.patients.split(",") if n.strip()] if args.patients else list(OPERATORS)
+    if len(names) < 2:
+        raise SystemExit("운영진 환자가 2명 이상 필요하다 — 동시에 찍는 상황과 섞임을 보려면 둘은 있어야 한다.")
     photos = distinct_photos(args.images)
-    if len(photos) < len(OPERATORS) + 1:
-        raise SystemExit(f"서로 다른 사진이 {len(photos)}장뿐이다. {len(OPERATORS) + 1}장 이상 필요하다(운영진 3명 + 재촬영 1장).")
+    if len(photos) < len(names) + 1:
+        raise SystemExit(f"서로 다른 사진이 {len(photos)}장뿐이다. {len(names) + 1}장 이상 필요하다"
+                         f"(운영진 {len(names)}명 + 재촬영 1장).")
     api = Api(args.base_url, args.timeout)
     login_id = authenticate(api)
     # 의사 권한인지 먼저 본다 — 직원 계정이면 S1 이 처방 단계에서야 403 으로 멈춰, 접수만 잔뜩 남는다.
-    status, _, _ = api.call("GET", "/api/v1/prescriptions/doctor-patients", auth=True)
-    if status in (401, 403):
-        raise SystemExit("로그인 토큰이 만료됐거나(401) 의사·관리자 계정이 아니다(403). "
-                         f"HTTP {status} — DOCTOR 또는 ADMIN 계정으로 다시 준비한다.")
+    # from·to 를 꼭 붙인다. 빠지면 권한을 보기 전에 400 이 나서 직원 계정도 통과한다.
+    today = time.strftime("%Y-%m-%d")
+    status, _, _ = api.call("GET", f"/api/v1/prescriptions/doctor-patients?from={today}&to={today}", auth=True)
+    if status != 200:
+        raise SystemExit(f"의사 권한 확인이 HTTP {status} 다 — 401 이면 토큰 만료·오류, 403 이면 의사·관리자 계정이 "
+                         "아니다. DOCTOR 또는 ADMIN 계정으로 다시 준비한다.")
 
     queue = api.json("GET", "/api/v1/print/jobs/status")
     connected = bool(queue.get("agentConnected"))
@@ -590,7 +598,7 @@ def main() -> int:
                          "프린터 점검을 겸하려면 --allow-print 를 주고, 아니면 맥북에서 print-agent 를 잠시 끄고 다시 돌린다\n"
                          "(끄고 1분 반쯤 지나야 '연결 안 됨'으로 바뀐다. 끝난 뒤 2분이 지나서 다시 켠다).")
 
-    patients = find_patients(api, OPERATORS, create=args.create_patients)
+    patients = find_patients(api, names, create=args.create_patients)
     print("운영진 환자: " + ", ".join(f"{p['name']}(id {p['id']})" for p in patients))
 
     report = Report()
