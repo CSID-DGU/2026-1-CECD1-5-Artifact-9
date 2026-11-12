@@ -320,6 +320,7 @@ docker logs --tail 30 artifact-ai-lb    # 분석을 몇 번 하면 upstream=<워
 | 분석이 느리다(20초 이상) | 워커가 바쁨 | `docker stats --no-stream` — fastapi 들의 CPU 가 계속 꽉 차 있으면 기기 수를 줄이거나 6단계 |
 | AI 참고 소견이 안 채워진다 | LLM 혼잡·키 문제 | 결과에는 영향 없다. `docker logs artifact-backend 2>&1 \| grep "LLM"` |
 | 사이트가 안 열린다 | 인스턴스·IP·컨테이너 | EC2 상태 검사 → DuckDNS IP → `docker ps` 순서로. 전부 다시 띄우기: 4단계의 Deploy 수동 실행 |
+| 화면은 뜨는데 로그인하면 "서버에 연결할 수 없습니다", `docker ps` 는 전부 Up | 화면 서버(nginx)가 백엔드의 옛 내부 주소로 보낸다 — 백엔드만 새로 만든 배포 뒤(2026-11-12 에 겪음) | `docker restart artifact-frontend`. 화면 서버가 주소를 다시 찾게 고친 배포본(frontend/nginx.conf 의 resolver)부터는 생기지 않는다 |
 | 워커 하나가 계속 죽는다 | 메모리 부족 등 | `docker logs artifact-fastapi2`. 급하면 BOOTH_MODE 를 false 로 바꾸고 Deploy — 워커 1개로 돌아간다 |
 
 ---
