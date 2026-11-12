@@ -139,6 +139,10 @@ services:
       #
       # 로컬에서 백엔드와 프린터가 같은 기계에 있으니 반대 방향이 한 단계 짧기는 하다.
       # 그쪽을 쓰려면 .env 에 PRINT_MODE=direct 를 넣는다 — 그러면 아래 URL/TOKEN 이 쓰인다.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_PUBLIC_BASE_URL: ${TELEGRAM_PUBLIC_BASE_URL:-}
       PRINT_MODE: ${PRINT_MODE:-queue}
       PRINT_AGENT_ENABLED: ${PRINT_AGENT_ENABLED:-true}
       # 아래 두 값은 PRINT_MODE=direct 일 때만 쓰인다.
