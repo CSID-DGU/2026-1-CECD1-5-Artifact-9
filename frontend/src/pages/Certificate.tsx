@@ -22,6 +22,15 @@ import { hasAtLeast } from "../auth/roles";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { CertificateDocumentView } from "../components/CertificateDocumentView";
+// 부스: 운세 소견서 — 부스 기간 빌드에서만 켜진다(src/booth/boothMode.ts). 부스 후 걷어 낼 때 "부스" 주석 줄을 지운다.
+import { BOOTH_MODE, BOOTH_PURPOSE } from "../booth/boothMode";
+import { BoothFortunePanel } from "../booth/BoothFortunePanel";
+import {
+  EMPTY_BOOTH_INPUT,
+  ZODIAC_ANIMALS,
+  toBoothVisitor,
+  type BoothVisitor,
+} from "../booth/fortune";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
   RECEIVED: "접수",
@@ -98,6 +107,13 @@ export default function Certificate() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // 부스: 소견서 입력 칸의 방문객 이름·나이, 그리고 운세 소견서로 발급한 증명서 ID → 인쇄에 찍을 방문객.
+  // 둘 다 서버로 보내지 않고 이 화면 메모리에만 둔다(방문객 개인정보를 남기지 않는다).
+  const [boothInput, setBoothInput] = useState(EMPTY_BOOTH_INPUT);
+  const [boothVisitors, setBoothVisitors] = useState<Record<number, BoothVisitor>>({});
+  const boothOpinion = BOOTH_MODE && selectedType === "MEDICAL_OPINION";
+  const boothVisitor = boothOpinion ? toBoothVisitor(boothInput) : null;
+
   const typeMeta = CERTIFICATE_TYPES.find((t) => t.type === selectedType) ?? null;
   const narrativeFields = selectedType ? NARRATIVE_FIELDS[selectedType] : [];
 
@@ -109,6 +125,7 @@ export default function Certificate() {
     setSelectedType(null);
     setForm(EMPTY_FORM);
     setDraftOrigin(null);
+    setBoothInput(EMPTY_BOOTH_INPUT); // 부스
   }
 
   async function handleSearch() {
@@ -242,6 +259,7 @@ export default function Certificate() {
         aiEdited: draftOrigin ? isDraftEdited(draftOrigin, form) : null,
       });
 
+      if (boothVisitor) setBoothVisitors((prev) => ({ ...prev, [issued.id]: boothVisitor })); // 부스
       setViewed(issued);
       setHistory(await listCertificatesByPatient(selectedPatient.id));
       resetIssueForm();
@@ -273,6 +291,9 @@ export default function Certificate() {
     setNotice(null);
     try {
       const copy = await reissueCertificate(viewed.id);
+      // 부스: 재발급본에도 같은 방문객 이름을 찍는다.
+      const boothCopy = boothVisitors[viewed.id];
+      if (boothCopy) setBoothVisitors((prev) => ({ ...prev, [copy.id]: boothCopy }));
       setViewed(copy);
       setHistory(await listCertificatesByPatient(selectedPatient.id));
       setNotice(`재발급 완료 (발급번호 ${copy.serialNo ?? "-"})`);
@@ -340,7 +361,9 @@ export default function Certificate() {
     selectedType !== null &&
     selectedVisit !== null &&
     (typeMeta?.doctorOnly ? isDoctor : true) &&
-    (selectedType === "TREATMENT_CONFIRMATION" || prescription !== null);
+    (selectedType === "TREATMENT_CONFIRMATION" || prescription !== null) &&
+    // 부스: 방문객 이름 없이 발급하면 운영진 인적사항이 찍힌 소견서가 나간다.
+    (!boothOpinion || boothVisitor !== null);
 
   return (
     <div className="flex-1 p-[8px] flex gap-[8px] overflow-hidden">
@@ -464,7 +487,10 @@ export default function Certificate() {
       <section className="flex-1 flex flex-col gap-[8px] min-w-0">
         <Card title="미리보기" className="flex-1" contentClassName="bg-gray-600/30">
           {viewed ? (
-            <CertificateDocumentView certificate={viewed} />
+            <CertificateDocumentView
+              certificate={viewed}
+              boothVisitor={boothVisitors[viewed.id] ?? null} // 부스
+            />
           ) : (
             <IssuePreview
               patient={selectedPatient}
@@ -472,6 +498,7 @@ export default function Certificate() {
               prescription={prescription}
               typeLabel={typeMeta?.label ?? null}
               form={form}
+              boothVisitor={boothVisitor} // 부스
             />
           )}
         </Card>
@@ -553,6 +580,16 @@ export default function Certificate() {
         {selectedType && (
           <Card title={`${typeMeta?.label} 작성`}>
             <div className="flex flex-col gap-3">
+              {boothOpinion && (
+                // 부스: 방문객 이름·나이 → 띠별 운세 + 포춘쿠키를 소견 칸에 넣는다.
+                <BoothFortunePanel
+                  value={boothInput}
+                  onChange={setBoothInput}
+                  onFill={(opinion) =>
+                    setForm((prev) => ({ ...prev, opinion, purpose: prev.purpose || BOOTH_PURPOSE }))
+                  }
+                />
+              )}
               <Field label="용도">
                 <TextInput
                   value={form.purpose}
@@ -735,12 +772,15 @@ function IssuePreview({
   prescription,
   typeLabel,
   form,
+  boothVisitor,
 }: {
   patient: Patient | null;
   visit: Visit | null;
   prescription: PrescriptionResponse | null;
   typeLabel: string | null;
   form: FormState;
+  /** 부스: 운세 소견서에 이름이 찍힐 방문객. */
+  boothVisitor: BoothVisitor | null;
 }) {
   if (!patient || !visit) {
     return (
@@ -784,6 +824,13 @@ function IssuePreview({
 
       <dl className="text-[12px] flex flex-col gap-1.5">
         <PreviewRow label="환자" value={`${patient.name} (${genderLabel(patient.gender)}, ${patient.birthDate ?? "-"})`} />
+        {boothVisitor && (
+          // 부스
+          <PreviewRow
+            label="방문객"
+            value={`${boothVisitor.name} (${boothVisitor.age}세 · ${boothVisitor.birthYear}년생 ${ZODIAC_ANIMALS[boothVisitor.animal]}띠) — 인쇄물에는 환자 대신 이 이름이 크게 찍힙니다`}
+          />
+        )}
         <PreviewRow label="진료일" value={formatDateTime(visit.visitDate)} />
         <PreviewRow
           label="상병"
