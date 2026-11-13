@@ -7,6 +7,7 @@ import { getPatient, type Patient } from "../api/patients";
 import { printVisitSummary } from "../api/print";
 import { getAiPrescriptionComment, getPrescription, savePrescription, type PrescriptionResponse } from "../api/prescription";
 import { AuthedImage } from "../components/AuthedImage";
+import { FramedImage } from "../components/FramedImage";
 import { useAuth } from "../auth/AuthContext";
 import { hasAtLeast } from "../auth/roles";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
@@ -63,6 +64,12 @@ const STATUS_COLORS: Record<VisitStatus, string> = {
   CANCELLED: "bg-red-500/20 text-red-300",
 };
 
+// AI 분석 이미지 표시 크기
+const MAIN_FRAME_W = 300;
+const MAIN_FRAME_H = 400;
+const THUMB_SIZE = 150;
+const THUMBS_PER_PAGE = 4;
+
 // 대기 탭: 처방 전 / 완료 탭: 처방완료(PRESCRIBED) 이후
 /** 진료 전 접수를 열어 둔 동안 키오스크 예비분석을 다시 받는 간격. */
 const PRELIMINARY_POLL_MS = 10_000;
@@ -118,6 +125,8 @@ export default function Clinic() {
   const [expandedReason, setExpandedReason] = useState<number | null>(null);
   // 이미지 뷰 모드: none → original → heatmap → original ...
   const [imageViewMode, setImageViewMode] = useState<"none" | "original" | "heatmap">("none");
+    // 대표 이미지 옆 썸네일 그리드의 현재 페이지(0부터)
+  const [thumbPage, setThumbPage] = useState(0);
   // 확대 히트맵 칸에 올린 번호 — 전체 이미지의 같은 번호 상자를 노랗게 표시한다.
   const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
   // 다 받아진 이미지의 주소. 상자는 이미지 크기에 대한 비율이라, 이미지가 뜨기 전(높이 0)에 그리면
@@ -267,8 +276,7 @@ export default function Clinic() {
 
   useEffect(() => { loadVisitLists(); }, []);
 
-  useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); }, [analysis]);
-  useEffect(() => { setActivePrelimCropRank(null); }, [preliminaryAnalysis]);
+useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPage(0); }, [analysis]);  useEffect(() => { setActivePrelimCropRank(null); }, [preliminaryAnalysis]);
 
   // 아직 진료를 시작하지 않은 접수(RECEIVED)를 열어 둔 동안에는 키오스크 결과를 주기적으로 다시 받는다.
   // 환자는 그 사이 대기실에서 찍고 있을 수 있고, 참고 소견은 결과보다 늦게 채워진다 — 다시 골라야 보이면 놓친다.
@@ -864,9 +872,26 @@ export default function Clinic() {
                   {/* 분석 이미지 / 히트맵 토글
                       핵심: <img> 태그 하나만 두고 src만 교체 → 컨테이너 크기 고정, 커튼 효과 */}
                   {(() => {
-                    const analyzedImageUrl =
-                      images.find((img) => img.imageId === selectedImageIds[0])?.imageUrl
-                      ?? images[0]?.imageUrl;
+                    // 변경전
+//                    const analyzedImageUrl =
+//                      images.find((img) => img.imageId === selectedImageIds[0])?.imageUrl
+//                      ?? images[0]?.imageUrl;
+                    //변경후
+                    const representativeImage =
+                      images.find((img) => img.imageId === selectedImageIds[0]) ?? images[0];
+                    const analyzedImageUrl = representativeImage?.imageUrl;
+
+                    // 대표 이미지를 뺀 나머지 선택 이미지 — 오른쪽 그리드에 4장씩 페이지로 보여준다.
+                    const otherImages = selectedImageIds
+                      .filter((id) => id !== representativeImage?.imageId)
+                      .map((id) => images.find((img) => img.imageId === id))
+                      .filter((img): img is VisitImage => !!img);
+                    const thumbPageCount = Math.ceil(otherImages.length / THUMBS_PER_PAGE);
+                    const currentThumbPage = Math.min(thumbPage, Math.max(0, thumbPageCount - 1));
+                    const pageThumbs = otherImages.slice(
+                      currentThumbPage * THUMBS_PER_PAGE,
+                      (currentThumbPage + 1) * THUMBS_PER_PAGE,
+                    );
                     const hasHeatmap = !!analysis.heatmapImageUrl;
                     // 구버전 백엔드는 필드가 없고, 이 기능 전의 분석은 빈 배열이다 — 둘 다 확대 보기 없이 전처럼 보인다.
                     const heatmapCrops = analysis.heatmapCrops ?? [];
@@ -914,28 +939,93 @@ export default function Clinic() {
                         {/* 이미지 컨테이너: imageViewMode가 none이어도 DOM에 존재 유지
                             visibility로 숨겨서 크기가 절대 바뀌지 않음 */}
                         <div
-                          className="rounded border border-gray-700 bg-gray-900 overflow-hidden"
+                          className="flex flex-wrap items-start gap-2 overflow-hidden"
                           style={{ visibility: imageViewMode === "none" ? "hidden" : "visible", height: imageViewMode === "none" ? 0 : undefined }}
                         >
-                          {displayUrl && (
-                            <>
-                              {/* 상자 좌표가 이미지 크기에 대한 비율이라, 이 relative 상자가 이미지와 같은 크기여야 한다 */}
-                              <div className="relative">
-                                <AuthedImage
-                                  src={displayUrl}
-                                  alt={imageViewMode === "heatmap" ? "AI 판단 근거 히트맵" : "분석 이미지"}
-                                  className="w-full"
-                                  style={{ display: "block", transition: "opacity 0.15s ease" }}
-                                  onLoad={() => setLoadedImageUrl(displayUrl)}
-                                />
+                          {/* 대표 이미지: 300×400 고정 프레임 */}
+                          <div
+                            className="shrink-0 rounded border border-gray-700 bg-gray-900 overflow-hidden"
+                            style={{ width: MAIN_FRAME_W + 2 }}
+                          >
+                            {displayUrl ? (
+                              <FramedImage
+                                src={displayUrl}
+                                alt={imageViewMode === "heatmap" ? "AI 판단 근거 히트맵" : "분석 이미지"}
+                                width={MAIN_FRAME_W}
+                                height={MAIN_FRAME_H}
+                                imgStyle={{ transition: "opacity 0.15s ease" }}
+                                onLoad={() => setLoadedImageUrl(displayUrl)}
+                              >
+                                {/* 상자는 FramedImage 안의 '축소된 이미지 크기' 층에 그려진다 — 프레임에 잘려도 위치가 맞는다 */}
                                 {imageViewMode === "heatmap" && loadedImageUrl === displayUrl && (
                                   <CropBoxes crops={heatmapCrops} activeRank={activeCropRank} />
                                 )}
+                              </FramedImage>
+                            ) : (
+                              <div style={{ width: MAIN_FRAME_W, height: MAIN_FRAME_H }} />
+                            )}
+                            {imageViewMode === "heatmap" && (
+                              <HeatmapLegend hasCrops={heatmapCrops.length > 0} heatmapStyle={analysis.heatmapStyle ?? null} />
+                            )}
+                          </div>
+
+                          {/* 나머지 선택 이미지: 150×150, 2×2 그리드, 4장 초과 시 페이지 넘김 */}
+                          {otherImages.length > 0 && (
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-[11px] text-gray-400">
+                                기타 선택 이미지 {otherImages.length}장
+                              </span>
+                              <div
+                                className="grid grid-cols-2 gap-1.5"
+                                style={{ width: THUMB_SIZE * 2 + 6 + 4, height: THUMB_SIZE * 2 + 6 + 4 }}
+                              >
+                                {pageThumbs.map((img) => (
+                                  <div key={img.imageId} className="relative rounded border border-gray-700 overflow-hidden">
+                                    <FramedImage
+                                      src={img.imageUrl}
+                                      alt={`이미지 ${img.imageId}`}
+                                      width={THUMB_SIZE}
+                                      height={THUMB_SIZE}
+                                    />
+                                    <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-gray-200">
+                                      #{img.imageId}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
-                              {imageViewMode === "heatmap" && (
-                                <HeatmapLegend hasCrops={heatmapCrops.length > 0} heatmapStyle={analysis.heatmapStyle ?? null} />
+                              {thumbPageCount > 1 && (
+                                <div className="flex items-center justify-center gap-1 text-[11px]">
+                                  <button
+                                    onClick={() => setThumbPage(Math.max(0, currentThumbPage - 1))}
+                                    disabled={currentThumbPage === 0}
+                                    className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="이전 페이지"
+                                  >
+                                    ‹
+                                  </button>
+                                  {Array.from({ length: thumbPageCount }, (_, i) => (
+                                    <button
+                                      key={i}
+                                      onClick={() => setThumbPage(i)}
+                                      className={`min-w-[22px] px-1.5 py-0.5 rounded ${i === currentThumbPage
+                                        ? "bg-blue-600 text-white"
+                                        : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+                                      aria-current={i === currentThumbPage ? "page" : undefined}
+                                    >
+                                      {i + 1}
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => setThumbPage(Math.min(thumbPageCount - 1, currentThumbPage + 1))}
+                                    disabled={currentThumbPage >= thumbPageCount - 1}
+                                    className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="다음 페이지"
+                                  >
+                                    ›
+                                  </button>
+                                </div>
                               )}
-                            </>
+                            </div>
                           )}
                         </div>
 
