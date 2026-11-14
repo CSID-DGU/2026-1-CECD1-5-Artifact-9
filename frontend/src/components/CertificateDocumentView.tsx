@@ -3,6 +3,10 @@ import type {
   CertificateResponse,
   DiseaseLine,
 } from "../api/certificates";
+// 부스: 운세 소견서 — 부스 기간 빌드에서만 켜진다(src/booth/boothMode.ts). 부스 후 걷어 낼 때 "부스" 주석 줄을 지운다.
+import { BOOTH_CLOSING, BOOTH_MODE } from "../booth/boothMode";
+import { BoothDisclaimer, BoothVisitorHeadline } from "../booth/BoothDocumentParts";
+import { isFortuneOpinion, type BoothVisitor } from "../booth/fortune";
 
 /**
  * 이 컴포넌트가 실제로 쓰는 필드만 추린 것.
@@ -34,13 +38,21 @@ export type CertificateDocumentViewData = Pick<
  */
 export function CertificateDocumentView({
   certificate,
+  boothVisitor = null,
 }: {
   certificate: CertificateDocumentViewData;
+  /** 부스: 발급 화면이 방금 운세 소견서로 발급한 방문객. 서버에 없는 값이라 그 화면만 넘긴다. */
+  boothVisitor?: BoothVisitor | null;
 }) {
   const doc = certificate.content;
   const voided = certificate.status === "VOID";
   // reissueOf 가 아예 없는 경우(공개 응답)와 null 인 경우(최초 발급)를 함께 걸러야 한다.
   const reissued = certificate.reissued ?? certificate.reissueOf != null;
+  // 부스: 운세 소견서면 접수 명의(운영진)의 인적사항 대신 방문객 이름을 찍는다. 이름을 모르면(새로고침 뒤) 빈칸으로 둔다.
+  const booth =
+    BOOTH_MODE &&
+    certificate.type === "MEDICAL_OPINION" &&
+    (boothVisitor !== null || isFortuneOpinion(doc.opinion));
 
   return (
     <div
@@ -64,7 +76,11 @@ export function CertificateDocumentView({
         </div>
       </header>
 
-      <PatientTable doc={doc} type={certificate.type} />
+      {booth ? (
+        <BoothVisitorHeadline visitor={boothVisitor} />
+      ) : (
+        <PatientTable doc={doc} type={certificate.type} />
+      )}
 
       <div className="mt-3">
         {certificate.type === "PRESCRIPTION" && <PrescriptionBody doc={doc} />}
@@ -74,7 +90,7 @@ export function CertificateDocumentView({
         {certificate.type === "REFERRAL" && <ReferralBody doc={doc} />}
       </div>
 
-      <Footer doc={doc} type={certificate.type} />
+      <Footer doc={doc} type={certificate.type} booth={booth} />
     </div>
   );
 }
@@ -268,10 +284,19 @@ function PatientTable({ doc, type }: { doc: CertificateDocument; type: string })
   );
 }
 
-function Footer({ doc, type }: { doc: CertificateDocument; type: string }) {
+function Footer({
+  doc,
+  type,
+  booth = false,
+}: {
+  doc: CertificateDocument;
+  type: string;
+  /** 부스: 운세 소견서면 맺음말을 바꾸고, 법령 근거 줄 대신 체험용 안내를 찍는다. */
+  booth?: boolean;
+}) {
   return (
     <footer className="mt-6 text-[12px]">
-      <p className="text-center leading-relaxed">{closingSentence(type)}</p>
+      <p className="text-center leading-relaxed">{booth ? BOOTH_CLOSING : closingSentence(type)}</p>
 
       <p className="mt-4 text-center text-[13px]">{formatKoreanDate(doc.issuedDate)}</p>
 
@@ -306,11 +331,12 @@ function Footer({ doc, type }: { doc: CertificateDocument; type: string }) {
         </div>
       </div>
 
-      {(doc.formCode || doc.legalBasis) && (
+      {!booth && (doc.formCode || doc.legalBasis) && (
         <div className="mt-6 border-t border-gray-400 pt-1 text-[10px] text-gray-600">
           {[doc.formCode, doc.legalBasis].filter(Boolean).join(" · ")}
         </div>
       )}
+      {booth && <BoothDisclaimer />}
     </footer>
   );
 }

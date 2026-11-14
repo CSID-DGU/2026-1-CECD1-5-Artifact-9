@@ -1,5 +1,5 @@
 # =============================================
-# Team Artifact — 부스 운영 오버라이드 (AI 워커 ×2 + 로드밸런서)
+# Team Artifact — 부스 운영 오버라이드 (AI 워커 ×2 + 로드밸런서, 운세 소견서)
 # =============================================
 # 평소에는 쓰지 않는다. 부스 기간(2026-11-16~)에만 켠다. 켜는 방법은 둘이다.
 #
@@ -103,6 +103,14 @@ services:
       - "8000"
     networks:
       - artifact-network
+
+  frontend:
+    build:
+      args:
+        # 증명서 화면의 소견서를 "오늘의 운세 소견서"로 바꾼다(방문객 이름을 크게 찍고, 소견 칸에 띠별 운세·포춘쿠키).
+        # 빌드할 때 굳는 값이라, BOOTH_MODE=false 로 다시 배포하면 이 줄 없이 다시 빌드되어 평소 소견서로 돌아간다.
+        # 코드는 frontend/src/booth/, 쓰는 법은 docs/booth-operation-guide.md 5-4.
+        VITE_BOOTH_MODE: "true"
 
   backend:
     environment:
