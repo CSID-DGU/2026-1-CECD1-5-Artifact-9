@@ -584,6 +584,7 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
           <ClinicPatientLookupPanel
             selectedPatientId={selectedPatient?.id}
             selectedVisitId={selectedVisit?.id}
+            selectedVisitStatus={selectedVisit?.status}
             onSelectVisit={(visitId) => void loadVisitDetail(visitId)}
           />
 
@@ -785,8 +786,12 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
               {status === "RECEIVED" && (
                 <div className="flex items-center gap-3 rounded border border-orange-500/30 bg-orange-500/10 px-3 py-2">
                   <p className="flex-1 text-[11px] text-orange-100">
-                    이미지 업로드 전 진료 현황의 접수 행을 더블클릭해 진료를 시작해야 합니다.
+                    이미지를 올리기 전에 진료를 시작해야 합니다. 진료 현황의 접수 행을 더블클릭하거나 오른쪽 버튼을 누르세요.
                   </p>
+                  {/* 접수번호로 찾아 연 내원은 대기 목록에서 행을 다시 찾지 않고 여기서 바로 시작한다. */}
+                  <Button onClick={() => void handleStartVisit()} disabled={isActionLoading} className="shrink-0 px-3 py-1 text-xs">
+                    진료 시작
+                  </Button>
                 </div>
               )}
 

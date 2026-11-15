@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import { searchPatientsByConditions, type Patient } from "../api/patients";
-import { listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
+import { getVisit, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { formatVisitNo, parseVisitNo } from "../utils/visitNo";
 import { getPrescription, type PrescriptionResponse } from "../api/prescription";
 import {
   CERTIFICATE_TYPES,
@@ -131,7 +132,14 @@ export default function Certificate() {
   async function handleSearch() {
     const name = nameQuery.trim();
     if (!name) {
-      setError("환자 이름을 입력해 주세요.");
+      setError("환자 이름이나 접수번호를 입력해 주세요.");
+      return;
+    }
+    // 56·0056·V00056 처럼 접수번호로 읽히면 그 내원을 바로 연다. 부스처럼 같은 이름의 접수가 하루에
+    // 여러 건 쌓이면 이름으로 찾은 뒤 날짜를 고르는 것보다 접수증·알림에 찍힌 번호가 확실하다.
+    const visitId = parseVisitNo(name);
+    if (visitId !== null) {
+      await openByVisitNo(visitId);
       return;
     }
     setBusy("search");
@@ -144,6 +152,32 @@ export default function Certificate() {
       setError(getErrorMessage(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** 접수번호로 연다 — 그 내원의 환자를 고르고, 내원 이력에서 그 내원을 고른다(처방까지 읽는다). */
+  async function openByVisitNo(visitId: number) {
+    setBusy("search");
+    setError(null);
+    setNotice(null);
+    const found = await findVisit(visitId);
+    setBusy(null);
+    if (!found) return;
+
+    setPatients([found.patient]);
+    setHasSearched(true);
+    await handleSelectPatient(found.patient);
+    await handleSelectVisit(found.visit);
+    setNotice(`접수번호 ${formatVisitNo(visitId)} · ${found.patient.name} 내원을 열었습니다.`);
+  }
+
+  async function findVisit(visitId: number): Promise<{ visit: Visit; patient: Patient } | null> {
+    try {
+      const visit = await getVisit(visitId);
+      return { visit, patient: await getPatient(visit.patientId) };
+    } catch (e) {
+      setError(isNotFound(e) ? `접수번호 ${formatVisitNo(visitId)} 내원이 없습니다.` : getErrorMessage(e));
+      return null;
     }
   }
 
@@ -377,7 +411,7 @@ export default function Certificate() {
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="환자 이름"
+              placeholder="이름 또는 접수번호 (예: 56)"
               className="flex-1 min-w-0 px-3 py-1.5 rounded bg-side-bg border border-gray-600 text-sm text-white focus:outline-none focus:border-blue-500"
             />
             <Button onClick={handleSearch} disabled={busy === "search"}>
@@ -429,7 +463,10 @@ export default function Certificate() {
                       }`}
                     >
                       <div className="text-xs text-white">{formatDateTime(v.visitDate)}</div>
-                      <div className="text-[10px] text-gray-400">{STATUS_LABELS[v.status]}</div>
+                      <div className="text-[10px] text-gray-400">
+                        <span className="font-mono text-blue-300">{formatVisitNo(v.id)}</span> ·{" "}
+                        {STATUS_LABELS[v.status]}
+                      </div>
                     </button>
                   </li>
                 ))}
@@ -831,6 +868,7 @@ function IssuePreview({
             value={`${boothVisitor.name} (${boothVisitor.age}세 · ${boothVisitor.birthYear}년생 ${ZODIAC_ANIMALS[boothVisitor.animal]}띠) — 인쇄물에는 환자 대신 이 이름이 크게 찍힙니다`}
           />
         )}
+        <PreviewRow label="접수번호" value={formatVisitNo(visit.id)} />
         <PreviewRow label="진료일" value={formatDateTime(visit.visitDate)} />
         <PreviewRow
           label="상병"
