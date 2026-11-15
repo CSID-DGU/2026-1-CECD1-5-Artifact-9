@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 
-import { getErrorMessage } from "../api/errors";
+import { getErrorMessage, isNotFound } from "../api/errors";
 import { listVisitImages } from "../api/images";
 import { getPatient, searchPatientsByConditions, type Patient } from "../api/patients";
-import { listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { getVisit, listVisitsByDate, listVisitsByPatient, type Visit, type VisitStatus } from "../api/visits";
+import { formatVisitNo, parseVisitNo } from "../utils/visitNo";
 import { Card } from "./Card";
 
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -31,6 +32,8 @@ const STATUS_COLORS: Record<VisitStatus, string> = {
 type Props = {
   selectedPatientId?: number;
   selectedVisitId?: number;
+  /** 진료 화면이 들고 있는 선택 내원의 지금 상태. 타임라인은 검색할 때 읽은 값이라, 진료를 시작·완료해도 따라오게 한다. */
+  selectedVisitStatus?: VisitStatus;
   onSelectVisit: (visitId: number) => void;
 };
 
@@ -61,8 +64,9 @@ function VisitStatusBadge({ status }: { status: VisitStatus }) {
   );
 }
 
-export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, onSelectVisit }: Props) {
+export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, selectedVisitStatus, onSelectVisit }: Props) {
   const [chartNoQuery, setChartNoQuery] = useState("");
+  const [visitNoQuery, setVisitNoQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [visitYearQuery, setVisitYearQuery] = useState("");
   const [visitMonthQuery, setVisitMonthQuery] = useState("");
@@ -113,6 +117,12 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
     const chartNo = chartNoQuery.trim();
     const name = nameQuery.trim();
     const visitDate = visitDateQuery.trim();
+
+    // 접수번호가 있으면 다른 조건은 보지 않고 그 내원을 바로 연다.
+    if (visitNoQuery.trim()) {
+      await openByVisitNo(visitNoQuery.trim());
+      return;
+    }
 
     if (hasPartialVisitDate) {
       setPatients([]);
@@ -167,8 +177,44 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
     }
   }
 
+  /**
+   * 접수번호(V00056·56·0056)로 연다 — 가운데 진료 화면을 그 내원으로 바꾸고, 왼쪽에는 그 환자와 내원 타임라인을 띄운다.
+   * 부스처럼 같은 이름의 접수가 하루에 여러 건이면 이름보다 접수증·알림에 찍힌 번호가 확실하다.
+   */
+  async function openByVisitNo(text: string) {
+    const visitId = parseVisitNo(text);
+    setPatients([]);
+    setSelectedLookupPatient(null);
+    setVisits([]);
+    setVisitImageCounts({});
+    setDateVisitIdsByPatient({});
+    setActiveVisitDateFilter(null);
+    setHasSearched(true);
+    if (visitId === null) {
+      setSearchError("접수번호는 V00056 또는 숫자(56) 형식으로 입력해 주세요.");
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+    let patient: Patient;
+    try {
+      const visit = await getVisit(visitId);
+      patient = await getPatient(visit.patientId);
+    } catch (error) {
+      setSearchError(isNotFound(error) ? `접수번호 ${formatVisitNo(visitId)} 내원이 없습니다.` : getErrorMessage(error));
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(false);
+    setPatients([patient]);
+    onSelectVisit(visitId);
+    await handleSelectPatient(patient);
+  }
+
   function handleReset() {
     setChartNoQuery("");
+    setVisitNoQuery("");
     setNameQuery("");
     setVisitYearQuery("");
     setVisitMonthQuery("");
@@ -185,6 +231,8 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
 
   function getSearchConditionLabels() {
     const labels: string[] = [];
+    const visitId = parseVisitNo(visitNoQuery);
+    if (visitId !== null) return [`접수번호 ${formatVisitNo(visitId)}`];
     if (chartNoQuery.trim()) labels.push(`차트번호 ${chartNoQuery.trim()}`);
     if (nameQuery.trim()) labels.push(`이름 ${nameQuery.trim()}`);
     if (visitDateQuery) labels.push(`내원일 ${visitDateQuery}`);
@@ -232,17 +280,30 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
     <div className="flex min-h-0 flex-col gap-[6px]">
       <Card title="환자 조회" contentClassName="!p-2">
         <div className="flex flex-col gap-1.5">
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400">차트번호</span>
-            <input
-              type="text"
-              value={chartNoQuery}
-              onChange={(e) => setChartNoQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="P00001 또는 숫자"
-              className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10px] text-gray-400">차트번호</span>
+              <input
+                type="text"
+                value={chartNoQuery}
+                onChange={(e) => setChartNoQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="P00001 또는 숫자"
+                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10px] text-gray-400">접수번호</span>
+              <input
+                type="text"
+                value={visitNoQuery}
+                onChange={(e) => setVisitNoQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="V00056 또는 56"
+                className="w-full rounded border border-gray-600 bg-side-bg px-2 py-1 text-xs text-white placeholder-gray-500 transition-colors focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+          </div>
 
           <label className="flex flex-col gap-1">
             <span className="text-[10px] text-gray-400">이름</span>
@@ -300,7 +361,10 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
           <div className="flex gap-2">
             <button
               onClick={handleSearch}
-              disabled={isSearching || (!chartNoQuery.trim() && !nameQuery.trim() && !visitDateQuery && !hasPartialVisitDate)}
+              disabled={
+                isSearching ||
+                (!chartNoQuery.trim() && !visitNoQuery.trim() && !nameQuery.trim() && !visitDateQuery && !hasPartialVisitDate)
+              }
               className="flex-1 rounded bg-blue-600 px-3 py-1 text-xs text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSearching ? "검색 중..." : "검색"}
@@ -415,8 +479,8 @@ export function ClinicPatientLookupPanel({ selectedPatientId, selectedVisitId, o
                     }`} />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-[10px] text-blue-300">V{String(visit.id).padStart(5, "0")}</span>
-                        <VisitStatusBadge status={visit.status} />
+                        <span className="font-mono text-[10px] text-blue-300">{formatVisitNo(visit.id)}</span>
+                        <VisitStatusBadge status={isActive && selectedVisitStatus ? selectedVisitStatus : visit.status} />
                       </span>
                       <span className="text-[11px] font-semibold text-white">{formatDate(visit.visitDate)}</span>
                       <span className="text-[10px] text-gray-400">이미지 {visitImageCounts[visit.id] ?? 0}장</span>
