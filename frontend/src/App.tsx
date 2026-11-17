@@ -11,6 +11,7 @@ import KioskWaiting from "./pages/KioskWaiting";
 import KioskAnalyze from "./pages/KioskAnalyze";
 import SharedCertificate from "./pages/SharedCertificate";
 import SharedVisitSummary from "./pages/SharedVisitSummary";
+import WaitingBoard from "./pages/WaitingBoard";
 import { AuthProvider } from "./components/AuthContext";
 
 export default function App() {
@@ -40,6 +41,10 @@ export default function App() {
                 <Route path="certificate" element={<Certificate />} />
               </Route>
             </Route>
+
+            {/* 대기실(로비) 모니터용 진료 대기 현황판 — 상단 메뉴 없이 화면 전체를 쓴다.
+                내원 목록이 직원 권한 API 라 로그인한 브라우저에서 띄운다. */}
+            <Route path="/waiting" element={<WaitingBoard />} />
           </Route>
 
           {/* 대기실 키오스크 — 로그인 없이 접근 (인증 가드 없음).
