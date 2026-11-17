@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { useAuth } from "../auth/AuthContext";
@@ -13,6 +13,9 @@ const ROLE_OPTIONS = [
 
 export default function Login() {
   const navigate = useNavigate();
+  // 로그인 전에 가려던 화면(PrivateRoute 가 넘긴다). 이 앱 안의 경로만 받는다 — "//다른사이트" 같은 값으로 밖으로 보내지 않는다.
+  const from = (useLocation().state as { from?: unknown } | null)?.from;
+  const afterLogin = typeof from === "string" && from.startsWith("/") && !from.startsWith("//") && from !== "/" ? from : "/main";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
@@ -45,7 +48,7 @@ export default function Login() {
     try {
       const result = await run();
       if (result.ok) {
-        navigate("/main");
+        navigate(afterLogin);
       } else {
         setErrorMessage(result.message ?? "요청 처리 중 오류가 발생했습니다.");
       }
