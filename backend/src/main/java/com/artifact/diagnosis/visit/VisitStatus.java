@@ -8,7 +8,8 @@ package com.artifact.diagnosis.visit;
  *           → DIAGNOSED → PRESCRIBED → COMPLETED
  *
  * 예외 흐름:
- *   임의 시점에서 CANCELLED 가능.
+ *   처방 저장 전(RECEIVED·IN_PROGRESS·ANALYZED·DIAGNOSED)에 CANCELLED 가능.
+ *   AI 분석 중(ANALYZING)과 처방 저장 뒤(PRESCRIBED·COMPLETED)는 취소할 수 없다 — Visit.cancel 참고.
  */
 public enum VisitStatus {
     RECEIVED,        // 접수 완료, 대기 중

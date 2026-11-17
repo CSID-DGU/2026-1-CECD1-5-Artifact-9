@@ -275,7 +275,7 @@ export default function Reception() {
 
       if (receipt && ids.includes(receipt.visitId)) setReceipt(null);
       if (failedCount > 0) {
-        setErrorMessage(`${failedCount}건 삭제에 실패했습니다. (이미 진료가 시작된 접수는 삭제할 수 없습니다)`);
+        setErrorMessage(`${failedCount}건 삭제에 실패했습니다. (진료를 시작한 접수는 진료 화면의 진료 현황에서 삭제합니다)`);
       }
       if (failedCount < ids.length) {
         setMessage(`접수 ${ids.length - failedCount}건을 삭제했습니다.`);

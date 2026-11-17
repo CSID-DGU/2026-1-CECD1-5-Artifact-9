@@ -1,5 +1,6 @@
 package com.artifact.diagnosis.visit;
 
+import com.artifact.diagnosis.common.jwt.AuthPrincipal;
 import com.artifact.diagnosis.common.security.DoctorAccess;
 import com.artifact.diagnosis.print.PrintService;
 import com.artifact.diagnosis.notification.TelegramNotificationService;
@@ -13,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -24,7 +26,7 @@ import java.util.List;
  *   POST   /api/v1/visits              - 접수 생성
  *   GET    /api/v1/visits/{id}         - 단건 조회
  *   GET    /api/v1/visits?status=      - 상태별 목록 조회 (기본값: RECEIVED)
- *   DELETE /api/v1/visits/{id}         - 접수 취소 (RECEIVED → CANCELLED)
+ *   DELETE /api/v1/visits/{id}         - 접수 취소 (처방 저장 전 → CANCELLED)
  *   PATCH  /api/v1/visits/{id}/start   - 진료 시작 (RECEIVED → IN_PROGRESS)
  *
  * 접수증·진료요약서 감열지 출력은 <b>서비스가 아니라 여기서</b> 호출한다.
@@ -91,15 +93,20 @@ public class VisitController {
         return visitService.findByStatus(status != null ? status : VisitStatus.RECEIVED);
     }
 
-    @Operation(summary = "접수 취소", description = "접수 대기(RECEIVED) 상태의 접수를 취소합니다. 상태: RECEIVED → CANCELLED.")
+    @Operation(summary = "접수 취소",
+               description = "처방을 저장하기 전의 접수를 취소합니다(→ CANCELLED). 접수 대기(RECEIVED)는 모든 직책이, "
+                           + "진료를 시작한 접수(IN_PROGRESS·ANALYZED·DIAGNOSED)는 간호사·의사·관리자가 취소합니다. "
+                           + "올린 사진과 분석 결과는 지우지 않고 상태만 바꿉니다.")
     @ApiResponse(responseCode = "200", description = "취소 성공")
+    @ApiResponse(responseCode = "403", description = "진료를 시작한 접수를 접수 직원이 취소하려 함")
     @ApiResponse(responseCode = "404", description = "접수 없음")
-    @ApiResponse(responseCode = "409", description = "RECEIVED 상태가 아님")
-    @StaffAccess
+    @ApiResponse(responseCode = "409", description = "AI 분석 중(ANALYZING), 처방 저장 뒤(PRESCRIBED·COMPLETED), 이미 취소됨")
+    @StaffAccess // 진료를 시작한 접수의 직책 검사는 VisitService.cancel 이 한다 — 상태에 따라 갈려 애노테이션으로 못 한다.
     @DeleteMapping("/{id}")
     public VisitResponse cancel(
-            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id) {
-        return visitService.cancel(id);
+            @Parameter(description = "접수 ID", example = "1") @PathVariable Long id,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        return visitService.cancel(id, principal);
     }
 
     @Operation(summary = "진료 시작", description = "접수 상태를 RECEIVED → IN_PROGRESS로 변경합니다. 이후 이미지 업로드 가능.")
