@@ -27,6 +27,7 @@ import {
   resetKioskBaseUrlToCurrent,
   setKioskBaseUrl,
 } from "../utils/kioskUrl";
+import { getDefaultPatientPhone, saveDefaultPatientPhone } from "../utils/defaultPatientPhone";
 
 // ─── 상수 ────────────────────────────────────────────────
 const STATUS_LABELS: Record<VisitStatus, string> = {
@@ -160,7 +161,9 @@ export default function Reception() {
   const [name, setName]           = useState("");
   const [gender, setGender]       = useState("");
   const [birthDate, setBirthDate] = useState("");
-  const [phone, setPhone]         = useState("");
+  // 신규 등록 휴대폰번호 기본값(이 브라우저에 저장). 부스는 방문객 이름만 받고 번호는 운영자 번호로 등록한다.
+  const [defaultPhone, setDefaultPhone] = useState(() => getDefaultPatientPhone());
+  const [phone, setPhone]         = useState(() => getDefaultPatientPhone());
   const [memo, setMemo]           = useState(""); // visit.receptionMemo
 
   // 진료현황 목록
@@ -364,18 +367,30 @@ export default function Reception() {
     setName(searchName);
     setGender(searchGender);
     setBirthDate(searchBirthDate);
-    setPhone(searchPhone);
+    setPhone(searchPhone || defaultPhone);
     setMemo("");
     setSearchResults([]);
     setHasSearched(false);
     setErrorMessage(null);
   }
 
+  // ── 신규 등록 휴대폰번호 기본값 ─────────────────────────
+  /** 지금 칸의 번호를 이 브라우저의 기본값으로 저장한다(빈 값이면 지운다). 이후 신규 등록 칸이 이 번호로 채워진다. */
+  function handleSaveDefaultPhone(value: string) {
+    const trimmed = value.trim();
+    saveDefaultPatientPhone(trimmed);
+    setDefaultPhone(trimmed);
+    setErrorMessage(null);
+    setMessage(trimmed
+      ? `신규 환자 휴대폰번호 기본값을 ${trimmed} 로 저장했습니다. 이 브라우저에서만 쓰입니다.`
+      : "신규 환자 휴대폰번호 기본값을 지웠습니다.");
+  }
+
   // ── 전체 초기화 ─────────────────────────────────────────
   function handleReset() {
     setSelectedPatient(null);
     setMode("new");
-    setName(""); setGender(""); setBirthDate(""); setPhone(""); setMemo("");
+    setName(""); setGender(""); setBirthDate(""); setPhone(defaultPhone); setMemo("");
     setSearchName(""); setSearchBirthDate(""); setSearchGender(""); setSearchPhone("");
     setSearchResults([]);
     setHasSearched(false);
@@ -424,7 +439,7 @@ export default function Reception() {
       // 폼 초기화 (메시지는 유지)
       setSelectedPatient(null);
       setMode("new");
-      setName(""); setGender(""); setBirthDate(""); setPhone(""); setMemo("");
+      setName(""); setGender(""); setBirthDate(""); setPhone(defaultPhone); setMemo("");
       setSearchName(""); setSearchBirthDate(""); setSearchGender(""); setSearchPhone("");
       setSearchResults([]);
       setHasSearched(false);
@@ -625,7 +640,7 @@ export default function Reception() {
                   환자번호 P{String(selectedPatient!.patientId).padStart(5, "0")} · {selectedPatient!.name}
                 </span>
                 <button
-                  onClick={() => { setMode("new"); setSelectedPatient(null); setName(""); setGender(""); setBirthDate(""); setPhone(""); }}
+                  onClick={() => { setMode("new"); setSelectedPatient(null); setName(""); setGender(""); setBirthDate(""); setPhone(defaultPhone); }}
                   className="ml-auto text-[11px] text-gray-400 hover:text-gray-200 underline cursor-pointer"
                 >
                   다시 검색
@@ -680,15 +695,43 @@ export default function Reception() {
             <MockField label="전진료일" value={selectedPatient?.lastVisitDate ?? "—"} />
 
             {/* Row 4 */}
-            <Input
-              label="휴대폰번호"
-              placeholder="010-0000-0000"
-              value={phone}
-              onChange={(value) => setPhone(formatMobilePhone(value))}
-              type="tel"
-              maxLength={13}
-              disabled={formDisabled}
-            />
+            <div className="flex flex-col gap-1">
+              <Input
+                label="휴대폰번호"
+                placeholder="010-0000-0000"
+                value={phone}
+                onChange={(value) => setPhone(formatMobilePhone(value))}
+                type="tel"
+                maxLength={13}
+                disabled={formDisabled}
+              />
+              {/* 신규 등록 때만 — 기본값은 이 브라우저에 저장된다(utils/defaultPatientPhone.ts). 라벨 너비(w-24)+간격만큼 들여 쓴다. */}
+              {!isExisting && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[104px] text-[11px] text-gray-400">
+                  <span>{defaultPhone ? `기본값 ${defaultPhone}` : "기본값 없음"}</span>
+                  {phone.trim() && phone.trim() !== defaultPhone && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDefaultPhone(phone)}
+                      disabled={isSubmitting}
+                      className="text-blue-300 underline hover:text-blue-200 cursor-pointer disabled:opacity-50"
+                    >
+                      이 번호를 기본값으로
+                    </button>
+                  )}
+                  {defaultPhone && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDefaultPhone("")}
+                      disabled={isSubmitting}
+                      className="text-gray-400 underline hover:text-gray-200 cursor-pointer disabled:opacity-50"
+                    >
+                      기본값 지우기
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <MockField label="주민번호" value="●●●●●●-●●●●●●●" />
 
             {/* Row 5 */}
