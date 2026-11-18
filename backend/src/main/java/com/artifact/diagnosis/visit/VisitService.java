@@ -1,7 +1,10 @@
 package com.artifact.diagnosis.visit;
 
+import com.artifact.diagnosis.common.jwt.AuthPrincipal;
+import com.artifact.diagnosis.member.MemberRole;
 import com.artifact.diagnosis.patient.PatientRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,6 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 /**
  * 진료 접수(Visit) 비즈니스 로직.
@@ -21,6 +25,10 @@ import java.util.NoSuchElementException;
 @RequiredArgsConstructor
 @Transactional
 public class VisitService {
+
+    /** 진료를 시작한 접수를 취소할 수 있는 직책 — 진료 화면(@MedicalAccess)을 쓰는 사람들이다. */
+    private static final Set<String> CLINIC_ROLES =
+            Set.of(MemberRole.NURSE.name(), MemberRole.DOCTOR.name(), MemberRole.ADMIN.name());
 
     private final VisitRepository visitRepository;
     private final PatientRepository patientRepository;
@@ -94,13 +102,17 @@ public class VisitService {
                 .toList();
     }
 
-    /** 접수 취소. 접수 대기(RECEIVED) 상태에서만 가능 — 진료가 이미 시작된 접수는 취소 대상이 아니다. */
-    public VisitResponse cancel(Long id) {
+    /**
+     * 접수 취소. 어느 상태까지 취소되는지는 {@link Visit#cancel()} 이 정한다(처방 저장 전까지).
+     *
+     * 진료를 시작한 접수는 진료실(간호사·의사·관리자)만 취소한다. 의사가 보고 있는 진료를 접수 창구에서
+     * 지우지 않게 하려는 것이다. 접수 대기(RECEIVED)는 전처럼 접수 직원도 취소한다.
+     */
+    public VisitResponse cancel(Long id, AuthPrincipal principal) {
         Visit visit = visitRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("접수를 찾을 수 없습니다. id=" + id));
-        if (visit.getStatus() != VisitStatus.RECEIVED) {
-            throw new IllegalStateException(
-                "접수 대기 상태에서만 취소할 수 있습니다. 현재 상태: " + visit.getStatus());
+        if (visit.isInConsultation() && !CLINIC_ROLES.contains(principal.role())) {
+            throw new AccessDeniedException("진료를 시작한 접수는 진료 화면(간호사·의사)에서 취소할 수 있습니다.");
         }
         visit.cancel();
         return VisitResponse.from(visit);

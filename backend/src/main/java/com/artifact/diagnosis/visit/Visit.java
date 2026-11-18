@@ -181,7 +181,33 @@ public class Visit {
         this.status = VisitStatus.COMPLETED;
     }
 
+    /**
+     * 접수 취소. 처방을 저장하기 전까지만 취소할 수 있다.
+     *   - RECEIVED: 진료 전 접수
+     *   - IN_PROGRESS·ANALYZED·DIAGNOSED: 진료를 시작했지만 처방 전. 진료를 시작해 놓고 환자가 떠난 접수가
+     *     진료 대기 목록에 계속 남지 않게 한다(부스에서 실제로 생겼다).
+     * 막는 상태:
+     *   - ANALYZING: AI 분석 결과를 저장하는 쪽(markAnalyzed·rollbackAnalysis)과 부딪친다. 분석은 몇 초면 끝나니
+     *     끝난 뒤 취소한다.
+     *   - PRESCRIBED·COMPLETED: 처방이 저장된 진료기록이다. 취소로 덮지 않는다.
+     * 상태만 바꾼다 — 올린 사진·분석 결과는 지우지 않는다.
+     */
     public void cancel() {
-        this.status = VisitStatus.CANCELLED;
+        switch (this.status) {
+            case RECEIVED, IN_PROGRESS, ANALYZED, DIAGNOSED -> this.status = VisitStatus.CANCELLED;
+            case ANALYZING -> throw new IllegalStateException(
+                "AI 분석 중에는 취소할 수 없습니다. 분석이 끝난 뒤 다시 시도해 주세요.");
+            case CANCELLED -> throw new IllegalStateException("이미 취소된 접수입니다.");
+            default -> throw new IllegalStateException(
+                "처방을 저장한 접수는 취소할 수 없습니다. 현재 상태: " + this.status);
+        }
+    }
+
+    /** 진료를 시작했지만 처방 전인 상태인가. 이 상태의 취소는 진료실(간호사 이상)만 한다 — VisitService.cancel 참고. */
+    public boolean isInConsultation() {
+        return this.status == VisitStatus.IN_PROGRESS
+            || this.status == VisitStatus.ANALYZING
+            || this.status == VisitStatus.ANALYZED
+            || this.status == VisitStatus.DIAGNOSED;
     }
 }

@@ -11,7 +11,7 @@ import { FramedImage } from "../components/FramedImage";
 import { useAuth } from "../auth/AuthContext";
 import { hasAtLeast } from "../auth/roles";
 import { searchDrugs, searchKcdDiseases } from "../api/reference";
-import { completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
+import { cancelVisit, completeVisit, getVisit, listVisits, startVisit, type Visit, type VisitStatus } from "../api/visits";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { ClinicPatientLookupPanel } from "../components/ClinicPatientLookupPanel";
@@ -106,6 +106,10 @@ function calculateAge(birthDate?: string | null) {
 export default function Clinic() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"대기" | "완료">("대기");
+  // 진료 현황 [삭제] — 진료대기 목록에서 골라 접수를 취소한다. 진료를 시작한 접수도 처방 저장 전이면 된다(서버 규칙: Visit.cancel).
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [deleteIds, setDeleteIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [waitingVisits, setWaiting] = useState<Visit[]>([]);
   const [completedVisits, setCompleted] = useState<Visit[]>([]);
   const [patientNameMap, setNameMap] = useState<Map<number, string>>(new Map());
@@ -318,7 +322,24 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
     ["현재상태", selectedVisit ? STATUS_LABELS[selectedVisit.status] : "-"],
   ], [selectedPatient, selectedVisit]);
 
+  const showDeleteCol = activeTab === "대기" && isDeleteMode;
   const centerTableData = activeVisits.map((visit, idx) => [
+    ...(showDeleteCol
+      ? [
+          <input
+            key={`del-${visit.id}`}
+            type="checkbox"
+            aria-label={`V${String(visit.id).padStart(5, "0")} 선택`}
+            checked={deleteIds.has(visit.id)}
+            disabled={visit.status === "ANALYZING"}
+            title={visit.status === "ANALYZING" ? "AI 분석 중에는 취소할 수 없습니다" : undefined}
+            // 행 클릭도 선택을 바꾼다 — 체크박스 클릭이 행까지 올라가 두 번 바뀌지 않게 막는다.
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggleDeleteId(visit.id)}
+            className="h-3.5 w-3.5 cursor-pointer accent-red-600 disabled:cursor-not-allowed"
+          />,
+        ]
+      : []),
     idx + 1,
     `V${String(visit.id).padStart(5, "0")}`,
     patientNameMap.get(visit.patientId) ?? "-",
@@ -329,6 +350,68 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
   ]);
 
   // ── 핸들러 ───────────────────────────────────────────────────────
+  function toggleDeleteMode() {
+    setIsDeleteMode((prev) => !prev);
+    setDeleteIds(new Set());
+  }
+
+  function toggleDeleteId(visitId: number) {
+    setDeleteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(visitId)) next.delete(visitId);
+      else next.add(visitId);
+      return next;
+    });
+  }
+
+  /** 열어 둔 내원이 취소되면 오른쪽 진료 화면을 비운다 — 취소된 접수에 처방·업로드를 이어 가지 않게. */
+  function clearVisitDetail() {
+    resetVisitForm();
+    setSelectedVisit(null);
+    setSelectedPatient(null);
+    setImages([]);
+    setSelectedImageIds([]);
+    setSelectedFile(null);
+    setAnalysis(null);
+    setPrescription(null);
+    setPreliminaryAnalysis(null);
+  }
+
+  /**
+   * [선택삭제] — 고른 접수를 취소(접수취소)한다. 진료를 시작했어도 처방 저장 전이면 취소된다.
+   * 진료를 시작해 놓고 환자가 떠난 접수가 진료대기에 계속 남는 것을 정리하려는 것이다.
+   * 상태만 바꾸고 올린 사진·분석 결과는 지우지 않는다. 막히는 경우(AI 분석 중 등)는 서버가 준 사유를 보여 준다.
+   */
+  async function handleBulkCancel() {
+    if (deleteIds.size === 0) return;
+    const ids = [...deleteIds];
+    const startedCount = waitingVisits.filter((v) => deleteIds.has(v.id) && v.status !== "RECEIVED").length;
+    const confirmText = `선택한 접수 ${ids.length}건을 삭제(접수취소)할까요?`
+      + (startedCount > 0 ? `\n진료를 시작한 ${startedCount}건도 취소됩니다. 올린 사진·분석 결과는 기록에 남습니다.` : "");
+    if (!window.confirm(confirmText)) return;
+
+    setErrorMessage(null);
+    setMessage(null);
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => cancelVisit(id)));
+      const cancelledIds = ids.filter((_, i) => results[i].status === "fulfilled");
+      const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+
+      if (selectedVisit && cancelledIds.includes(selectedVisit.id)) clearVisitDetail();
+      setIsDeleteMode(false);
+      setDeleteIds(new Set());
+      // 목록을 다시 읽은 뒤에 결과를 띄운다 — 목록 읽기가 시작하면서 오류 문구를 지운다.
+      await loadVisitLists();
+      if (cancelledIds.length > 0) setMessage(`접수 ${cancelledIds.length}건을 취소했습니다.`);
+      if (failures.length > 0) {
+        setErrorMessage(`${failures.length}건은 취소하지 못했습니다 — ${getErrorMessage(failures[0])}`);
+      }
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }
+
   async function handleStartVisit(targetVisit = selectedVisit) {
     if (!targetVisit) return;
     setIsActionLoading(true); setErrorMessage(null); setMessage(null);
@@ -703,13 +786,47 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
               {(["대기", "완료"] as const).map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    if (tab !== "대기") { setIsDeleteMode(false); setDeleteIds(new Set()); }
+                  }}
                   className={`px-3 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${activeTab === tab ? "bg-blue-600 text-white font-bold" : "bg-gray-800 text-gray-400 hover:bg-gray-700"
                     }`}
                 >
                   {tab === "대기" ? "진료대기" : "진료완료"}
                 </button>
               ))}
+
+              {activeTab === "대기" && (
+                <div className="ml-auto flex items-center gap-2">
+                  {isDeleteMode ? (
+                    <>
+                      <button
+                        onClick={() => void handleBulkCancel()}
+                        disabled={deleteIds.size === 0 || isBulkDeleting}
+                        className="px-3 py-1 text-xs bg-red-700 hover:bg-red-600 text-white font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        {isBulkDeleting ? "삭제 중..." : `선택삭제 (${deleteIds.size})`}
+                      </button>
+                      <button
+                        onClick={toggleDeleteMode}
+                        disabled={isBulkDeleting}
+                        className="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        취소
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={toggleDeleteMode}
+                      title="진료대기 목록에서 접수를 골라 취소합니다(처방 저장 전까지)"
+                      className="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-red-300 rounded transition-colors cursor-pointer"
+                    >
+                      삭제
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {errorMessage && (
@@ -721,10 +838,19 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
             {isLoading && <p className="mb-2 text-xs text-gray-400">목록 로딩 중...</p>}
 
             <Table
-              headers={["순번", "접수번호", "이름", "접수시간", "현재상태"]}
+              headers={[...(showDeleteCol ? ["선택"] : []), "순번", "접수번호", "이름", "접수시간", "현재상태"]}
               data={centerTableData}
               getRowProps={(_, rowIdx) => {
                 const visit = activeVisits[rowIdx];
+                // 삭제 모드에서는 행을 눌러 고른다. 진료 열기·더블클릭 진료 시작은 꺼 둔다 — 고르다가 진료를 시작하지 않게.
+                if (showDeleteCol) {
+                  const selectable = visit.status !== "ANALYZING";
+                  return {
+                    onClick: () => { if (selectable) toggleDeleteId(visit.id); },
+                    title: selectable ? "클릭해서 삭제할 접수를 고릅니다." : "AI 분석 중에는 취소할 수 없습니다.",
+                    className: `cursor-pointer ${deleteIds.has(visit.id) ? "bg-red-500/10 outline outline-1 outline-red-500/40" : ""}`,
+                  };
+                }
                 const isSelected = selectedVisit?.id === visit.id;
                 const canStartByDoubleClick = visit.status === "RECEIVED";
 
