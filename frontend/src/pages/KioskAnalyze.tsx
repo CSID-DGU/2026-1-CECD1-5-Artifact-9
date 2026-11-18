@@ -7,7 +7,9 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { CropBoxes, CropGallery, HeatmapLegend } from "../components/HeatmapCrops";
 import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
+import { PhotoCropEditor } from "../components/PhotoCropEditor";
 import { formatConfidence } from "../utils/confidence";
+import { detectPrintedPhotoInFile, FULL_FRAME, isFullFrame, type NormRect } from "../utils/printedPhotoCrop";
 import { shrinkForUpload } from "../utils/uploadImage";
 
 const DISCLAIMER =
@@ -80,6 +82,18 @@ export default function KioskAnalyze() {
   // 확대 히트맵 칸에 올린(누른) 번호 — 전체 히트맵의 같은 번호 상자를 노랗게 표시한다.
   const [activeCropRank, setActiveCropRank] = useState<number | null>(null);
 
+  // 분석할 부분. 인쇄물을 찍으면 흰 여백·제목 글자·책상이 함께 들어와 결과를 흐린다 — 사진을 고르면 인쇄된 사진
+  // 부분을 자동으로 잡고(utils/printedPhotoCrop.ts), 화면에서 상자를 손으로 고칠 수 있다. 그 부분만 잘라 올린다.
+  const [photoSize, setPhotoSize] = useState<{ width: number; height: number } | null>(null);
+  const [autoRect, setAutoRect] = useState<NormRect | null>(null);
+  const [cropRect, setCropRect] = useState<NormRect>(FULL_FRAME);
+  // 자동으로 찾는 동안(0.5초 안팎)은 분석하기를 잠근다 — 먼저 누르면 자르지 않은 사진이 올라간다.
+  const [detecting, setDetecting] = useState(false);
+  const cropSeq = useRef(0);
+  // 실제로 올린(잘라 낸) 사진. 결과 화면의 '원본 이미지'와 확대 상자 번호는 이 그림 기준이다.
+  const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
+  const analyzedUrlRef = useRef<string | null>(null);
+
   // 촬영한 원본 사진의 blob URL. 결과 화면의 "원본 이미지" 토글이 이 값을 그대로 쓴다 —
   // 방금 올린 파일이라 서버에 다시 요청할 필요가 없고, 태블릿에는 JWT도 없다.
   // 교체·이탈 시 revoke 하지 않으면 재촬영을 반복하는 만큼 메모리에 쌓인다.
@@ -87,7 +101,14 @@ export default function KioskAnalyze() {
 
   useEffect(() => () => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    if (analyzedUrlRef.current) URL.revokeObjectURL(analyzedUrlRef.current);
   }, []);
+
+  const replaceAnalyzedUrl = (blob: Blob | null) => {
+    if (analyzedUrlRef.current) URL.revokeObjectURL(analyzedUrlRef.current);
+    analyzedUrlRef.current = blob ? URL.createObjectURL(blob) : null;
+    setAnalyzedUrl(analyzedUrlRef.current);
+  };
 
   // 잘못된 QR을 찍었거나 토큰이 만료된 경우를 촬영 전에 걸러낸다.
   useEffect(() => {
@@ -134,6 +155,24 @@ export default function KioskAnalyze() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = selected ? URL.createObjectURL(selected) : null;
     setPreviewUrl(previewUrlRef.current);
+
+    // 분석할 부분 — 자동으로 찾는 동안은 전체 사진으로 둔다. 늦게 끝난 앞 사진의 결과는 버린다.
+    replaceAnalyzedUrl(null);
+    setPhotoSize(null);
+    setAutoRect(null);
+    setCropRect(FULL_FRAME);
+    const seq = ++cropSeq.current;
+    setDetecting(Boolean(selected));
+    if (selected) {
+      void detectPrintedPhotoInFile(selected).then((found) => {
+        if (seq !== cropSeq.current) return;
+        setDetecting(false);
+        if (!found) return;
+        setPhotoSize({ width: found.width, height: found.height });
+        setAutoRect(found.rect);
+        setCropRect(found.rect ?? FULL_FRAME);
+      });
+    }
   };
 
   const openGalleryPicker = () => {
@@ -186,7 +225,8 @@ export default function KioskAnalyze() {
     setError(null);
     setComment(null);
     try {
-      const upload = await shrinkForUpload(file);
+      const upload = await shrinkForUpload(file, 2048, 0.9, isFullFrame(cropRect) ? undefined : cropRect);
+      replaceAnalyzedUrl(upload);
       const [response] = await Promise.all([
         analyzeKioskSession(token, upload, analysisType),
         new Promise((resolve) => window.setTimeout(resolve, MIN_ANALYSIS_LOADING_MS)),
@@ -379,17 +419,54 @@ export default function KioskAnalyze() {
                 {file ? file.name : "갤러리에서 선택하거나 카메라로 촬영해 주세요."}
               </p>
               <p className="text-center text-[11px] text-gray-400">{target.guide}</p>
-              {previewUrl && (
+              {previewUrl && (photoSize ? (
+                <div className="flex w-full flex-col gap-2">
+                  <PhotoCropEditor
+                    src={previewUrl}
+                    aspect={photoSize.width / photoSize.height}
+                    rect={cropRect}
+                    onChange={setCropRect}
+                    disabled={loading}
+                  />
+                  <p className="text-center text-[11px] leading-relaxed text-gray-300">
+                    {autoRect
+                      ? "인쇄물의 흰 여백·글자를 빼고 사진 부분만 자동으로 맞췄습니다. 밝은 상자 안만 분석합니다."
+                      : "흰 여백이나 배경이 들어갔다면 상자를 사진(피부) 부분에 맞춰 주세요. 밝은 상자 안만 분석합니다."}
+                    <br />
+                    모서리·변의 점을 끌면 크기가, 상자 안을 끌면 위치가 바뀝니다.
+                  </p>
+                  <div className={`grid gap-2 ${autoRect ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {autoRect && (
+                      <button
+                        type="button"
+                        onClick={() => setCropRect(autoRect)}
+                        disabled={loading}
+                        className="rounded border border-sky-400/60 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        자동 맞춤
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCropRect(FULL_FRAME)}
+                      disabled={loading || isFullFrame(cropRect)}
+                      className="rounded border border-gray-500 px-3 py-2 text-xs font-semibold text-gray-200 transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      전체 사진
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <div className="w-full rounded border border-gray-700 bg-gray-900 overflow-hidden">
                   <img src={previewUrl} alt="선택한 사진 미리보기" className="max-h-64 w-full object-contain" />
                 </div>
-              )}
+              ))}
               <Button
                 onClick={handleAnalyze}
-                disabled={!file || loading}
+                disabled={!file || loading || detecting}
                 className="w-full"
               >
-                {loading ? "분석 및 히트맵 생성 중..." : "분석하기"}
+                {loading ? "분석 및 히트맵 생성 중..." : detecting ? "사진 확인 중..." : "분석하기"}
               </Button>
               {loading && (
                 <div className="flex w-full items-center gap-2 rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] text-blue-100">
@@ -446,7 +523,8 @@ export default function KioskAnalyze() {
                   알 수 없어서, 원본과 번갈아 봐야 비로소 위치가 읽힌다. */}
               {(() => {
                 const showHeatmap = imageViewMode === "heatmap" && !gradcamError;
-                const displayUrl = showHeatmap ? gradcamImageUrl : previewUrl;
+                // 원본은 실제로 분석한(잘라 낸) 사진이다 — 히트맵·확대 상자와 같은 그림이어야 위치가 맞는다.
+                const displayUrl = showHeatmap ? gradcamImageUrl : (analyzedUrl ?? previewUrl);
                 // 구버전 백엔드는 필드가 없고, 확대 보기가 없는 분석은 빈 배열이다 — 둘 다 전처럼 전체 히트맵만 보인다.
                 const crops = result.heatmapCrops ?? [];
 
@@ -454,7 +532,9 @@ export default function KioskAnalyze() {
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-gray-400">
-                        {showHeatmap ? "AI 병변 분석 히트맵" : "촬영한 원본 사진"}
+                        {showHeatmap
+                          ? "AI 병변 분석 히트맵"
+                          : isFullFrame(cropRect) ? "촬영한 원본 사진" : "분석한 부분(촬영 사진에서 잘라 냄)"}
                       </span>
                       {/* 히트맵이 아직 안 왔거나 실패했으면 전환할 대상이 없으니 버튼도 내보내지 않는다. */}
                       {gradcamImageUrl && !gradcamError && !gradcamLoading && (
