@@ -1,0 +1,2872 @@
+[
+ {
+  "key": "facial-01",
+  "task": "facial",
+  "no": "01",
+  "label": "여드름",
+  "expectedCode": "acne",
+  "imageUrl": "/demo/presets/facial-01.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-01-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 422,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-01-crop1.jpg",
+     "boxNorm": [
+      0.1016,
+      0.4766,
+      0.4297,
+      0.8047
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-01-crop2.jpg",
+     "boxNorm": [
+      0.5938,
+      0.5234,
+      0.9219,
+      0.8516
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-01-crop3.jpg",
+     "boxNorm": [
+      0.3281,
+      0.0781,
+      0.7031,
+      0.4531
+     ],
+     "peak": 0.727,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-02",
+  "task": "facial",
+  "no": "02",
+  "label": "여드름",
+  "expectedCode": "acne",
+  "imageUrl": "/demo/presets/facial-02.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-02-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 321,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-02-crop1.jpg",
+     "boxNorm": [
+      0.1328,
+      0.5391,
+      0.4609,
+      0.8672
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-02-crop2.jpg",
+     "boxNorm": [
+      0.5703,
+      0.5938,
+      0.8047,
+      0.8281
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-02-crop3.jpg",
+     "boxNorm": [
+      0.2031,
+      0.1172,
+      0.4844,
+      0.3984
+     ],
+     "peak": 0.7,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-03",
+  "task": "facial",
+  "no": "03",
+  "label": "여드름",
+  "expectedCode": "acne",
+  "imageUrl": "/demo/presets/facial-03.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-03-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 327,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-03-crop1.jpg",
+     "boxNorm": [
+      0.1055,
+      0.4883,
+      0.457,
+      0.8398
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-03-crop2.jpg",
+     "boxNorm": [
+      0.6328,
+      0.5703,
+      0.8672,
+      0.8047
+     ],
+     "peak": 0.775,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-04",
+  "task": "facial",
+  "no": "04",
+  "label": "여드름",
+  "expectedCode": "acne",
+  "imageUrl": "/demo/presets/facial-04.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-04-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 301,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-04-crop1.jpg",
+     "boxNorm": [
+      0.4727,
+      0.4961,
+      0.9648,
+      0.9883
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-04-crop2.jpg",
+     "boxNorm": [
+      0.1641,
+      0.5391,
+      0.5859,
+      0.9609
+     ],
+     "peak": 0.997,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-05",
+  "task": "facial",
+  "no": "05",
+  "label": "아토피피부염",
+  "expectedCode": "atopic",
+  "imageUrl": "/demo/presets/facial-05.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-05-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 326,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-05-crop1.jpg",
+     "boxNorm": [
+      0.0281,
+      0.2156,
+      0.6281,
+      0.8156
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-05-crop2.jpg",
+     "boxNorm": [
+      0.4023,
+      0.2773,
+      0.8008,
+      0.6758
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-06",
+  "task": "facial",
+  "no": "06",
+  "label": "아토피피부염",
+  "expectedCode": "atopic",
+  "imageUrl": "/demo/presets/facial-06.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-06-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 318,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-06-crop1.jpg",
+     "boxNorm": [
+      0.543,
+      0.168,
+      0.8477,
+      0.4727
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-06-crop2.jpg",
+     "boxNorm": [
+      0.1445,
+      0.2148,
+      0.4492,
+      0.5195
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-06-crop3.jpg",
+     "boxNorm": [
+      0.3666,
+      0.4212,
+      0.5866,
+      0.6412
+     ],
+     "peak": 0.897,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-07",
+  "task": "facial",
+  "no": "07",
+  "label": "아토피피부염",
+  "expectedCode": "atopic",
+  "imageUrl": "/demo/presets/facial-07.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-07-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 321,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-07-crop1.jpg",
+     "boxNorm": [
+      0.4531,
+      0.3359,
+      0.875,
+      0.7578
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-07-crop2.jpg",
+     "boxNorm": [
+      0.3744,
+      0.6478,
+      0.5944,
+      0.8678
+     ],
+     "peak": 0.967,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-07-crop3.jpg",
+     "boxNorm": [
+      0.0977,
+      0.3164,
+      0.543,
+      0.7617
+     ],
+     "peak": 0.932,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-08",
+  "task": "facial",
+  "no": "08",
+  "label": "아토피피부염",
+  "expectedCode": "atopic",
+  "imageUrl": "/demo/presets/facial-08.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-08-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 365,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-08-crop1.jpg",
+     "boxNorm": [
+      0.4759,
+      0.515,
+      0.6959,
+      0.735
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-08-crop2.jpg",
+     "boxNorm": [
+      0.5547,
+      0.6406,
+      0.8359,
+      0.9219
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-08-crop3.jpg",
+     "boxNorm": [
+      0.25,
+      0.625,
+      0.625,
+      1.0
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-09",
+  "task": "facial",
+  "no": "09",
+  "label": "건선",
+  "expectedCode": "psoriasis",
+  "imageUrl": "/demo/presets/facial-09.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-09-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 311,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-09-crop1.jpg",
+     "boxNorm": [
+      0.2469,
+      0.0,
+      0.8469,
+      0.6
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-09-crop2.jpg",
+     "boxNorm": [
+      0.1484,
+      0.1953,
+      0.3828,
+      0.4297
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 3,
+     "imageUrl": "/demo/results/facial-09-crop3.jpg",
+     "boxNorm": [
+      0.2188,
+      0.5547,
+      0.5,
+      0.8359
+     ],
+     "peak": 0.923,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-10",
+  "task": "facial",
+  "no": "10",
+  "label": "건선",
+  "expectedCode": "psoriasis",
+  "imageUrl": "/demo/presets/facial-10.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-10-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 281,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-10-crop1.jpg",
+     "boxNorm": [
+      0.2031,
+      0.1016,
+      0.4844,
+      0.3828
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-10-crop2.jpg",
+     "boxNorm": [
+      0.4219,
+      0.0781,
+      0.7969,
+      0.4531
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-11",
+  "task": "facial",
+  "no": "11",
+  "label": "건선",
+  "expectedCode": "psoriasis",
+  "imageUrl": "/demo/presets/facial-11.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-11-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 281,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-11-crop1.jpg",
+     "boxNorm": [
+      0.0,
+      0.3164,
+      0.4453,
+      0.7617
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-11-crop2.jpg",
+     "boxNorm": [
+      0.2734,
+      0.5938,
+      0.5078,
+      0.8281
+     ],
+     "peak": 0.785,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-12",
+  "task": "facial",
+  "no": "12",
+  "label": "주사(장미증)",
+  "expectedCode": "rosacea",
+  "imageUrl": "/demo/presets/facial-12.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-12-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 284,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-12-crop1.jpg",
+     "boxNorm": [
+      0.5625,
+      0.4531,
+      0.9375,
+      0.8281
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-12-crop2.jpg",
+     "boxNorm": [
+      0.082,
+      0.4727,
+      0.4336,
+      0.8242
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-13",
+  "task": "facial",
+  "no": "13",
+  "label": "주사(장미증)",
+  "expectedCode": "rosacea",
+  "imageUrl": "/demo/presets/facial-13.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-13-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 304,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-13-crop1.jpg",
+     "boxNorm": [
+      0.0977,
+      0.4492,
+      0.4023,
+      0.7539
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-13-crop2.jpg",
+     "boxNorm": [
+      0.6244,
+      0.4916,
+      0.8444,
+      0.7116
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-14",
+  "task": "facial",
+  "no": "14",
+  "label": "주사(장미증)",
+  "expectedCode": "rosacea",
+  "imageUrl": "/demo/presets/facial-14.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-14-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 274,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-14-crop1.jpg",
+     "boxNorm": [
+      0.5977,
+      0.4258,
+      0.9492,
+      0.7773
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-14-crop2.jpg",
+     "boxNorm": [
+      0.0625,
+      0.4375,
+      0.4375,
+      0.8125
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-15",
+  "task": "facial",
+  "no": "15",
+  "label": "주사(장미증)",
+  "expectedCode": "rosacea",
+  "imageUrl": "/demo/presets/facial-15.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-15-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 257,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-15-crop1.jpg",
+     "boxNorm": [
+      0.6172,
+      0.4219,
+      0.8984,
+      0.7031
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-15-crop2.jpg",
+     "boxNorm": [
+      0.0859,
+      0.4531,
+      0.3672,
+      0.7344
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-16",
+  "task": "facial",
+  "no": "16",
+  "label": "지루피부염",
+  "expectedCode": "seb_derm",
+  "imageUrl": "/demo/presets/facial-16.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.9967
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0027
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0007
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-16-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 286,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-16-crop1.jpg",
+     "boxNorm": [
+      0.1953,
+      0.3828,
+      0.7109,
+      0.8984
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-17",
+  "task": "facial",
+  "no": "17",
+  "label": "지루피부염",
+  "expectedCode": "seb_derm",
+  "imageUrl": "/demo/presets/facial-17.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.9999
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0001
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-17-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 361,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-17-crop1.jpg",
+     "boxNorm": [
+      0.1453,
+      0.2703,
+      0.7453,
+      0.8703
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/facial-17-crop2.jpg",
+     "boxNorm": [
+      0.5273,
+      0.4023,
+      0.9258,
+      0.8008
+     ],
+     "peak": 0.905,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-18",
+  "task": "facial",
+  "no": "18",
+  "label": "지루피부염",
+  "expectedCode": "seb_derm",
+  "imageUrl": "/demo/presets/facial-18.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "acne",
+     "diseaseNameKo": "여드름",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-18-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 263,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/facial-18-crop1.jpg",
+     "boxNorm": [
+      0.1922,
+      0.4,
+      0.7922,
+      1.0
+     ],
+     "peak": 1.0,
+     "source": "zoom"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-19",
+  "task": "facial",
+  "no": "19",
+  "label": "정상피부",
+  "expectedCode": "normal",
+  "imageUrl": "/demo/presets/facial-19.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-19-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 278,
+   "crops": [],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "facial-20",
+  "task": "facial",
+  "no": "20",
+  "label": "정상피부",
+  "expectedCode": "normal",
+  "imageUrl": "/demo/presets/facial-20.jpg",
+  "width": 768,
+  "height": 768,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "normal",
+     "diseaseNameKo": "정상 피부",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "rosacea",
+     "diseaseNameKo": "주사(장미증)",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "psoriasis",
+     "diseaseNameKo": "건선",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "atopic",
+     "diseaseNameKo": "아토피피부염",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "seb_derm",
+     "diseaseNameKo": "지루피부염",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/facial-20-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-2d3a2141c3d2",
+   "inferenceTimeMs": 265,
+   "crops": [],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-01",
+  "task": "skin_lesion",
+  "no": "01",
+  "label": "악성흑색종",
+  "expectedCode": "mel",
+  "imageUrl": "/demo/presets/lesion-01.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.9989
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0007
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0003
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0001
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-01-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 137,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-01-crop1.jpg",
+     "boxNorm": [
+      0.2852,
+      0.2969,
+      0.7305,
+      0.8906
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-02",
+  "task": "skin_lesion",
+  "no": "02",
+  "label": "악성흑색종",
+  "expectedCode": "mel",
+  "imageUrl": "/demo/presets/lesion-02.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.9853
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0096
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0017
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0012
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0011
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-02-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 176,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-02-crop1.jpg",
+     "boxNorm": [
+      0.3531,
+      0.1167,
+      0.8031,
+      0.7167
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-02-crop2.jpg",
+     "boxNorm": [
+      0.2344,
+      0.4687,
+      0.5625,
+      0.9062
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-03",
+  "task": "skin_lesion",
+  "no": "03",
+  "label": "악성흑색종",
+  "expectedCode": "mel",
+  "imageUrl": "/demo/presets/lesion-03.jpg",
+  "width": 512,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.9551
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0356
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0056
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.002
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0007
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-03-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 170,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-03-crop1.jpg",
+     "boxNorm": [
+      0.4219,
+      0.3359,
+      0.7969,
+      0.7109
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-04",
+  "task": "skin_lesion",
+  "no": "04",
+  "label": "기저세포암",
+  "expectedCode": "bcc",
+  "imageUrl": "/demo/presets/lesion-04.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.9946
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0015
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0013
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0011
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.001
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-04-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 140,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-04-crop1.jpg",
+     "boxNorm": [
+      0.3359,
+      0.2708,
+      0.7578,
+      0.8333
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-05",
+  "task": "skin_lesion",
+  "no": "05",
+  "label": "기저세포암",
+  "expectedCode": "bcc",
+  "imageUrl": "/demo/presets/lesion-05.jpg",
+  "width": 512,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.9818
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0087
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0039
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0036
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0012
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-05-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 158,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-05-crop1.jpg",
+     "boxNorm": [
+      0.1484,
+      0.2891,
+      0.6641,
+      0.8047
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-06",
+  "task": "skin_lesion",
+  "no": "06",
+  "label": "기저세포암",
+  "expectedCode": "bcc",
+  "imageUrl": "/demo/presets/lesion-06.jpg",
+  "width": 512,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.9641
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0197
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0068
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0043
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0021
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-06-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 194,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-06-crop1.jpg",
+     "boxNorm": [
+      0.2734,
+      0.3359,
+      0.7891,
+      0.8516
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-07",
+  "task": "skin_lesion",
+  "no": "07",
+  "label": "광선각화증·상피내암",
+  "expectedCode": "akiec",
+  "imageUrl": "/demo/presets/lesion-07.jpg",
+  "width": 512,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.995
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0022
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0019
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0004
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0002
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-07-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 132,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-07-crop1.jpg",
+     "boxNorm": [
+      0.2891,
+      0.3438,
+      0.6172,
+      0.6719
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-08",
+  "task": "skin_lesion",
+  "no": "08",
+  "label": "광선각화증·상피내암",
+  "expectedCode": "akiec",
+  "imageUrl": "/demo/presets/lesion-08.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.9858
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0048
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0035
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0021
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0016
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-08-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 183,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-08-crop1.jpg",
+     "boxNorm": [
+      0.2359,
+      0.2938,
+      0.6859,
+      0.8938
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-08-crop2.jpg",
+     "boxNorm": [
+      0.6367,
+      0.2135,
+      0.8477,
+      0.4948
+     ],
+     "peak": 0.856,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-09",
+  "task": "skin_lesion",
+  "no": "09",
+  "label": "양성각화증성병변",
+  "expectedCode": "bkl",
+  "imageUrl": "/demo/presets/lesion-09.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.9894
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0025
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0022
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0018
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0016
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-09-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 219,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-09-crop1.jpg",
+     "boxNorm": [
+      0.0625,
+      0.3542,
+      0.3438,
+      0.7292
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-09-crop2.jpg",
+     "boxNorm": [
+      0.3922,
+      0.3146,
+      0.8422,
+      0.9146
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-10",
+  "task": "skin_lesion",
+  "no": "10",
+  "label": "양성각화증성병변",
+  "expectedCode": "bkl",
+  "imageUrl": "/demo/presets/lesion-10.jpg",
+  "width": 512,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.9727
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0072
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0066
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.0039
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0036
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-10-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 131,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-10-crop1.jpg",
+     "boxNorm": [
+      0.2969,
+      0.3906,
+      0.6719,
+      0.7656
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-11",
+  "task": "skin_lesion",
+  "no": "11",
+  "label": "피부섬유종",
+  "expectedCode": "df",
+  "imageUrl": "/demo/presets/lesion-11.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 1.0
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-11-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 133,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-11-crop1.jpg",
+     "boxNorm": [
+      0.2359,
+      0.1792,
+      0.6859,
+      0.7792
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-12",
+  "task": "skin_lesion",
+  "no": "12",
+  "label": "피부섬유종",
+  "expectedCode": "df",
+  "imageUrl": "/demo/presets/lesion-12.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.9999
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-12-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 127,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-12-crop1.jpg",
+     "boxNorm": [
+      0.2906,
+      0.1167,
+      0.7406,
+      0.7167
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-13",
+  "task": "skin_lesion",
+  "no": "13",
+  "label": "멜라닌세포모반",
+  "expectedCode": "nv",
+  "imageUrl": "/demo/presets/lesion-13.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.9791
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0068
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.004
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0028
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0027
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-13-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 151,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-13-crop1.jpg",
+     "boxNorm": [
+      0.125,
+      0.1042,
+      0.5,
+      0.6042
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-13-crop2.jpg",
+     "boxNorm": [
+      0.7534,
+      0.6504,
+      0.9184,
+      0.8704
+     ],
+     "peak": 0.724,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-14",
+  "task": "skin_lesion",
+  "no": "14",
+  "label": "멜라닌세포모반",
+  "expectedCode": "nv",
+  "imageUrl": "/demo/presets/lesion-14.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.9656
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.0115
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0085
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0061
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0039
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-14-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 116,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-14-crop1.jpg",
+     "boxNorm": [
+      0.2359,
+      0.2312,
+      0.6859,
+      0.8312
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-15",
+  "task": "skin_lesion",
+  "no": "15",
+  "label": "멜라닌세포모반",
+  "expectedCode": "nv",
+  "imageUrl": "/demo/presets/lesion-15.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.9538
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0198
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0145
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0033
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0028
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-15-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 128,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-15-crop1.jpg",
+     "boxNorm": [
+      0.3047,
+      0.1979,
+      0.6328,
+      0.6354
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-16",
+  "task": "skin_lesion",
+  "no": "16",
+  "label": "혈관성병변",
+  "expectedCode": "vasc",
+  "imageUrl": "/demo/presets/lesion-16.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.9989
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0009
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.0001
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0001
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "akiec",
+     "diseaseNameKo": "광선각화증/상피내암",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-16-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 125,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-16-crop1.jpg",
+     "boxNorm": [
+      0.2984,
+      0.1688,
+      0.7484,
+      0.7688
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-17",
+  "task": "skin_lesion",
+  "no": "17",
+  "label": "혈관성병변",
+  "expectedCode": "vasc",
+  "imageUrl": "/demo/presets/lesion-17.jpg",
+  "width": 600,
+  "height": 450,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.9997
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0001
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bcc",
+     "diseaseNameKo": "기저세포암",
+     "confidence": 0.0
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-17-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 119,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-17-crop1.jpg",
+     "boxNorm": [
+      0.3398,
+      0.2969,
+      0.6445,
+      0.7031
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-18",
+  "task": "skin_lesion",
+  "no": "18",
+  "label": "염증성피부질환",
+  "expectedCode": "inflammatory",
+  "imageUrl": "/demo/presets/lesion-18.jpg",
+  "width": 512,
+  "height": 431,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.9903
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0051
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "nv",
+     "diseaseNameKo": "멜라닌세포모반",
+     "confidence": 0.0017
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0013
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0009
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-18-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 170,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-18-crop1.jpg",
+     "boxNorm": [
+      0.0,
+      0.0,
+      0.1852,
+      0.22
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-18-crop2.jpg",
+     "boxNorm": [
+      0.3008,
+      0.0597,
+      0.6523,
+      0.4773
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-19",
+  "task": "skin_lesion",
+  "no": "19",
+  "label": "염증성피부질환",
+  "expectedCode": "inflammatory",
+  "imageUrl": "/demo/presets/lesion-19.jpg",
+  "width": 410,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.9803
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0176
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0008
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0004
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0004
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-19-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 128,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-19-crop1.jpg",
+     "boxNorm": [
+      0.201,
+      0.4796,
+      0.6422,
+      0.8329
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ },
+ {
+  "key": "lesion-20",
+  "task": "skin_lesion",
+  "no": "20",
+  "label": "염증성피부질환",
+  "expectedCode": "inflammatory",
+  "imageUrl": "/demo/presets/lesion-20.jpg",
+  "width": 384,
+  "height": 512,
+  "result": {
+   "confidenceLevel": "normal",
+   "top5": [
+    {
+     "rank": 1,
+     "diseaseCode": "inflammatory",
+     "diseaseNameKo": "염증성 피부질환",
+     "confidence": 0.9879
+    },
+    {
+     "rank": 2,
+     "diseaseCode": "vasc",
+     "diseaseNameKo": "혈관성 병변",
+     "confidence": 0.0054
+    },
+    {
+     "rank": 3,
+     "diseaseCode": "df",
+     "diseaseNameKo": "피부섬유종",
+     "confidence": 0.0053
+    },
+    {
+     "rank": 4,
+     "diseaseCode": "mel",
+     "diseaseNameKo": "악성 흑색종",
+     "confidence": 0.0005
+    },
+    {
+     "rank": 5,
+     "diseaseCode": "bkl",
+     "diseaseNameKo": "양성 각화증성 병변",
+     "confidence": 0.0003
+    }
+   ],
+   "heatmapUrl": "/demo/results/lesion-20-heatmap.jpg",
+   "heatmapStyle": "layercam-flip-jet-v2",
+   "modelVersion": "efficientnet_b0-03061a31e63f",
+   "inferenceTimeMs": 224,
+   "crops": [
+    {
+     "rank": 1,
+     "imageUrl": "/demo/results/lesion-20-crop1.jpg",
+     "boxNorm": [
+      0.0,
+      0.0,
+      0.22,
+      0.165
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    },
+    {
+     "rank": 2,
+     "imageUrl": "/demo/results/lesion-20-crop2.jpg",
+     "boxNorm": [
+      0.0438,
+      0.275,
+      0.6437,
+      0.725
+     ],
+     "peak": 1.0,
+     "source": "reinfer"
+    }
+   ],
+   "fullImageTop1": null
+  }
+ }
+]
