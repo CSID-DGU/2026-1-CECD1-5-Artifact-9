@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from "../constants";
+import { DEMO_TOKEN, DEMO_USER, endDemo, isDemoActive } from "../demo/demoMode";
 
 /**
  * 로그인 세션의 단일 보관소.
@@ -12,11 +13,16 @@ import { STORAGE_KEYS } from "../constants";
  * 각자 `localStorage.getItem(...)`을 호출하고 있어서, 저장 방식을 바꾸려면 두 곳을 같이 고쳐야 했다.
  */
 
+// 데모(로그인 없이 체험) 중에는 이 탭만 체험 의사로 로그인된 것으로 보인다. 실제 세션(localStorage)은 읽지도
+// 쓰지도 않는다 — 같은 브라우저 다른 탭의 실제 로그인을 덮어쓰지 않게 하려는 것이다(demo/demoMode.ts).
+
 export function getToken(): string | null {
+  if (isDemoActive()) return DEMO_TOKEN;
   return localStorage.getItem(STORAGE_KEYS.TOKEN);
 }
 
 export function saveSession(token: string, user: unknown): void {
+  endDemo();
   localStorage.setItem(STORAGE_KEYS.TOKEN, token);
   localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
   // 새로 로그인했으니 "이미 만료 알림을 보냈다"는 표시를 푼다.
@@ -24,6 +30,7 @@ export function saveSession(token: string, user: unknown): void {
 }
 
 export function loadUser<T>(): T | null {
+  if (isDemoActive()) return DEMO_USER as T;
   const saved = localStorage.getItem(STORAGE_KEYS.USER);
   if (!saved) return null;
   try {
@@ -36,6 +43,10 @@ export function loadUser<T>(): T | null {
 }
 
 export function clearSession(): void {
+  if (isDemoActive()) {
+    endDemo(); // 데모 로그아웃 = 데모 종료. 실제 세션은 그대로 둔다.
+    return;
+  }
   localStorage.removeItem(STORAGE_KEYS.TOKEN);
   localStorage.removeItem(STORAGE_KEYS.USER);
 }

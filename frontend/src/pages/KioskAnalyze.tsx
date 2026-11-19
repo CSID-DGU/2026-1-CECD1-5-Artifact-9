@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage, isConflict, isNotFound } from "../api/errors";
 import type { AnalysisType } from "../api/analysis";
@@ -11,6 +11,10 @@ import { PhotoCropEditor } from "../components/PhotoCropEditor";
 import { formatConfidence } from "../utils/confidence";
 import { detectPrintedPhotoInFile, FULL_FRAME, isFullFrame, type NormRect } from "../utils/printedPhotoCrop";
 import { shrinkForUpload } from "../utils/uploadImage";
+import { isDemoActive } from "../demo/demoMode";
+
+// 데모(로그인 없이 체험)에서만 쓰는 사진 선택 창 — 업로드·촬영 대신 미리 골라 둔 사진을 고른다.
+const DemoImagePicker = lazy(() => import("../demo/DemoImagePicker"));
 
 const DISCLAIMER =
   "⚠️ 본 분석은 AI 보조 참고용이며 의학적 진단이 아닙니다. 결과가 정확하지 않을 수 있으며, 반드시 진료실에서 의사의 확인 진료와 처방을 받으셔야 합니다.";
@@ -141,8 +145,11 @@ export default function KioskAnalyze() {
     ? `${result.gradcamUrl ?? `/api/kiosk/session/${encodeURIComponent(token ?? "")}/heatmap`}?t=${encodeURIComponent(result.analyzedAt)}`
     : null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
+  const [demoPickerOpen, setDemoPickerOpen] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => selectFile(e.target.files?.[0] ?? null);
+
+  const selectFile = (selected: File | null) => {
     setFile(selected);
     setResult(null);
     setComment(null);
@@ -176,6 +183,10 @@ export default function KioskAnalyze() {
   };
 
   const openGalleryPicker = () => {
+    if (isDemoActive()) {
+      setDemoPickerOpen(true);
+      return;
+    }
     if (galleryInputRef.current) {
       galleryInputRef.current.value = "";
       galleryInputRef.current.click();
@@ -183,6 +194,10 @@ export default function KioskAnalyze() {
   };
 
   const openCameraPicker = () => {
+    if (isDemoActive()) {
+      setDemoPickerOpen(true);
+      return;
+    }
     if (cameraInputRef.current) {
       cameraInputRef.current.value = "";
       cameraInputRef.current.click();
@@ -397,6 +412,16 @@ export default function KioskAnalyze() {
                 onChange={handleFileChange}
                 className="hidden"
               />
+              {demoPickerOpen && (
+                <Suspense fallback={null}>
+                  <DemoImagePicker
+                    initialTask={analysisType}
+                    lockTask
+                    onClose={() => setDemoPickerOpen(false)}
+                    onPick={(picked) => selectFile(picked)}
+                  />
+                </Suspense>
+              )}
               <div className="grid w-full grid-cols-2 gap-2">
                 <button
                   type="button"

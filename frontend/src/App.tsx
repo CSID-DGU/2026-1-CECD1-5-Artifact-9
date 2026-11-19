@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import MainLayout from "./components/MainLayout";
 import PrivateRoute from "./components/PrivateRoute";
@@ -13,6 +14,10 @@ import SharedCertificate from "./pages/SharedCertificate";
 import SharedVisitSummary from "./pages/SharedVisitSummary";
 import WaitingBoard from "./pages/WaitingBoard";
 import { AuthProvider } from "./components/AuthContext";
+import { isDemoActive } from "./demo/demoMode";
+
+// 로그인 없이 체험하는 데모일 때만 받는다(코드 분할) — 데모가 아니면 번들에도, 화면에도 나타나지 않는다.
+const DemoGuide = lazy(() => import("./demo/DemoGuide"));
 
 export default function App() {
   return (
@@ -62,6 +67,11 @@ export default function App() {
           {/* 잘못된 경로 → 로그인으로 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        {isDemoActive() && (
+          <Suspense fallback={null}>
+            <DemoGuide />
+          </Suspense>
+        )}
       </BrowserRouter>
     </AuthProvider>
   );

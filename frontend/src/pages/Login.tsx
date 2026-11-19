@@ -4,6 +4,7 @@ import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { useAuth } from "../auth/AuthContext";
 import { ArtifactLogo } from "../components/ArtifactLogo";
+import { beginDemo } from "../demo/demoMode";
 
 const ROLE_OPTIONS = [
   { value: "DOCTOR", label: "의사" },
@@ -58,6 +59,15 @@ export default function Login() {
   };
 
   const handleLogin = (e: React.FormEvent) => submit(e, () => login(id, password));
+
+  /**
+   * 로그인 없이 체험하기 — 이 탭 안의 가상 데이터로 같은 화면을 둘러본다(demo/). 운영 서버·환자 기록과는
+   * 연결되지 않는다. 새로 불러와야 세션·요청 경로가 데모로 바뀌므로 페이지를 다시 연다.
+   */
+  const startDemo = () => {
+    beginDemo();
+    window.location.assign("/main");
+  };
 
   const handleSignup = (e: React.FormEvent) =>
     submit(e, () =>
@@ -177,6 +187,20 @@ export default function Login() {
             </button>
           </form>
         </Card>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={startDemo}
+            className="w-full h-[40px] rounded border border-gray-600 bg-gray-800 hover:bg-gray-700 text-gray-100 font-bold text-xs cursor-pointer transition-colors"
+          >
+            로그인 없이 데모 체험하기
+          </button>
+          <p className="mt-2 text-center text-[11px] leading-relaxed text-gray-500">
+            가상 환자와 준비된 사진으로 접수부터 증명서 발급까지 둘러봅니다.
+            <br />
+            실제 서버·기록과는 연결되지 않습니다.
+          </p>
+        </div>
       </div>
     </div>
   );
