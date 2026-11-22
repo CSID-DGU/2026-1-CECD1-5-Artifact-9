@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ANALYSIS_TYPE_LABELS, getLatestAnalysis, requestAnalysis, type AnalysisResponse, type AnalysisType } from "../api/analysis";
 import { getErrorMessage } from "../api/errors";
 import { getPreliminaryAnalysis, type PreliminaryAnalysis } from "../api/kiosk";
@@ -20,6 +20,10 @@ import { LowConfidenceBanner } from "../components/LowConfidenceBanner";
 import { SearchModal, type SearchItem } from "../components/SearchModal";
 import { Table } from "../components/Table";
 import { formatConfidence } from "../utils/confidence";
+import { isDemoActive } from "../demo/demoMode";
+
+// 데모(로그인 없이 체험)에서만 쓰는 사진 선택 창 — 업로드 대신 미리 골라 둔 사진을 고른다.
+const DemoImagePicker = lazy(() => import("../demo/DemoImagePicker"));
 
 // 모델 병명 코드 → KCD 선입력 코드. 상병명 검색이 빗나갔을 때의 예비 경로다(handleToggleAnalysisCandidate).
 // 여기 없는 코드는 fallbackCode 가 undefined 로 떨어져 "직접 추가해 달라"는 안내로 끝나므로, 빠진 코드가 있어도 깨지지 않는다.
@@ -108,6 +112,7 @@ export default function Clinic() {
   const [activeTab, setActiveTab] = useState<"대기" | "완료">("대기");
   // 진료 현황 [삭제] — 진료대기 목록에서 골라 접수를 취소한다. 진료를 시작한 접수도 처방 저장 전이면 된다(서버 규칙: Visit.cancel).
   const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [demoPickerOpen, setDemoPickerOpen] = useState(false);
   const [deleteIds, setDeleteIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [waitingVisits, setWaiting] = useState<Visit[]>([]);
@@ -872,16 +877,37 @@ useEffect(() => { setImageViewMode("none"); setActiveCropRank(null); setThumbPag
           <Card title="선택 내원 이미지 및 업로드" className="min-h-0 flex-1" contentClassName="!p-2">
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
-                  }`}>
-                  파일 선택
-                  <input
-                    type="file" accept="image/*"
+                {isDemoActive() ? (
+                  <button
+                    type="button"
+                    onClick={() => setDemoPickerOpen(true)}
                     disabled={!canUploadImage || isActionLoading}
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                    className="hidden"
-                  />
-                </label>
+                    className={`px-3 py-2 rounded-lg text-xs transition-colors ${canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                      }`}
+                  >
+                    파일 선택
+                  </button>
+                ) : (
+                  <label className={`px-3 py-2 rounded-lg text-xs transition-colors ${canUploadImage ? "bg-blue-600 hover:bg-blue-500 cursor-pointer" : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                    }`}>
+                    파일 선택
+                    <input
+                      type="file" accept="image/*"
+                      disabled={!canUploadImage || isActionLoading}
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+                {demoPickerOpen && (
+                  <Suspense fallback={null}>
+                    <DemoImagePicker
+                      initialTask={analysisType}
+                      onClose={() => setDemoPickerOpen(false)}
+                      onPick={(picked) => setSelectedFile(picked)}
+                    />
+                  </Suspense>
+                )}
                 <span className="text-xs text-gray-300">{selectedFile?.name ?? "선택된 파일 없음"}</span>
                 <Button onClick={handleUploadImage} disabled={!selectedFile || !canUploadImage || isActionLoading} className="py-1 text-xs">
                   업로드
