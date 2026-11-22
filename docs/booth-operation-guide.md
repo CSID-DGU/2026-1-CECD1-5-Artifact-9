@@ -1,5 +1,11 @@
 # 부스 운영 가이드 — 2026-11-16(월) ~ 11-20(금)
 
+> **부스 운영은 끝났다. 이 문서는 기록으로만 남긴다.**
+> 2026-11-22 에 부스 전용 파일을 지웠다: `docker-compose.booth.yml`, `docker/ai-lb/`, `docker-compose.ai-worker.yml`,
+> `frontend/src/booth/`(운세 소견서), `deploy.yml` 의 `BOOTH_MODE` 분기. 아래 절차는 그 파일들이 있던 때의 것이라
+> 그대로 따라 할 수 없다. 지금 배포 구성(ALB · AI 오토스케일링 · Vercel)은 `docs/aws-elb-asg-guide.md` 를 본다.
+> `scripts/booth/kiosk_load_check.py` 는 남겼다 — 동시 분석 부하를 거는 도구라 오토스케일링 실습에 그대로 쓴다.
+
 > 부스 기간 동안 여러 대의 휴대폰·태블릿이 동시에 키오스크로 붙어도 사진과 결과가 섞이지 않고, 결과가 환자별로
 > EMR 에 저장돼 진료 화면까지 이어지게 하는 준비 절차다. **AWS 콘솔·GitHub 에서 사람이 눌러야 하는 것**은 전부
 > 이 문서에 순서대로 적었다. 코드 쪽 설명은 각 파일의 주석이 원본이다.

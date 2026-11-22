@@ -1,0 +1,54 @@
+# =============================================
+# Team Artifact — ELB 구성의 백엔드 EC2 오버라이드
+# =============================================
+# 이 파일은 단독으로 쓰지 않는다. 기본 파일 위에 덮어쓴다(.github/workflows/deploy.yml 이 DEPLOY_TARGET=elb 일 때):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.elb.yml up -d --build
+#
+#   [브라우저] ─ 화면 ─→ Vercel (VITE_API_BASE_URL=https://api.<도메인>)
+#        └──── API ──→ ALB(HTTPS 443, ACM 인증서) ─→ 이 서버 :8080 backend ─→ mysql
+#                                                    backend ─→ 내부 ALB(:80) ─→ AI 오토스케일링 그룹(:8000)
+#
+# 이 서버는 MySQL 과 백엔드만 띄운다. 화면(frontend)은 Vercel, AI(fastapi)는 AI 오토스케일링 그룹이 맡는다.
+# HTTPS 는 ALB 가 끝내므로 Caddy 도 없다. 8080 은 보안 그룹에서 "ALB 보안 그룹에서 온 것"만 받게 막는다.
+# 절차 전체는 docs/aws-elb-asg-guide.md.
+#
+# 아래 :? 값이 .env 에 없으면 기동하지 않는다 — 빠진 채 뜨면 로그인(CORS)이나 AI 분석부터 깨지는데,
+# 화면에는 "서버에 연결할 수 없습니다"만 보여 원인을 찾기 어렵다.
+# =============================================
+
+services:
+
+  mysql:
+    # DB 는 이 서버 안에서만 쓴다. 호스트에 열지 않는다(docker-compose.prod.yml 과 같은 이유).
+    ports: !reset []
+
+  backend:
+    # ALB 대상 그룹이 이 포트로 들어온다. 보안 그룹 인바운드는 8080 / 소스 = ALB 보안 그룹 하나만.
+    ports: !override
+      - "8080:8080"
+    environment:
+      SWAGGER_ENABLED: "false"
+      LOG_LEVEL: "INFO"
+      # 내부 ALB 주소 — 예: http://internal-artifact-ai-alb-123456.ap-northeast-2.elb.amazonaws.com
+      # (포트 80, 끝에 / 없이). 백엔드는 여기에 /predict-base64 를 붙여 부르고, ALB 가 AI 인스턴스들에 나눈다.
+      FASTAPI_URL: ${FASTAPI_URL:?FASTAPI_URL 이 없습니다. 내부 ALB 주소(http://internal-....elb.amazonaws.com)를 .env 에 넣으세요.}
+      # 화면(Vercel) 주소. 출처가 달라 브라우저가 CORS 를 확인한다 — 없으면 로그인부터 403 이다.
+      # 미리보기 배포까지 열려면 쉼표로 더한다(예: https://artifact-xxx-*.vercel.app). 패턴 문법은 WebConfig 참고.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS 가 없습니다. Vercel 화면 주소(https://...)를 .env 에 넣으세요.}
+      # 접수증 QR 에 찍힐 키오스크 주소의 허용 목록 = 화면 주소. docker-compose.prod.yml 주석과 같은 이유로 잠근다.
+      PRINT_KIOSK_ALLOWED_BASE_URLS: ${PRINT_KIOSK_ALLOWED_BASE_URLS:?PRINT_KIOSK_ALLOWED_BASE_URLS 가 없습니다. Vercel 화면 주소를 .env 에 넣으세요.}
+      TELEGRAM_PUBLIC_BASE_URL: ${TELEGRAM_PUBLIC_BASE_URL:-}
+      PRINT_MODE: queue
+      PRINT_AGENT_ENABLED: "true"
+      # 비워 두면 S3 는 EC2 인스턴스 역할로 접근한다(AwsConfig). 기본 파일의 가짜 로컬 키를 지우려고 다시 적는다.
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY:-}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY:-}
+
+  # 이 서버에서는 띄우지 않는다 — 다른 곳에서 돈다. 프로필을 걸어 두면 `up` 이 만들지도 빌드하지도 않는다.
+  # (로컬에서 이 오버라이드로 전부 띄워 보고 싶으면 --profile local-ai --profile local-web)
+  fastapi:
+    profiles: ["local-ai"]
+
+  frontend:
+    profiles: ["local-web"]

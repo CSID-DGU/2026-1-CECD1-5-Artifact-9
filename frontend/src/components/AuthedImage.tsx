@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "../api/base";
 import { getToken, notifySessionExpired } from "../api/session";
 
 type AuthedImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> & {
@@ -44,7 +45,7 @@ export function AuthedImage({ src, fallback = null, alt = "", ...imgProps }: Aut
     let createdUrl: string | null = null;
     const token = getToken();
 
-    fetch(src, {
+    fetch(apiUrl(src), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((response) => {

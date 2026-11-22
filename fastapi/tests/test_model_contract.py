@@ -843,6 +843,35 @@ else:
           "어긋나면 백엔드가 사진 문제를 알아보지 못해 화면이 다시 500 을 받는다")
 
 # =============================================
+print("\n[9] /health/ready — 등록된 태스크가 전부 로드돼야 200 (ALB 대상 그룹·롤링 배포의 안전장치)")
+
+# ALB 는 이 주소가 200 인 인스턴스에만 요청을 보낸다. 추가 태스크가 깨진 채 200 이면 오토스케일링의 인스턴스 새로 고침이
+# 깨진 이미지를 모든 인스턴스로 퍼뜨린다(main.py health_ready 주석). 그래서 "다 떠야 200, 하나라도 빠지면 503 + 이유"를 본다.
+all_loaded = all(name in serving.TASK_MODELS for name in TASKS)
+resp = serving.health_ready()
+if all_loaded:
+    check("모든 태스크가 로드됨 → 200 ready", isinstance(resp, dict) and resp.get("status") == "ready", f"{resp!r}")
+else:
+    check("로드 안 된 태스크가 있음 → 503", getattr(resp, "status_code", None) == 503, f"{resp!r}")
+
+_other = next((n for n in TASKS if n != DEFAULT_TASK and n in serving.TASK_MODELS), None)
+if _other is None:
+    skip("추가 태스크 미로드 흉내", "로드된 추가 태스크가 없습니다")
+else:
+    _saved = serving.TASK_MODELS.pop(_other)
+    serving.TASK_LOAD_ERRORS[_other] = "테스트: 가중치 로드 실패"
+    try:
+        resp = serving.health_ready()
+        body = resp.body.decode("utf-8") if hasattr(resp, "body") else ""
+        check(f"'{_other}' 미로드 → 503 not_ready, 이유에 태스크 이름",
+              getattr(resp, "status_code", None) == 503 and "not_ready" in body and _other in body,
+              f"상태={getattr(resp, 'status_code', None)}, 본문={body[:200]!r}")
+    finally:
+        serving.TASK_MODELS[_other] = _saved
+        serving.TASK_LOAD_ERRORS.pop(_other, None)
+    check("흉내 뒤 원래대로 → 200", isinstance(serving.health_ready(), dict), "")
+
+# =============================================
 print()
 if failures:
     print(f"❌ 실패 {len(failures)}건: {', '.join(failures)}")

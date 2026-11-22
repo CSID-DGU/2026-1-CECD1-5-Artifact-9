@@ -2,6 +2,9 @@
 
 > 대상: `docs/ec2-deployment-guide.md` 로 EC2 배포와 HTTPS 까지 끝낸 상태.
 > 소요: 1단계 30분 + 2단계 40분. 3단계는 선택.
+>
+> 이 문서는 EC2 한 대에 전부 올리는 구성(저장소 변수 `DEPLOY_TARGET` 비어 있음)의 배포다. 화면은 Vercel, API 는 ALB,
+> AI 는 오토스케일링 그룹으로 나누는 구성(`DEPLOY_TARGET=elb`, `deploy-ai.yml`)은 `docs/aws-elb-asg-guide.md` 를 본다.
 
 ---
 

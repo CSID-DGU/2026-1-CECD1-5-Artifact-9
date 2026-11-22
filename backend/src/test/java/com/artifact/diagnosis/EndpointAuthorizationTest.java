@@ -83,7 +83,9 @@ class EndpointAuthorizationTest {
 			"KioskController",        // 대기실 태블릿 — JWT 대신 접수별 kiosk_token 이 자격
 			// 감열지 QR 로 들어오는 환자 — 병원 계정이 없어 인증을 요구할 수 없다.
 			// 대신 문서별 share_token(base62 12자)이 자격이고, 읽기 전용이며 기한이 있다.
-			"DocumentShareController"
+			"DocumentShareController",
+			// 로드밸런서(ALB) 헬스체크 — 상태 문자열 "UP" 하나만 돌려주고 데이터·설정에 닿지 않는다.
+			"HealthController"
 	);
 
 	@Autowired
@@ -316,6 +318,20 @@ class EndpointAuthorizationTest {
 
 		mockMvc.perform(get("/api/public/documents/visit-summary/{token}", "notarealtoken"))
 				.andExpect(status().isNotFound());
+	}
+
+	/**
+	 * 로드밸런서(ALB) 헬스체크는 로그인 없이 200 이어야 한다.
+	 *
+	 * 401 이면 ALB 가 백엔드를 "비정상"으로 보고 대상에서 빼, 사이트 전체가 503 이 된다.
+	 * SecurityConfig 의 permitAll 에서 이 경로가 빠지면 여기서 잡힌다.
+	 */
+	@Test
+	void loadBalancerHealthCheckIsOpen() throws Exception {
+		mockMvc.perform(get("/api/health"))
+				.andExpect(status().isOk())
+				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+						.jsonPath("$.status").value("UP"));
 	}
 
 	/** 관리자는 사다리 꼭대기 — 의사 전용 경로까지 인가를 통과한다(대상이 없어 404). */

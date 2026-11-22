@@ -7,10 +7,12 @@ interface ImportMetaEnv {
    */
   readonly VITE_KIOSK_BASE_URL?: string;
   /**
-   * "true" 면 부스 기간 기능(소견서 → 오늘의 운세 소견서)을 켠다. src/booth/boothMode.ts 참고.
-   * 운영에서는 docker-compose.booth.yml 이 빌드 인자로 넘긴다 — 저장소 변수 BOOTH_MODE 와 함께 켜지고 꺼진다.
+   * API 서버의 출처(끝에 / 없이). 예: https://api.example.com
+   * 비워 두면 화면과 같은 출처의 /api 를 부른다 — 로컬 Vite(proxy)와 도커 nginx 가 이 방식이다.
+   * 화면은 Vercel, API 는 ALB 뒤에 따로 둘 때만 넣는다. 빌드할 때 굳으므로 바꾸면 다시 배포한다.
+   * 쓰는 곳은 src/api/base.ts 하나다.
    */
-  readonly VITE_BOOTH_MODE?: string;
+  readonly VITE_API_BASE_URL?: string;
 }
 
 interface ImportMeta {
