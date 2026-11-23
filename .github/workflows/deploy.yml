@@ -10,9 +10,9 @@
 #
 # 구성 두 가지 — 저장소 변수 DEPLOY_TARGET 으로 고른다(GitHub 화면에서 바꾸고, 이 워크플로를 수동 실행해 적용):
 #   (비어 있음) 한 서버 구성: 이 EC2 하나에 화면·백엔드·AI·DB·Caddy(HTTPS) 전부. 지금까지의 방식
-#   elb        ELB 구성: 이 EC2 는 MySQL + 백엔드만(:8080 을 ALB 에 연다). 화면은 Vercel, AI 는 AI 오토스케일링 그룹
-#              (.github/workflows/deploy-ai.yml). 절차는 docs/aws-elb-asg-guide.md
-# AWS 쪽(ALB·AI 그룹·Vercel)을 다 만든 뒤에 elb 로 바꾼다. 그 전에 머지돼도 한 서버 구성 그대로 돈다.
+#   elb        ELB 구성: 이 EC2 는 MySQL + 백엔드만(:8080 을 ALB 에 연다). 화면은 S3 + CloudFront, AI 는 AI 오토스케일링 그룹
+#              (화면 deploy-web.yml · AI deploy-ai.yml). 절차는 docs/aws-elb-asg-guide.md
+# AWS 쪽(CloudFront·ALB·AI 그룹)을 다 만든 뒤에 elb 로 바꾼다. 그 전에 머지돼도 한 서버 구성 그대로 돈다.
 # =============================================
 name: Deploy
 
@@ -76,7 +76,7 @@ jobs:
           if [ "${{ vars.DEPLOY_TARGET }}" = "elb" ]; then
             FILES="-f docker-compose.yml -f docker-compose.elb.yml"
             echo "ELB 구성으로 배포 (DEPLOY_TARGET=elb) — 이 서버는 MySQL + 백엔드만"
-            # 한 서버 구성에서 넘어올 때 남는 컨테이너. 화면은 Vercel, AI 는 AI 그룹, HTTPS 는 ALB 가 맡는다.
+            # 한 서버 구성에서 넘어올 때 남는 컨테이너. 화면은 CloudFront, AI 는 AI 그룹, HTTPS 는 ALB 가 맡는다.
             # frontend·fastapi 는 프로필로 꺼 둔 서비스라 --remove-orphans 가 지우지 않으므로 이름으로 지운다.
             docker rm -f artifact-frontend artifact-fastapi artifact-caddy 2>/dev/null || true
           else
@@ -89,7 +89,7 @@ jobs:
       - name: 헬스체크
         run: |
           if [ "${{ vars.DEPLOY_TARGET }}" = "elb" ]; then
-            # 화면은 이 서버에 없다(Vercel). ALB 를 거쳐 API 로 확인한다 — ALB·대상 그룹·보안 그룹까지 한 번에 본다.
+            # 화면은 이 서버에 없다(S3 + CloudFront). ALB 를 거쳐 API 로 확인한다 — ALB·대상 그룹·보안 그룹까지 한 번에 본다.
             # API_URL 이 아직 없으면 이 서버의 8080 으로만 본다.
             URL="${{ vars.API_URL }}"
             URL="${URL:-http://localhost:8080}"

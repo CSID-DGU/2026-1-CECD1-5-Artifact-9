@@ -1,0 +1,121 @@
+# =============================================
+# CD — 화면(React)을 S3 에 올리고 CloudFront 캐시를 비운다
+# =============================================
+# 화면은 빌드하면 정적 파일(html·js·css·이미지)뿐이라 서버가 필요 없다. S3 에 올리고 CloudFront(CDN)가
+# `https://<도메인>` 으로 내보낸다. 절차는 docs/aws-elb-asg-guide.md 3 단계.
+#
+#   frontend/ 변경이 main 에 머지됨
+#     → npm ci · npm run build (VITE_API_BASE_URL = 저장소 변수 WEB_API_BASE_URL — 빌드할 때 화면에 굳는다)
+#     → S3 업로드: 해시가 붙은 assets/ 는 1년 캐시, index.html 은 캐시 안 함(마지막에 올린다)
+#     → CloudFront 캐시 비우기 → 실제 주소가 방금 빌드한 화면을 주는지 확인
+#
+# AWS 키를 저장하지 않는다. AI 배포(deploy-ai.yml)와 같은 GitHub OIDC 역할(AWS_DEPLOY_ROLE_ARN)을 빌려 쓴다
+# (권한: deploy/aws/iam/github-actions-policy.json 의 DeployWeb* · InvalidateWebCache).
+#
+# 저장소 변수(Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN (필수) · WEB_S3_BUCKET (필수) — 둘 중 하나라도 없으면 이 워크플로는 아무것도 하지 않는다
+#   WEB_API_BASE_URL    (필수) API 주소. 처음에는 지금 서버(https://artifact-prod.duckdns.org), ALB 로 넘어가면 https://api.<도메인>
+#                       바꾼 뒤에는 이 워크플로를 수동 실행해야 반영된다
+#   WEB_CLOUDFRONT_ID   (선택) CloudFront 배포 ID(E로 시작). 없으면 캐시를 비우지 않는다
+#   WEB_URL             (선택) https://<도메인> — 있으면 배포 뒤 실제로 새 화면이 나오는지 확인한다
+# =============================================
+name: Deploy Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC 토큰 → AWS 역할
+
+jobs:
+  deploy:
+    name: 화면 빌드 · S3 · CloudFront
+    if: ${{ vars.AWS_DEPLOY_ROLE_ARN != '' && vars.WEB_S3_BUCKET != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      BUCKET: ${{ vars.WEB_S3_BUCKET }}
+      DISTRIBUTION_ID: ${{ vars.WEB_CLOUDFRONT_ID }}
+      WEB_URL: ${{ vars.WEB_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 20 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # API 주소가 비면 화면이 자기 주소(CloudFront)의 /api 를 부르는데, 거기에는 S3 의 index.html 만 있어 모든 요청이
+      # HTML 을 받는다 — "서버에 연결할 수 없습니다"보다 찾기 어려운 고장이라 여기서 막는다.
+      - name: 빌드
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.WEB_API_BASE_URL }}
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "❌ 저장소 변수 WEB_API_BASE_URL 이 없습니다. 예: https://artifact-prod.duckdns.org (ALB 로 넘어간 뒤 https://api.<도메인>)"
+            exit 1
+          fi
+          echo "API 주소: $VITE_API_BASE_URL"
+          npm ci
+          npm run build
+
+      - name: AWS 자격 증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 올리는 순서가 중요하다. index.html 이 "어느 조각(js·css)을 받을지" 적힌 목차라서, 새 조각을 다 올린 뒤에 바꿔야
+      # 바뀌는 순간 누군가 화면을 열어도 없는 파일을 받으러 가지 않는다.
+      - name: S3 업로드
+        run: |
+          DIST=frontend/dist
+          # 1) 이름에 해시가 붙은 조각 — 내용이 바뀌면 이름도 바뀌므로 1년 캐시해도 된다.
+          #    옛 조각은 지우지 않는다: 이미 열려 있는 화면이 나중에 옛 조각(코드 분할)을 받으러 올 수 있다. 크기가 작다.
+          aws s3 sync "$DIST/assets" "s3://$BUCKET/assets" --cache-control "public,max-age=31536000,immutable"
+          # 2) 이름이 고정된 파일(파비콘·직인·데모 사진) — 5분. 빌드에서 사라진 파일은 지운다(assets/·index.html 은 건드리지 않는다).
+          aws s3 sync "$DIST" "s3://$BUCKET" --delete --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public,max-age=300"
+          # 3) 목차는 마지막에, 캐시하지 않게.
+          aws s3 cp "$DIST/index.html" "s3://$BUCKET/index.html" --cache-control "no-cache"
+
+      - name: CloudFront 캐시 비우기
+        if: ${{ env.DISTRIBUTION_ID != '' }}
+        run: |
+          ID=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" \
+                --query Invalidation.Id --output text)
+          echo "캐시 비우기 $ID — 보통 1~2분"
+          aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$ID"
+
+      # 실제 주소가 방금 빌드한 index.html(같은 조각 이름)을 주는지 본다. CloudFront 설정(기본 루트 객체·도메인)이나
+      # 캐시 비우기가 틀렸으면 옛 화면이 그대로 나와도 워크플로는 초록이 되기 때문이다.
+      - name: 새 화면이 나오는지 확인
+        if: ${{ env.WEB_URL != '' }}
+        run: |
+          want=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' frontend/dist/index.html | head -1)
+          for i in $(seq 1 12); do
+            got=$(curl -fsS --max-time 10 "$WEB_URL/" | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1) || true
+            if [ -n "$want" ] && [ "$want" = "$got" ]; then
+              echo "✅ $WEB_URL 이 새 화면($want)을 준다"
+              exit 0
+            fi
+            echo "  ... 기대 $want / 실제 ${got:-(못 받음)} (${i}/12)"
+            sleep 10
+          done
+          echo "❌ $WEB_URL 이 새 화면을 주지 않습니다. CloudFront 기본 루트 객체(index.html)·대체 도메인·Route 53 레코드를 확인하세요."
+          exit 1

@@ -5,11 +5,11 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.elb.yml up -d --build
 #
-#   [브라우저] ─ 화면 ─→ Vercel (VITE_API_BASE_URL=https://api.<도메인>)
+#   [브라우저] ─ 화면 ─→ CloudFront ─→ S3 (VITE_API_BASE_URL=https://api.<도메인>)
 #        └──── API ──→ ALB(HTTPS 443, ACM 인증서) ─→ 이 서버 :8080 backend ─→ mysql
 #                                                    backend ─→ 내부 ALB(:80) ─→ AI 오토스케일링 그룹(:8000)
 #
-# 이 서버는 MySQL 과 백엔드만 띄운다. 화면(frontend)은 Vercel, AI(fastapi)는 AI 오토스케일링 그룹이 맡는다.
+# 이 서버는 MySQL 과 백엔드만 띄운다. 화면(frontend)은 S3 + CloudFront, AI(fastapi)는 AI 오토스케일링 그룹이 맡는다.
 # HTTPS 는 ALB 가 끝내므로 Caddy 도 없다. 8080 은 보안 그룹에서 "ALB 보안 그룹에서 온 것"만 받게 막는다.
 # 절차 전체는 docs/aws-elb-asg-guide.md.
 #
@@ -33,11 +33,11 @@ services:
       # 내부 ALB 주소 — 예: http://internal-artifact-ai-alb-123456.ap-northeast-2.elb.amazonaws.com
       # (포트 80, 끝에 / 없이). 백엔드는 여기에 /predict-base64 를 붙여 부르고, ALB 가 AI 인스턴스들에 나눈다.
       FASTAPI_URL: ${FASTAPI_URL:?FASTAPI_URL 이 없습니다. 내부 ALB 주소(http://internal-....elb.amazonaws.com)를 .env 에 넣으세요.}
-      # 화면(Vercel) 주소. 출처가 달라 브라우저가 CORS 를 확인한다 — 없으면 로그인부터 403 이다.
-      # 미리보기 배포까지 열려면 쉼표로 더한다(예: https://artifact-xxx-*.vercel.app). 패턴 문법은 WebConfig 참고.
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS 가 없습니다. Vercel 화면 주소(https://...)를 .env 에 넣으세요.}
+      # 화면(CloudFront) 주소. 출처가 달라 브라우저가 CORS 를 확인한다 — 없으면 로그인부터 403 이다.
+      # 여러 주소를 열려면 쉼표로 더한다(예: 옮기는 동안 https://artifact-prod.duckdns.org 도). 패턴 문법은 WebConfig 참고.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS 가 없습니다. 화면 주소(https://<도메인>)를 .env 에 넣으세요.}
       # 접수증 QR 에 찍힐 키오스크 주소의 허용 목록 = 화면 주소. docker-compose.prod.yml 주석과 같은 이유로 잠근다.
-      PRINT_KIOSK_ALLOWED_BASE_URLS: ${PRINT_KIOSK_ALLOWED_BASE_URLS:?PRINT_KIOSK_ALLOWED_BASE_URLS 가 없습니다. Vercel 화면 주소를 .env 에 넣으세요.}
+      PRINT_KIOSK_ALLOWED_BASE_URLS: ${PRINT_KIOSK_ALLOWED_BASE_URLS:?PRINT_KIOSK_ALLOWED_BASE_URLS 가 없습니다. 화면 주소(https://<도메인>)를 .env 에 넣으세요.}
       TELEGRAM_PUBLIC_BASE_URL: ${TELEGRAM_PUBLIC_BASE_URL:-}
       PRINT_MODE: queue
       PRINT_AGENT_ENABLED: "true"
