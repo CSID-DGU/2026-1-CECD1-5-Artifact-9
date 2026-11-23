@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * 그래서 "설정이 주입되면 통과하고, 모르는 출처는 여전히 거절된다"를 여기서 못 박는다.
  *
- * preflight(OPTIONS)도 고정한다. 화면을 Vercel, API 를 ALB 뒤(api 도메인)에 따로 두면 출처가 달라져
+ * preflight(OPTIONS)도 고정한다. 화면을 CloudFront, API 를 ALB 뒤(api 도메인)에 따로 두면 출처가 달라져
  * 브라우저가 Authorization 헤더를 실은 요청마다 OPTIONS 를 먼저 보낸다. SecurityConfig 에
  * {@code .cors(Customizer.withDefaults())} 가 없으면 그 OPTIONS 가 인증 없는 요청으로 401 이 되어
  * 모든 API 가 막힌다(예전에 이 주석에 적어 둔 그 상태). 아래 preflight 테스트가 그 줄을 지킨다.
@@ -105,7 +105,7 @@ class CorsConfigTest {
 	}
 
 	@Test
-	@DisplayName("다른 출처(Vercel 화면)의 preflight 는 로그인 없이 통과하고 허용 헤더를 돌려준다")
+	@DisplayName("다른 출처(CloudFront 화면)의 preflight 는 로그인 없이 통과하고 허용 헤더를 돌려준다")
 	void preflightFromDeployedOriginPasses() throws Exception {
 		mockMvc.perform(options("/api/v1/visits")
 						.header("Origin", DEPLOYED_ORIGIN)

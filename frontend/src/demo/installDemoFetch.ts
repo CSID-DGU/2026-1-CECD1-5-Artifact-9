@@ -6,7 +6,7 @@ import { endDemo, isDemoActive } from "./demoMode";
  *
  * 화면·API 코드는 그대로 두고 fetch 한 곳만 가로챈다 — apiRequest, AuthedImage 등이 모두 fetch 를 쓴다.
  * 데모가 아니면 원래 fetch 를 그대로 부른다. 가짜 백엔드 코드는 데모를 처음 쓸 때 따로 받아 온다(코드 분할).
- * API 를 다른 출처에 둔 배포(VITE_API_BASE_URL — 화면은 Vercel, API 는 ALB)에서는 그 출처의 /api 도 가로챈다.
+ * API 를 다른 출처에 둔 배포(VITE_API_BASE_URL — 화면은 CloudFront, API 는 ALB)에서는 그 출처의 /api 도 가로챈다.
  * 로그인·가입 요청은 데모를 끝내고 실제 서버로 보낸다 — 데모 탭에서 직원이 실제로 로그인하는 경우다.
  */
 export function installDemoFetch(): void {

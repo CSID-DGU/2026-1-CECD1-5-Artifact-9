@@ -9,7 +9,7 @@ interface ImportMetaEnv {
   /**
    * API 서버의 출처(끝에 / 없이). 예: https://api.example.com
    * 비워 두면 화면과 같은 출처의 /api 를 부른다 — 로컬 Vite(proxy)와 도커 nginx 가 이 방식이다.
-   * 화면은 Vercel, API 는 ALB 뒤에 따로 둘 때만 넣는다. 빌드할 때 굳으므로 바꾸면 다시 배포한다.
+   * 화면은 S3 + CloudFront, API 는 ALB 뒤에 따로 둘 때만 넣는다. 빌드할 때 굳으므로 바꾸면 다시 배포한다.
    * 쓰는 곳은 src/api/base.ts 하나다.
    */
   readonly VITE_API_BASE_URL?: string;

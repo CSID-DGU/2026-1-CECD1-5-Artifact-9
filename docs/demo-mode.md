@@ -7,7 +7,7 @@
 ## 어떻게 도는가
 
 - **화면은 운영과 같다.** 접수·진료·조회·증명서·키오스크·현황판 화면을 그대로 쓴다. 데모를 위해 따로 만든 화면은 없다.
-- **실제 서버로는 아무것도 가지 않는다.** 데모일 때만 `/api` 요청을 브라우저 안의 가짜 백엔드(`frontend/src/demo/backend.ts`)가 받는다(`installDemoFetch.ts`가 `fetch` 하나만 가로챈다). 화면은 Vercel, API 는 ALB 처럼 출처를 나눈 배포(`VITE_API_BASE_URL`)에서는 그 API 출처의 `/api` 도 가로챈다.
+- **실제 서버로는 아무것도 가지 않는다.** 데모일 때만 `/api` 요청을 브라우저 안의 가짜 백엔드(`frontend/src/demo/backend.ts`)가 받는다(`installDemoFetch.ts`가 `fetch` 하나만 가로챈다). 화면은 CloudFront, API 는 ALB 처럼 출처를 나눈 배포(`VITE_API_BASE_URL`)에서는 그 API 출처의 `/api` 도 가로챈다.
   - 로그인 없이 들어온 사람이 운영 DB 의 실제 환자 기록을 보거나 남길 수 없다.
   - 상태 전이, 발급 조건, 오류 문구는 실제 백엔드를 따랐다(`Visit`·`VisitService`·`CertificateService` 등).
 - **이 탭에서만 돈다.** 데모 표시와 가상 데이터는 `sessionStorage`에 있다.

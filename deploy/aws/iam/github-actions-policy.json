@@ -32,6 +32,31 @@
       "Effect": "Allow",
       "Action": "autoscaling:DescribeInstanceRefreshes",
       "Resource": "*"
+    },
+    {
+      "Sid": "DeployWebBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::WEB_BUCKET_NAME"
+    },
+    {
+      "Sid": "DeployWebObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::WEB_BUCKET_NAME/*"
+    },
+    {
+      "Sid": "InvalidateWebCache",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetInvalidation"
+      ],
+      "Resource": "arn:aws:cloudfront::ACCOUNT_ID:distribution/DISTRIBUTION_ID"
     }
   ]
 }

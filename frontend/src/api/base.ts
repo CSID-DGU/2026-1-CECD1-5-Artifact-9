@@ -2,7 +2,7 @@
  * API 서버 주소 — 서버 경로(`/api/...`)를 실제로 부를 주소로 바꾸는 곳은 여기 하나다.
  *
  * 화면과 API 가 같은 출처면(로컬 Vite proxy, 도커 nginx) VITE_API_BASE_URL 을 비워 두고 `/api/...` 를 그대로 부른다.
- * 화면은 Vercel, API 는 ALB 뒤(예: https://api.example.com)에 따로 두면 그 출처를 넣는다. 그러면 `/api/` 로 시작하는
+ * 화면은 S3 + CloudFront, API 는 ALB 뒤(예: https://api.example.com)에 따로 두면 그 출처를 넣는다. 그러면 `/api/` 로 시작하는
  * 경로에만 앞에 붙는다. 화면의 정적 파일(`/hospital-seal.svg`, 데모의 `/demo/...`)과 blob: 주소는 그대로 둔다.
  *
  * 출처가 다르면 브라우저가 CORS 를 확인한다 — 백엔드 CORS_ALLOWED_ORIGINS 에 화면 주소가 있어야 한다
