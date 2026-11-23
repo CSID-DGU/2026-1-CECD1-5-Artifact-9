@@ -1,25 +1,26 @@
-# AWS 실습 — ALB · AI 오토스케일링 · Vercel 로 나누기
+# AWS 실습 — Vercel 화면 · ALB · AI 오토스케일링으로 나누기
 
 > 지금까지는 EC2 한 대(`t4g.small`)에 화면·백엔드·AI·DB·HTTPS(Caddy)를 전부 올렸다. 이 문서는 그것을
 > **화면은 Vercel, API 는 ALB 뒤 백엔드 EC2, AI 는 내부 ALB 뒤 오토스케일링 그룹**으로 나누는 실습 절차다.
-> 콘솔에서 사람이 눌러야 하는 것을 순서대로 적었다. 코드 쪽 설명은 각 파일의 주석이 원본이다.
+> **Vercel 부터 한다** — 화면을 먼저 Vercel 로 옮기고(그동안 API 는 지금 서버), 도메인도 Vercel 에서 산다.
+> 그다음 AWS 를 만들고, 마지막에 API 주소만 바꿔 넘어간다. 콘솔에서 사람이 눌러야 하는 것을 순서대로 적었다.
 >
-> 관련 파일: `docker-compose.elb.yml`(백엔드 EC2), `.github/workflows/deploy.yml`(`DEPLOY_TARGET`),
-> `.github/workflows/deploy-ai.yml`(ECR · 인스턴스 새로 고침), `deploy/aws/ai-user-data.sh`(AI 인스턴스 시작 스크립트),
-> `deploy/aws/iam/*.json`(IAM 정책 견본), `frontend/vercel.json`, `frontend/src/api/base.ts`(`VITE_API_BASE_URL`)
+> 관련 파일: `frontend/vercel.json`, `frontend/src/api/base.ts`(`VITE_API_BASE_URL`), `docker-compose.elb.yml`(백엔드 EC2),
+> `.github/workflows/deploy.yml`(`DEPLOY_TARGET`), `.github/workflows/deploy-ai.yml`(ECR · 인스턴스 새로 고침),
+> `deploy/aws/ai-user-data.sh`(AI 인스턴스 시작 스크립트), `deploy/aws/iam/*.json`(IAM 정책 견본)
 
 ---
 
 ## 0. 한눈에 보기
 
-### 구성
+### 구성 (끝난 모습)
 
 ```mermaid
 flowchart LR
   U["브라우저<br/>의료진 PC · 환자 휴대폰 · 로비 모니터"]
-  V["Vercel<br/>React 화면<br/>app.도메인"]
+  V["Vercel<br/>React 화면 · 도메인 · DNS<br/>&lt;도메인&gt;"]
   subgraph AWS["AWS 서울 리전 · 기본 VPC"]
-    ALB["공개 ALB<br/>HTTPS 443 · ACM 인증서<br/>api.도메인"]
+    ALB["공개 ALB<br/>HTTPS 443 · ACM 인증서<br/>api.&lt;도메인&gt;"]
     BE["백엔드 EC2 t4g.small<br/>Spring Boot + MySQL(도커) :8080"]
     IALB["내부 ALB<br/>HTTP 80"]
     subgraph ASG["AI 오토스케일링 그룹 · 1~4대"]
@@ -29,79 +30,147 @@ flowchart LR
     ECR[("ECR<br/>artifact-ai")]
     SSM[("SSM 파라미터<br/>INTERNAL_API_SECRET")]
   end
-  GH["GitHub Actions"]
+  GH["GitHub"]
   U -->|화면| V
   U -->|"API (CORS)"| ALB --> BE --> IALB --> AI1 & AI2
-  GH -->|"OIDC · 이미지 푸시 · 인스턴스 새로 고침"| ECR
+  GH -->|"main 머지 → 화면 자동 배포"| V
+  GH -->|"Actions · OIDC → 이미지 푸시 · 인스턴스 새로 고침"| ECR
   AI1 & AI2 -.->|"부팅 때 이미지 · 비밀값"| ECR & SSM
   GH -->|"self-hosted 러너(지금 그대로)"| BE
 ```
 
 | 무엇 | 어디서 | 배포 |
 |---|---|---|
-| 화면(React) | Vercel | Git 연동 — main 에 머지하면 Vercel 이 빌드 |
+| 화면(React) | Vercel | Vercel Git 연동 — main 에 머지하면 Vercel 이 `frontend/` 만 빌드해 배포. `frontend/` 가 안 바뀐 커밋은 건너뛴다 |
+| 도메인 · DNS | Vercel 에서 산 도메인(Vercel DNS) | 화면 = `<도메인>`, API = `api.<도메인>`(ALB 를 가리키는 CNAME) |
 | 백엔드 + MySQL | 지금 쓰는 EC2(그대로 백엔드 서버가 된다 — DB 볼륨 유지) | `deploy.yml` (self-hosted 러너, `DEPLOY_TARGET=elb`) |
 | AI(FastAPI) | 오토스케일링 그룹의 EC2 들 | `deploy-ai.yml` (ECR 푸시 → 인스턴스 새로 고침) |
-| HTTPS | 공개 ALB(ACM 인증서) | — |
+| HTTPS | 화면은 Vercel, API 는 공개 ALB(ACM 인증서) | — |
 
-### 순서와 원칙
+### 순서
 
-1~8 단계는 **지금 사이트를 그대로 둔 채** 만든다. `DEPLOY_TARGET` 이 비어 있는 동안 배포는 지금까지와 같은 한 서버
-구성으로 돈다 — 이 코드가 main 에 먼저 머지돼도 아무것도 바뀌지 않는다. 9 단계에서 변수 하나를 바꿔 넘어간다.
+| 단계 | 하는 일 | 화면 | API |
+|---|---|---|---|
+| **1** | **Vercel 프로젝트 · 도메인 구매 · 지금 서버에 새 화면 주소 허용** | **Vercel(새 도메인)** + duckdns 도 그대로 | 지금 서버(duckdns) |
+| 2 | 보안 그룹 4개 | 〃 | 〃 |
+| 3 | IAM — AI 인스턴스 역할, GitHub OIDC 역할 | 〃 | 〃 |
+| 4 | SSM 파라미터(내부 시크릿) | 〃 | 〃 |
+| 5 | ECR + 첫 AI 이미지 | 〃 | 〃 |
+| 6 | 내부 ALB + AI 오토스케일링 그룹 | 〃 | 〃 |
+| 7 | 공개 ALB + ACM + `api.<도메인>` (DNS 레코드는 Vercel 에서) | 〃 | 〃 |
+| **8** | **백엔드 .env → `DEPLOY_TARGET=elb` → 배포 → Vercel 의 API 주소 바꿔 다시 배포** | Vercel 만 | **ALB(`api.<도메인>`)** |
+| 9 | 오토스케일링 실습(부하 걸기) | | |
+| 10~11 | 되돌리기 · 정리 | | |
 
-| 단계 | 하는 일 | 지금 사이트 |
-|---|---|---|
-| 1 | 도메인 · 이름 정하기 | 그대로 |
-| 2 | 보안 그룹 4개 | 그대로 |
-| 3 | IAM — AI 인스턴스 역할, GitHub OIDC 역할 | 그대로 |
-| 4 | SSM 파라미터(내부 시크릿) | 그대로 |
-| 5 | ECR + 첫 AI 이미지 | 그대로 |
-| 6 | 내부 ALB + AI 오토스케일링 그룹 | 그대로 |
-| 7 | 공개 ALB + ACM + api 도메인 | 그대로 |
-| 8 | Vercel 화면 | 그대로 |
-| **9** | **백엔드 .env → `DEPLOY_TARGET=elb` → 배포** | **여기서 넘어간다** |
-| 10 | 오토스케일링 실습(부하 걸기) | — |
-| 11~12 | 되돌리기 · 정리 | — |
+1 단계만 끝내도 화면은 Vercel 과 새 도메인으로 돈다. 2~7 단계는 지금 사이트를 그대로 둔 채 만들고, 8 단계에서 넘어간다.
+`DEPLOY_TARGET` 이 비어 있는 동안 EC2 배포는 지금까지와 같은 한 서버 구성으로 돈다.
 
 ### 비용 (서울 리전 온디맨드, 30일 기준 대략)
 
 | 항목 | 개수 | 월 | 비고 |
 |---|---:|---:|---|
+| Vercel Hobby | 1 프로젝트 | 무료 | 개인·비상업 용도. 학생 프로젝트는 여기에 든다 |
+| 도메인(Vercel 에서 구매) | 1 | 연 $10~20 안팎 | TLD 마다 다르다 — 구매 화면에서 확인. DNS 는 무료 |
 | EC2 `t4g.small` ($0.0208/h) | 3 (백엔드 1 + AI 2) | 약 $45 | AI 가 4대로 늘면 그 시간만큼 더 |
 | ALB (시간당 + LCU) | 2 (공개 1 + 내부 1) | 약 $35~40 | 끌 수 없다 — 안 쓰면 지운다 |
 | 공인 IPv4 ($0.005/h) | 5 안팎 (공개 ALB 2 + EC2 3) | 약 $18 | 내부 ALB 는 공인 IP 가 없다 |
-| EBS gp3 | 30 + 16×2 GB | 약 $6 | |
-| ECR · Route 53 호스팅 영역 | | 약 $1 | 도메인 등록비 별도(.com 연 $15 안팎) |
-| **합계** | | **약 $105/월 (하루 $3.5)** | 지금 한 서버 구성은 약 $22/월 |
+| EBS gp3 · ECR | 30 + 16×2 GB · 이미지 몇 개 | 약 $6 | |
+| **AWS 합계** | | **약 $105/월 (하루 $3.5)** | 지금 한 서버 구성은 약 $22/월 |
 
-- 실습 목적이면 **기간을 정해 두고 끝나면 12 단계로 지운다.** 그대로 두면 크레딧이 한 달 반 정도면 바닥난다.
+- AWS 부분(2~8)은 **기간을 정해 두고, 끝나면 11 단계로 지운다.** 그대로 두면 크레딧이 한 달 반 정도면 바닥난다.
   크레딧 잔액과 예산 알림은 `docs/booth-operation-guide.md` 1-1 의 화면 순서대로 먼저 확인한다.
 - 값은 콘솔 요금표로 한 번 더 확인한다. 특히 ALB 는 트래픽(LCU)에 따라 조금 달라진다.
 - vCPU 한도: `t4g.small` 은 2 vCPU 다. AI 가 최대 4대면 백엔드 포함 10 vCPU 가 필요하다. EC2 → 한도(Limits)에서
   "Running On-Demand Standard instances" 가 10 이상인지 본다(`docs/booth-operation-guide.md` 1-2).
 
----
+### 이 문서에서 쓰는 이름
 
-## 1. 도메인 · 이름 정하기
-
-**도메인이 필요하다.** ALB 에 HTTPS 를 붙이려면 ACM 인증서가 필요하고, ACM 은 도메인에 CNAME 레코드를 추가해
-소유를 확인한다. 지금 쓰는 DuckDNS 는 CNAME 을 추가할 수 없어 쓸 수 없다.
-
-- 가장 쉬운 길: **Route 53 → 도메인 등록**에서 사서 그대로 쓴다(호스팅 영역이 자동으로 생긴다).
-- 다른 곳에서 샀다면 Route 53 에 호스팅 영역을 만들고, 등록 업체의 네임서버를 Route 53 의 4개로 바꾼다.
-
-이 문서는 아래 이름을 쓴다. `<도메인>` 은 산 도메인(예: `artifact-emr.com`)이다.
+`<도메인>` 은 Vercel 에서 산 도메인(예: `artifact-emr.com`), `<프로젝트>` 는 Vercel 프로젝트 이름이다.
 
 | 이름 | 무엇 |
 |---|---|
-| `app.<도메인>` | 화면(Vercel) |
-| `api.<도메인>` | API(공개 ALB) |
+| `https://<도메인>` | 화면(Vercel). `www.<도메인>` 은 여기로 넘긴다 |
+| `https://api.<도메인>` | API(공개 ALB) |
 | `artifact-ai` | ECR 저장소 |
 | `artifact-ai-tg` / `artifact-ai-alb` | AI 대상 그룹 / 내부 ALB |
 | `artifact-ai-lt` / `artifact-ai-asg` | AI 시작 템플릿 / 오토스케일링 그룹 |
 | `artifact-backend-tg` / `artifact-api-alb` | 백엔드 대상 그룹 / 공개 ALB |
 
-리전은 전부 **아시아 태평양(서울) ap-northeast-2**. 화면 오른쪽 위에서 먼저 확인한다.
+AWS 리전은 전부 **아시아 태평양(서울) ap-northeast-2**. 콘솔 오른쪽 위에서 먼저 확인한다.
+
+---
+
+## 1. Vercel — 화면 먼저 (API 는 아직 지금 서버)
+
+### 1-1. 프로젝트 만들기 — 모노레포에서 `frontend/` 만
+
+1. https://vercel.com → **Sign Up** → **Continue with GitHub** (Hobby 플랜)
+2. **Add New… → Project** → **Import Git Repository** 에서 `CSID-DGU/2026-1-CECD1-5-Artifact-9` 옆 **Import**
+   - 목록에 없으면 같은 화면의 **Adjust GitHub App Permissions** → GitHub 에서 Vercel 앱을 **CSID-DGU** 조직에 설치하고
+     이 저장소를 고른다. 조직 소유자가 아니면 "요청"만 가고, 소유자가 승인해야 목록에 뜬다
+   - 그래도 가져올 수 없다고 나오면(플랜 제한 등) 거기서 멈추고 메시지를 그대로 알려 달라 — GitHub Actions 에서
+     Vercel CLI 로 배포하는 방법으로 바꿀 수 있다
+3. **Configure Project**
+   - Project Name: 예) `artifact` (기본 주소가 `https://artifact.vercel.app` 처럼 된다. 이미 있으면 뒤에 글자가 붙는다)
+   - **Root Directory → Edit → `frontend` 선택** ← 이게 핵심이다. Vercel 은 이 폴더만 프로젝트로 보고 빌드한다
+   - Framework Preset 은 `Vite` 로 잡힌다. Build·Output 설정은 건드리지 않는다 — `frontend/vercel.json` 이 정한다
+     (빌드 `npm run build`, 결과 `dist`, 모든 경로를 `index.html` 로 넘겨 `/main/clinic`·`/kiosk/<토큰>` 을 새로 고쳐도 열린다)
+   - **Environment Variables**: Key `VITE_API_BASE_URL`, Value `https://artifact-prod.duckdns.org` (끝에 `/` 없이)
+     - 지금은 API 가 지금 서버(duckdns)에 있으므로 그 주소다. 8 단계에서 `https://api.<도메인>` 으로 바꾼다
+     - 화면은 이 값으로 API 를 직접 부른다(`frontend/src/api/base.ts`). **빌드할 때 굳는다** — 바꾸면 다시 배포해야 반영된다
+4. **Deploy** → 1~2분 뒤 `https://<프로젝트>.vercel.app` 가 뜬다
+   - 이 시점에는 로그인이 아직 안 된다(지금 서버가 이 주소를 모른다 — 1-4 에서 허용한다). 데모 체험은 된다
+
+### 1-2. 자동 배포(CI/CD) — 무엇이 언제 배포되나
+
+Vercel 의 Git 연동이 GitHub Actions 없이 알아서 한다.
+
+| 언제 | Vercel 이 하는 일 |
+|---|---|
+| main 에 머지(또는 push) | **Production** 배포 → `<도메인>` 이 새 화면이 된다 |
+| PR 을 열거나 PR 브랜치에 push | **Preview** 배포 → PR 에 미리보기 주소가 댓글로 달린다 |
+| 그 커밋에 `frontend/` 변경이 없음 | 빌드를 **건너뛴다**(배포 목록에 Ignored/Canceled) — 백엔드·AI·문서만 바뀐 커밋 |
+
+- 건너뛰기는 `frontend/vercel.json` 의 `ignoreCommand` 다: 직전 성공 배포 커밋(`VERCEL_GIT_PREVIOUS_SHA`, 없으면 직전 커밋)과
+  비교해 `frontend/` 가 그대로면 빌드하지 않는다. 비교할 커밋을 못 찾으면 빌드하는 쪽으로 넘어간다
+- Production 브랜치는 기본값 `main` 그대로 둔다(Project → Settings → Git)
+- **환경변수를 바꾼 것만으로는 반영되지 않는다.** Deployments → 가장 위 Production 배포의 `⋯` → **Redeploy**
+- 미리보기 주소(`*.vercel.app`)는 기본으로 Vercel 로그인이 걸려 있고(Deployment Protection), 백엔드 CORS 목록에도 없어
+  미리보기에서는 로그인이 안 된다. 미리보기에서도 써 보려면 1-4 의 `CORS_ALLOWED_ORIGINS` 에 그 주소를 더한다
+- 지금처럼 EC2 의 화면(duckdns)도 8 단계까지는 같이 배포된다 — 두 곳이 잠깐 공존한다
+
+### 1-3. 도메인 사기 — Vercel 에서
+
+1. Vercel 대시보드 → 왼쪽(또는 위) **Domains** → **Buy** (또는 Add → Buy a new domain)
+2. 원하는 이름을 검색 → 가격 확인 → 구매. 카드 결제가 필요하다(연 단위, 자동 갱신 여부를 확인해 둔다)
+   - Vercel 에서 산 도메인은 **네임서버가 처음부터 Vercel** 이다. DNS 레코드도 Vercel 화면에서 고친다(7 단계에서 쓴다)
+3. 프로젝트 → **Settings → Domains** → `<도메인>` 입력 → **Add**
+   - `www.<도메인>` 도 같이 추가하겠냐고 물으면 추가하고, **www → `<도메인>` 리디렉션**을 고른다
+   - 같은 계정에서 산 도메인이라 DNS 가 자동으로 잡히고 HTTPS 인증서도 몇 분 안에 붙는다. 상태가 **Valid Configuration** 이면 된다
+
+### 1-4. 지금 서버가 새 화면을 받아 주게
+
+화면(`https://<도메인>`)과 API(`https://artifact-prod.duckdns.org`)의 출처가 달라져 브라우저가 CORS 를 확인한다.
+지금 서버에 SSH 로 접속해 `~/artifact/.env` 에 다음을 넣는다(이미 있는 줄이면 고친다). **duckdns 주소를 빼지 않는다** — 빼면
+지금 화면(duckdns)의 로그인이 막힌다.
+
+```bash
+CORS_ALLOWED_ORIGINS=https://artifact-prod.duckdns.org,https://<도메인>,https://<프로젝트>.vercel.app
+PRINT_KIOSK_ALLOWED_BASE_URLS=https://artifact-prod.duckdns.org,https://<도메인>
+# 텔레그램 접수 알림을 켜 두었다면 — 접수 화면 주소와 같아야 보낸다(docs/telegram-notification.md)
+TELEGRAM_PUBLIC_BASE_URL=https://<도메인>
+```
+
+`.env` 는 컨테이너를 다시 만들어야 읽는다. GitHub → **Actions → Deploy → Run workflow**(main). 초록 체크가 뜨면 된다.
+
+### 1-5. 확인
+
+- `https://<도메인>` 로그인 → 접수 → **접수증 QR 이 `https://<도메인>/kiosk/...`** 인지(접수 화면의 키오스크 주소 칸을 비우면 화면 주소를 쓴다)
+- 휴대폰으로 QR → 키오스크 분석 → 진료실 AI 분석 → 처방 → 증명서 → 대기 현황판(`/waiting`)
+- 브라우저 개발자 도구 → 네트워크: API 요청이 `https://artifact-prod.duckdns.org/api/...` 로 가는지
+- main 에 백엔드만 바꾼 커밋이 머지되면 Vercel 배포 목록에 빌드 없이 넘어간 항목이 생기는지(1-2)
+
+여기까지가 Vercel 이다. AWS 실습을 안 하더라도 이 상태로 계속 써도 된다.
 
 ---
 
@@ -118,7 +187,7 @@ EC2 → 왼쪽 **보안 그룹** → **보안 그룹 생성**. VPC 는 지금 �
 | `artifact-alb-ai-sg` | HTTP 80 / 소스 = 지금 서버의 보안 그룹(`artifact-sg`) | 내부 ALB |
 | `artifact-ai-sg` | 사용자 지정 TCP 8000 / 소스 = `artifact-alb-ai-sg` | AI 인스턴스 |
 
-지금 서버의 보안 그룹(`artifact-sg`)에는 규칙 하나를 **추가**한다(기존 규칙은 9 단계 뒤에 정리):
+지금 서버의 보안 그룹(`artifact-sg`)에는 규칙 하나를 **추가**한다(기존 규칙은 8 단계 뒤에 정리):
 
 - 사용자 지정 TCP **8080** / 소스 = `artifact-alb-public-sg`
 
@@ -145,7 +214,7 @@ EC2 → 왼쪽 **보안 그룹** → **보안 그룹 생성**. VPC 는 지금 �
 이미지를 지금처럼 서버 디스크(`IMAGE_STORAGE_TYPE=local`)에 둔다면 건너뛴다.
 S3 를 쓰면 역할 `artifact-backend-instance-role` 을 같은 방법(EC2, `AmazonSSMManagedInstanceCore`)으로 만들고 인라인 정책에
 `deploy/aws/iam/backend-instance-s3-policy.json` (`BUCKET_NAME` 교체)을 넣는다. 지금 서버 → **작업 → 보안 → IAM 역할 수정**
-으로 붙이고, 9 단계에서 `.env` 의 `AWS_ACCESS_KEY`·`AWS_SECRET_KEY` 를 비운다 — 키가 비어 있으면 백엔드가 역할로 S3 에
+으로 붙이고, 8 단계에서 `.env` 의 `AWS_ACCESS_KEY`·`AWS_SECRET_KEY` 를 비운다 — 키가 비어 있으면 백엔드가 역할로 S3 에
 접근한다(`AwsConfig`).
 
 ### 3-3. GitHub Actions OIDC 역할 `artifact-github-deploy`
@@ -230,7 +299,7 @@ EC2 → **로드 밸런서** → **Application Load Balancer** 생성
 - VPC 기본, 매핑: 가용 영역 **2개 이상**(예: 2a, 2c)
 - 보안 그룹: `artifact-alb-ai-sg` 만(default 는 빼기)
 - 리스너: **HTTP 80** → 기본 작업 `artifact-ai-tg`
-- 생성 뒤 **DNS 이름**(`internal-artifact-ai-alb-....ap-northeast-2.elb.amazonaws.com`)을 적어 둔다 — 9 단계의 `FASTAPI_URL`
+- 생성 뒤 **DNS 이름**(`internal-artifact-ai-alb-....ap-northeast-2.elb.amazonaws.com`)을 적어 둔다 — 8 단계의 `FASTAPI_URL`
 
 ### 6-3. 시작 템플릿 `artifact-ai-lt`
 
@@ -285,19 +354,30 @@ curl -s http://<6-2 의 DNS 이름>/health/ready
 
 ---
 
-## 7. 백엔드 앞에 공개 ALB
+## 7. 백엔드 앞에 공개 ALB — DNS 레코드는 Vercel 에서
+
+도메인을 Vercel 에서 샀으므로 DNS 도 Vercel 이 관리한다. AWS 쪽에 필요한 레코드 두 개(인증서 확인용, `api` 주소)를
+**Vercel → Domains → `<도메인>` → DNS Records → Add** 로 넣는다. Route 53 은 쓰지 않는다.
 
 ### 7-1. 인증서 (ACM)
 
-Certificate Manager(**서울 리전** — ALB 와 같은 리전이어야 한다) → **인증서 요청** → 퍼블릭 →
-도메인 `api.<도메인>` → DNS 검증 → 요청. 인증서 화면의 **Route 53 에서 레코드 생성** → 몇 분 뒤 **발급됨**.
+1. Certificate Manager(**서울 리전** — ALB 와 같은 리전이어야 한다) → **인증서 요청** → 퍼블릭 →
+   도메인 `api.<도메인>` → **DNS 검증** → 요청
+2. 만든 인증서를 열면 **CNAME 이름**과 **CNAME 값**이 보인다
+   - 이름 예: `_3f1c2a….api.artifact-emr.com.` / 값 예: `_9b7d….xxxx.acm-validations.aws.`
+3. Vercel → Domains → `<도메인>` → **Add Record**
+   - Type **CNAME**
+   - Name: CNAME 이름에서 **뒤의 `.<도메인>.` 을 뺀 부분** — 예) `_3f1c2a….api`
+   - Value: CNAME 값 그대로(끝의 `.` 은 빼도 된다)
+   - TTL 기본값 → 저장
+4. 5~30분 뒤 ACM 상태가 **발급됨(Issued)**. 이 레코드는 지우지 않는다 — 인증서 자동 갱신에 쓰인다
 
 ### 7-2. 대상 그룹 `artifact-backend-tg`
 
 - 인스턴스, HTTP **8080**, VPC 기본
 - 상태 검사 경로 **`/api/health`**(로그인 없이 `{"status":"UP"}` — `HealthController`), 성공 코드 200, 간격 15초
 - 대상 등록: **지금 서버**를 포트 8080 으로 포함 → 생성 → 등록 취소 지연 30초
-- 지금은 **unhealthy 가 정상**이다. 한 서버 구성에서는 백엔드 8080 을 호스트에 열지 않는다. 9 단계 뒤 healthy 가 된다
+- 지금은 **unhealthy 가 정상**이다. 한 서버 구성에서는 백엔드 8080 을 호스트에 열지 않는다. 8 단계 뒤 healthy 가 된다
 
 ### 7-3. 공개 ALB `artifact-api-alb`
 
@@ -308,62 +388,56 @@ Certificate Manager(**서울 리전** — ALB 와 같은 리전이어야 한다)
   - **HTTPS 443** → `artifact-backend-tg`, 인증서 7-1, 보안 정책은 기본값(TLS 1.3 포함)
   - **HTTP 80** → 작업 **URL로 리디렉션** → HTTPS 443, 301
 - 유휴 제한 시간은 기본 60초 그대로(LLM 대체 사슬이 30초 안에 끝난다 — README "AI 처방 코멘트")
+- 생성 뒤 **DNS 이름**(`artifact-api-alb-….ap-northeast-2.elb.amazonaws.com`)을 적어 둔다
 
-### 7-4. api 도메인 연결
+### 7-4. `api.<도메인>` 연결
 
-Route 53 → 호스팅 영역 → **레코드 생성** → 이름 `api`, 유형 A, **별칭** 켜기 → Application/Classic Load Balancer →
-서울 → `artifact-api-alb`. 1~2분 뒤 `https://api.<도메인>/api/health` 는 아직 503 이다(대상이 unhealthy — 9 단계 전이라 정상).
+Vercel → Domains → `<도메인>` → **Add Record**
 
----
+- Type **CNAME**, Name `api`, Value = 7-3 의 ALB DNS 이름 → 저장
 
-## 8. Vercel — 화면
+1~5분 뒤 `https://api.<도메인>/api/health` 는 아직 **503** 이다(대상이 unhealthy — 8 단계 전이라 정상). 인증서 오류 없이
+503 이 보이면 DNS·인증서·ALB 까지는 맞다.
 
-1. vercel.com 에 GitHub 로 로그인 → **Add New → Project** → 이 저장소 **Import**
-2. **Root Directory** = `frontend` (빌드 설정은 `frontend/vercel.json` 이 정한다: Vite, `npm run build`, `dist`,
-   모든 경로를 `index.html` 로 — `/main/clinic`, `/kiosk/<토큰>` 같은 주소를 새로 고쳐도 열린다)
-3. **Environment Variables**: `VITE_API_BASE_URL` = `https://api.<도메인>` (끝에 `/` 없이)
-   - 화면은 이 값으로 API 를 직접 부른다(`frontend/src/api/base.ts`). **빌드할 때 굳는다** — 바꾸면 다시 배포해야 반영된다
-4. **Deploy** → 끝나면 프로젝트 → **Settings → Domains** → `app.<도메인>` 추가 → Vercel 이 알려 주는 레코드(보통 CNAME
-   `cname.vercel-dns.com`)를 Route 53 에 만든다
-5. 이후 main 에 머지하면 Vercel 이 알아서 다시 빌드한다. PR 마다 미리보기 주소도 생긴다
-   - 미리보기 주소(`*.vercel.app`)는 9 단계의 CORS 목록에 없어 API 가 막힌다. 미리보기에서도 로그인하려면
-     `CORS_ALLOWED_ORIGINS` 에 패턴을 더한다(예: `https://artifact-*-<팀이름>.vercel.app`)
-
-이 시점에 `https://app.<도메인>` 은 열리지만 로그인은 아직 안 된다(API 가 9 단계 전).
-로그인 화면의 **로그인 없이 데모 체험하기**는 브라우저 안에서만 돌아 지금도 된다(`docs/demo-mode.md`).
+> ALB 의 IP 는 바뀐다. A 레코드에 IP 를 적지 말고 반드시 CNAME 으로 DNS 이름을 가리킨다.
 
 ---
 
-## 9. 넘어가기 (cut-over)
+## 8. 넘어가기 (cut-over)
 
-**접수가 없는 시간에 한다.** 9-3 의 배포가 도는 1~3분 동안 사이트가 멈춘다.
+**접수가 없는 시간에 한다.** 8-4 의 백엔드 배포부터 8-5 의 Vercel 재배포가 끝날 때까지 2~4분 동안 로그인이 안 된다
+(그 사이 화면은 아직 옛 API 주소를 부르는데, 옛 서버 구성은 내려간다).
 
-### 9-1. 백엔드 `.env`
+### 8-1. 백엔드 `.env`
 
-지금 서버에 SSH 로 접속해 `~/artifact/.env` 에 추가한다(`.env.production.example` 맨 아래 절 참고):
+지금 서버에 SSH 로 접속해 `~/artifact/.env` 를 고친다(`.env.production.example` 맨 아래 절 참고):
 
 ```bash
 FASTAPI_URL=http://<6-2 의 DNS 이름>
-CORS_ALLOWED_ORIGINS=https://app.<도메인>
-PRINT_KIOSK_ALLOWED_BASE_URLS=https://app.<도메인>
+CORS_ALLOWED_ORIGINS=https://<도메인>
+PRINT_KIOSK_ALLOWED_BASE_URLS=https://<도메인>
 # 텔레그램 알림을 켜 두었다면
-TELEGRAM_PUBLIC_BASE_URL=https://app.<도메인>
+TELEGRAM_PUBLIC_BASE_URL=https://<도메인>
 # 3-2 의 역할을 붙였다면 두 키를 비운다
 AWS_ACCESS_KEY=
 AWS_SECRET_KEY=
 ```
 
-> ⚠️ 위 값을 넣은 뒤 9-3 전에 다른 배포가 돌면, 한 서버 구성의 화면(duckdns)이 CORS 로 막힌다. 미리 넣어 둘 거라면
-> 두 값에 지금 주소도 쉼표로 같이 적는다: `https://artifact-prod.duckdns.org,https://app.<도메인>`
+미리보기(`*.vercel.app`)에서도 로그인하려면 `CORS_ALLOWED_ORIGINS` 에 쉼표로 더한다.
 
-### 9-2. 저장소 변수
+### 8-2. Vercel 의 API 주소 바꿔 두기 (아직 재배포하지 않는다)
+
+Vercel → 프로젝트 → **Settings → Environment Variables** → `VITE_API_BASE_URL` 편집 → `https://api.<도메인>` → Save.
+저장만 한다 — 지금 재배포하면 백엔드가 아직 ALB 뒤에 없어 화면이 먼저 깨진다.
+
+### 8-3. 저장소 변수
 
 | 이름 | 값 |
 |---|---|
 | `DEPLOY_TARGET` | `elb` |
 | `API_URL` | `https://api.<도메인>` |
 
-### 9-3. 배포
+### 8-4. 백엔드 배포
 
 Actions → **Deploy** → **Run workflow** (main). 로그에서 확인할 것:
 
@@ -373,25 +447,29 @@ Actions → **Deploy** → **Run workflow** (main). 로그에서 확인할 것:
 
 `.env` 의 세 값 중 하나라도 비면 compose 가 기동 전에 멈추고 무엇이 빠졌는지 적는다.
 
-### 9-4. 확인
+### 8-5. Vercel 재배포
+
+Vercel → **Deployments** → 가장 위 Production 배포의 `⋯` → **Redeploy** → 1~2분. 끝나면 화면이 `https://api.<도메인>` 을 부른다.
+
+### 8-6. 확인
 
 - `artifact-backend-tg` → 대상 **healthy**
-- `https://app.<도메인>` 로그인 → 접수 → 접수증 QR 이 `https://app.<도메인>/kiosk/...` 인지
-- 키오스크(휴대폰)로 사진 분석 → 진료실 AI 분석 → 처방 → 증명서 → 대기 현황판
+- `https://<도메인>` 로그인 → 접수 → 접수증 QR → 키오스크(휴대폰) 분석 → 진료실 AI 분석 → 처방 → 증명서 → 대기 현황판
+- 개발자 도구 → 네트워크: API 요청이 `https://api.<도메인>/api/...` 로 가는지
 - AI 요청이 두 인스턴스로 나뉘는지: EC2 → 대상 그룹 `artifact-ai-tg` → **모니터링**의 요청 수, 또는 각 인스턴스의
   `sudo docker logs --tail 5 artifact-ai`
 
-### 9-5. 정리
+### 8-7. 정리
 
 - 지금 서버 보안 그룹(`artifact-sg`)에서 **80·443 인바운드 삭제**(Caddy 가 없다). 22 는 내 IP 로만 두거나,
   Session Manager 를 쓰려면 서버에 `AmazonSSMManagedInstanceCore` 가 든 역할을 붙이고 지운다
 - DuckDNS 주소는 더 이상 열리지 않는다. 남겨 둔 인쇄물 QR(옛 주소)도 열리지 않는다
 - 부스 때 접수 데스크 맥에서 돌던 print-agent 를 다시 쓴다면 그 `.env` 의 `BACKEND_URL` 을 `https://api.<도메인>`,
-  `KIOSK_BASE_URL` 을 `https://app.<도메인>` 으로 바꾼다(`print-agent/config.py`)
+  `KIOSK_BASE_URL` 을 `https://<도메인>` 으로 바꾼다(`print-agent/config.py`)
 
 ---
 
-## 10. 오토스케일링 실습 — 부하를 걸어 늘고 줄어드는 것 보기
+## 9. 오토스케일링 실습 — 부하를 걸어 늘고 줄어드는 것 보기
 
 `scripts/booth/kiosk_load_check.py` 는 키오스크 여러 대가 동시에 분석하는 상황을 만든다. API 주소만 있으면 된다.
 접수를 만들었다가 끝나면 취소한다(접수증 출력 작업이 생기지만 print-agent 가 없으면 2분 뒤 버려진다).
@@ -421,15 +499,14 @@ python3 scripts/booth/kiosk_load_check.py --base-url https://api.<도메인> \
 
 ---
 
-## 11. 되돌리기
+## 10. 되돌리기
 
-### 한 서버 구성으로
+### 한 서버 구성으로 (화면은 Vercel 그대로)
 
 1. 지금 서버 보안 그룹에 80·443 인바운드를 다시 연다, DuckDNS 의 IP 가 이 서버인지 확인한다
-2. 저장소 변수 `DEPLOY_TARGET` 을 지운다(또는 빈 값)
-3. Actions → **Deploy** → Run workflow — 화면·AI·Caddy 가 이 서버에 다시 뜬다
-   - `.env` 의 `CORS_ALLOWED_ORIGINS`·`PRINT_KIOSK_ALLOWED_BASE_URLS` 를 지우거나 `https://artifact-prod.duckdns.org` 로
-     되돌린다(남겨 두면 duckdns 화면의 로그인이 CORS 로 막힌다)
+2. 서버 `.env` 의 `CORS_ALLOWED_ORIGINS`·`PRINT_KIOSK_ALLOWED_BASE_URLS` 를 1-4 의 값(duckdns + `<도메인>`)으로 되돌린다
+3. 저장소 변수 `DEPLOY_TARGET` 을 지운다(또는 빈 값) → Actions → **Deploy** → Run workflow — 화면·AI·Caddy 가 이 서버에 다시 뜬다
+4. Vercel 의 `VITE_API_BASE_URL` 을 `https://artifact-prod.duckdns.org` 로 바꾸고 **Redeploy**
 
 ### AI 이미지만 이전 것으로
 
@@ -443,34 +520,45 @@ aws autoscaling start-instance-refresh --auto-scaling-group-name artifact-ai-asg
   --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}'
 ```
 
+### 화면만 이전 배포로
+
+Vercel → Deployments → Production 배포의 `⋯` → **Instant Rollback**. Hobby 플랜은 바로 이전 Production 배포로만 되돌릴 수 있다
+(더 예전 배포를 고르는 롤백은 Pro 이상). 더 뒤로 가야 하면 그 커밋을 되돌리는 커밋을 main 에 머지한다.
+
 ---
 
-## 12. 정리 — 실습이 끝나면 (요금 멈추기)
+## 11. 정리 — AWS 실습이 끝나면 (요금 멈추기)
 
 지우는 순서가 있다(앞의 것이 뒤의 것을 붙잡고 있다):
 
-1. 11 단계로 한 서버 구성에 돌아간다(서비스를 계속 쓸 거라면)
+1. 10 단계로 한 서버 구성에 돌아간다(서비스를 계속 쓸 거라면)
 2. Auto Scaling 그룹 `artifact-ai-asg` 삭제 — 인스턴스가 함께 종료된다
 3. 로드 밸런서 `artifact-ai-alb`, `artifact-api-alb` 삭제 → 대상 그룹 두 개 삭제
 4. 시작 템플릿 `artifact-ai-lt` 삭제(요금은 없지만 정리)
 5. 보안 그룹 `artifact-ai-sg`·`artifact-alb-ai-sg`·`artifact-alb-public-sg` 삭제, `artifact-sg` 에서 8080 규칙 삭제
 6. ECR `artifact-ai` 이미지(또는 저장소) 삭제 — 저장 용량만큼 과금
-7. 저장소 변수 `AI_ASG_NAME` 삭제(남겨 두면 Deploy AI 가 없는 그룹을 새로 고치려다 실패한다).
+7. ACM 인증서 삭제, Vercel DNS 에서 `api` 와 인증서 확인용(`_…api`) 레코드 삭제
+8. 저장소 변수 `AI_ASG_NAME` 삭제(남겨 두면 Deploy AI 가 없는 그룹을 새로 고치려다 실패한다).
    `AWS_DEPLOY_ROLE_ARN` 까지 지우면 Deploy AI 가 아예 돌지 않는다
-8. Route 53 호스팅 영역은 도메인을 계속 쓸 거면 둔다(월 $0.50). Vercel 무료 플랜은 그대로 둬도 된다
-9. 며칠 뒤 결제 및 비용 관리 → **청구서**에서 ELB·EC2 항목이 더 늘지 않는지 본다
+9. Vercel 프로젝트와 도메인은 그대로 둬도 된다(Hobby 무료, 도메인은 연 단위)
+10. 며칠 뒤 결제 및 비용 관리 → **청구서**에서 ELB·EC2 항목이 더 늘지 않는지 본다
 
 ---
 
-## 13. 자주 막히는 곳
+## 12. 자주 막히는 곳
 
 | 증상 | 원인 | 할 일 |
 |---|---|---|
-| Vercel 화면은 뜨는데 로그인하면 "서버에 연결할 수 없습니다" | `VITE_API_BASE_URL` 이 없거나 틀림, 또는 api 도메인·ALB 문제 | 브라우저 개발자 도구 → 네트워크에서 로그인 요청 주소가 `https://api.<도메인>/api/...` 인지. 아니면 Vercel 환경변수를 고치고 **다시 배포** |
+| Vercel Import 목록에 저장소가 없다 | Vercel GitHub 앱이 CSID-DGU 조직에 설치·승인되지 않음 | 1-1 의 Adjust GitHub App Permissions. 조직 소유자가 승인해야 한다 |
+| Vercel 빌드가 `vite` 를 못 찾거나 `package.json` 이 없다 | Root Directory 가 저장소 루트 | Settings → Build and Deployment → Root Directory 를 `frontend` 로 → Redeploy |
+| 화면을 고쳐 머지했는데 Vercel 이 빌드를 건너뜀 | `ignoreCommand` 가 `frontend/` 변경을 못 봄(드묾) | Deployments → 그 배포 `⋯` → Redeploy(건너뛰기 없이 빌드). 계속되면 `frontend/vercel.json` 의 `ignoreCommand` 줄을 지운다 — 이 값이 프로젝트 설정의 Ignored Build Step 보다 우선한다 |
+| 환경변수를 바꿨는데 화면이 옛 API 를 부름 | `VITE_API_BASE_URL` 은 빌드할 때 굳는다 | Redeploy |
+| Vercel 화면은 뜨는데 로그인하면 "서버에 연결할 수 없습니다" | API 주소가 틀렸거나 API 쪽(서버·ALB) 문제 | 개발자 도구 → 네트워크에서 로그인 요청 주소 확인. 주소가 맞으면 아래 CORS·503 행 |
 | 콘솔에 `CORS policy` 오류, 응답 403 `Invalid CORS request` | 백엔드 `CORS_ALLOWED_ORIGINS` 에 화면 주소가 정확히 없음(스킴·호스트, 끝 `/` 없이) | `.env` 를 고치고 Deploy 를 다시 돌린다(컨테이너를 새 값으로 다시 만든다) |
+| ACM 이 계속 "검증 대기 중" | Vercel DNS 레코드 이름에 도메인을 한 번 더 붙임(`_x.api.<도메인>.<도메인>`) | Name 에는 `_x.api` 까지만. Vercel 이 뒤에 `<도메인>` 을 붙인다 |
 | `api.<도메인>` 이 503 | 백엔드 대상 그룹에 healthy 대상이 없다 | 서버에서 `curl localhost:8080/api/health`. 200 이면 보안 그룹(8080 ← `artifact-alb-public-sg`)·대상 등록 포트, 아니면 `docker logs artifact-backend` |
 | AI 분석만 실패(502/503, "AI 서버") | 내부 ALB 뒤에 healthy AI 가 없다 | 6-4 "안 될 때". 백엔드 로그에 401 이면 SSM 파라미터와 `.env` 의 `INTERNAL_API_SECRET` 이 다르다 |
 | 인스턴스가 계속 새로 생겼다 사라진다 | 유예 기간 안에 `/health/ready` 를 통과하지 못함 | 시작 스크립트 로그. 메모리 부족(OOM)이면 `t4g.medium` 으로 시작 템플릿 새 버전 → 새로 고침 |
 | Deploy AI 의 새로 고침이 실패 | 새 이미지의 모델이 전부 뜨지 않음(`/health/ready` 503) | 실패해도 옛 인스턴스가 남아 서비스는 그대로다. 대상 그룹의 비정상 사유와 인스턴스 로그로 원인을 고쳐 다시 머지 |
 | Deploy AI 가 `Not authorized to perform sts:AssumeRoleWithWebIdentity` | 신뢰 정책의 저장소·브랜치가 다름, 또는 OIDC 공급자 없음 | 3-3. main 이 아닌 브랜치에서 수동 실행해도 이 오류다 |
-| 접수증 QR 이 옛 주소 | `PRINT_KIOSK_ALLOWED_BASE_URLS`, 또는 접수 화면에 저장해 둔 키오스크 주소 | `.env` 확인. 접수 화면의 키오스크 주소 칸을 비우면 화면 주소(`app.<도메인>`)를 쓴다 |
+| 접수증 QR 이 옛 주소 | `PRINT_KIOSK_ALLOWED_BASE_URLS`, 또는 접수 화면에 저장해 둔 키오스크 주소 | `.env` 확인. 접수 화면의 키오스크 주소 칸을 비우면 화면 주소(`<도메인>`)를 쓴다 |
