@@ -276,7 +276,7 @@ CloudFront(리전 선택이 없는 글로벌 서비스) → **배포(Distributio
 
 ### 3-1. OIDC 공급자 (한 번만)
 
-IAM → **자격 증명 공급자** → **공급자 추가** → **OpenID Connect**
+IAM → 왼쪽 **ID 제공업체**(예전 이름: 자격 증명 공급자) → 오른쪽 위 **공급자 추가** → 공급자 유형 **OpenID Connect**
 
 - 공급자 URL `https://token.actions.githubusercontent.com`, 대상 `sts.amazonaws.com` → 추가
 
