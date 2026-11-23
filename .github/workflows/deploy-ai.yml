@@ -1,0 +1,132 @@
+# =============================================
+# CD — AI 서버 이미지를 ECR 에 올리고, AI 오토스케일링 그룹을 순서대로 새 인스턴스로 바꾼다
+# =============================================
+# ELB 구성(docs/aws-elb-asg-guide.md)에서만 쓴다. 한 서버 구성에서는 deploy.yml 이 AI 서버까지 같이 띄운다.
+#
+#   fastapi/ 변경이 main 에 머지됨
+#     → arm64 러너에서 이미지 빌드
+#     → 러너에서 컨테이너를 띄워 /health/ready(모델 전부 로드) 가 200 인지 확인 — 깨진 이미지는 올리지 않는다
+#     → ECR 에 :<커밋> 과 :latest 로 푸시
+#     → 오토스케일링 그룹 "인스턴스 새로 고침" — 새 인스턴스가 :latest 를 받아 뜨고, 대상 그룹 헬스체크를 통과하면
+#       옛 인스턴스를 하나씩 내린다. 새 인스턴스가 끝내 건강해지지 않으면 새로 고침이 실패하고 옛 인스턴스가 남는다.
+#
+# AWS 키를 저장하지 않는다. GitHub OIDC 로 저장소 변수 AWS_DEPLOY_ROLE_ARN 의 역할을 잠깐 빌려 쓴다
+# (역할의 신뢰·권한 정책: deploy/aws/iam/github-actions-*.json — main 브랜치에서만 빌릴 수 있다).
+#
+# 저장소 변수(Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN  (필수) 이 값이 없으면 이 워크플로는 아무것도 하지 않는다 — AWS 를 만들기 전에 머지돼도 안전하다
+#   AI_ASG_NAME          (선택) 비어 있으면 이미지만 올리고 새로 고침은 하지 않는다(처음 ASG 를 만들기 전 단계)
+#   AWS_REGION           (선택) 기본 ap-northeast-2
+#   AI_ECR_REPOSITORY    (선택) 기본 artifact-ai
+# =============================================
+name: Deploy AI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "fastapi/**"
+      - ".github/workflows/deploy-ai.yml"
+  workflow_dispatch:
+
+# 새로 고침이 겹치면 두 번째 요청이 거절된다. 앞 배포가 끝날 때까지 기다린다.
+concurrency:
+  group: deploy-ai
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC 토큰 → AWS 역할
+
+jobs:
+  deploy:
+    name: AI 이미지 · 롤링 배포
+    if: ${{ vars.AWS_DEPLOY_ROLE_ARN != '' }}
+    # t4g(Graviton) 와 같은 arm64. 에뮬레이션 없이 바로 빌드한다(공개 저장소는 무료 러너).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      ECR_REPOSITORY: ${{ vars.AI_ECR_REPOSITORY || 'artifact-ai' }}
+      ASG_NAME: ${{ vars.AI_ASG_NAME }}
+      LOCAL_IMAGE: artifact-ai:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 이미지 빌드
+        run: docker build -t "$LOCAL_IMAGE" ./fastapi
+
+      # 올리기 전에 이 러너에서 한 번 띄워 본다. 가중치가 깨졌거나 의존성이 빠진 이미지를 ECR 에 올리면
+      # 새로 고침 중에 새 인스턴스가 건강해지지 않아 배포가 30분 가까이 걸린 끝에 실패한다. 여기서 1~2분에 끝낸다.
+      - name: 기동 확인 (/health/ready)
+        run: |
+          docker run -d --name smoke -p 8000:8000 -e INTERNAL_API_SECRET=ci-smoke-only "$LOCAL_IMAGE"
+          for i in $(seq 1 48); do
+            code=$(curl -s -o /tmp/ready.json -w '%{http_code}' --max-time 5 http://localhost:8000/health/ready) || true
+            if [ "$code" = "200" ]; then
+              echo "✅ 모델 전부 로드 (${i}회차): $(cat /tmp/ready.json)"
+              exit 0
+            fi
+            echo "  ... /health/ready $code (${i}/48)"
+            sleep 5
+          done
+          echo "❌ 240초 안에 /health/ready 가 200 이 되지 않았습니다."
+          cat /tmp/ready.json 2>/dev/null || true
+          docker logs --tail 80 smoke
+          exit 1
+
+      - name: AWS 자격 증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: ECR 푸시
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          docker tag "$LOCAL_IMAGE" "$IMAGE:${{ github.sha }}"
+          docker tag "$LOCAL_IMAGE" "$IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+          echo "푸시: $IMAGE:${{ github.sha }} (= latest)"
+
+      # 시작 템플릿은 :latest 를 받는다(deploy/aws/ai-user-data.sh). 그래서 템플릿을 바꾸지 않고 인스턴스만 새로 띄우면
+      # 새 이미지가 된다. MinHealthyPercentage 50 = 2대면 한 대씩 바꾼다. InstanceWarmup 은 새 인스턴스가 대상 그룹에
+      # 들어간 뒤 다음 교체까지 기다리는 시간이다.
+      - name: 인스턴스 새로 고침
+        if: ${{ env.ASG_NAME != '' }}
+        run: |
+          ID=$(aws autoscaling start-instance-refresh \
+                --auto-scaling-group-name "$ASG_NAME" \
+                --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":120}' \
+                --query InstanceRefreshId --output text)
+          echo "새로 고침 시작: $ID"
+          for i in $(seq 1 60); do
+            read -r STATUS PCT REASON < <(aws autoscaling describe-instance-refreshes \
+                --auto-scaling-group-name "$ASG_NAME" --instance-refresh-ids "$ID" \
+                --query 'InstanceRefreshes[0].[Status,PercentageComplete,StatusReason]' --output text)
+            echo "  $STATUS ${PCT}% ${REASON}"
+            case "$STATUS" in
+              Successful)
+                echo "✅ 롤링 배포 완료"
+                exit 0 ;;
+              Failed|Cancelled|RollbackSuccessful|RollbackFailed)
+                echo "❌ 새로 고침이 $STATUS 로 끝났습니다. 대상 그룹의 비정상 사유와 인스턴스의 /var/log/artifact-ai-user-data.log 를 보세요."
+                exit 1 ;;
+            esac
+            # Pending · InProgress · Baking 이면 계속 기다린다.
+            sleep 30
+          done
+          echo "❌ 30분 안에 끝나지 않았습니다. 콘솔(EC2 → Auto Scaling 그룹 → 인스턴스 새로 고침)에서 진행 상황을 보세요."
+          exit 1
+
+      - name: 러너 정리
+        if: always()
+        run: docker rm -f smoke >/dev/null 2>&1 || true

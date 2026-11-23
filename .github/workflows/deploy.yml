@@ -7,6 +7,12 @@
 # 다른 점은 "누가" 하느냐다. EC2 안에서 도는 self-hosted 러너가 GitHub 에
 # 일감을 물어보고(outbound), 있으면 실행한다. 그래서 22번 포트를 인터넷에
 # 열 필요가 없다 — 자세한 이유는 docs/cicd-guide.md 2-0 참고.
+#
+# 구성 두 가지 — 저장소 변수 DEPLOY_TARGET 으로 고른다(GitHub 화면에서 바꾸고, 이 워크플로를 수동 실행해 적용):
+#   (비어 있음) 한 서버 구성: 이 EC2 하나에 화면·백엔드·AI·DB·Caddy(HTTPS) 전부. 지금까지의 방식
+#   elb        ELB 구성: 이 EC2 는 MySQL + 백엔드만(:8080 을 ALB 에 연다). 화면은 Vercel, AI 는 AI 오토스케일링 그룹
+#              (.github/workflows/deploy-ai.yml). 절차는 docs/aws-elb-asg-guide.md
+# AWS 쪽(ALB·AI 그룹·Vercel)을 다 만든 뒤에 elb 로 바꾼다. 그 전에 머지돼도 한 서버 구성 그대로 돈다.
 # =============================================
 name: Deploy
 
@@ -63,34 +69,36 @@ jobs:
       # 그 뒤 ddl-auto=validate 가 엔티티와 실제 테이블을 대조하므로,
       # 마이그레이션을 빠뜨린 배포는 헬스체크까지 가지 못하고 여기서 멈춘다.
 
-      # 부스 기간(2026-11-16~)에는 AI 워커 여러 개 + 로드밸런서 구성을 덧붙인다(docker-compose.booth.yml).
-      # 저장소 변수 BOOTH_MODE 로 켜고 끈다 — 서버에 SSH 하지 않고 GitHub 화면에서 바꿀 수 있고, 부스 중에 누가
-      # main 에 머지해도 평소 구성으로 조용히 되돌아가지 않는다. 바꾼 뒤에는 이 워크플로를 수동 실행해 적용한다.
-      # --remove-orphans 는 부스를 끌 때 남는 fastapi2·ai-lb 를 지운다(지금 파일들에 없는 서비스만 지운다).
+      # --remove-orphans 는 지금 파일들에 없는 서비스의 컨테이너를 지운다(예전 부스 구성의 fastapi2·ai-lb 등).
       - name: 빌드 · 재기동
         run: |
           cd ~/artifact
-          FILES="-f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml"
-          if [ "${{ vars.BOOTH_MODE }}" = "true" ]; then
-            FILES="$FILES -f docker-compose.booth.yml"
-            echo "부스 구성으로 배포 (BOOTH_MODE=true)"
+          if [ "${{ vars.DEPLOY_TARGET }}" = "elb" ]; then
+            FILES="-f docker-compose.yml -f docker-compose.elb.yml"
+            echo "ELB 구성으로 배포 (DEPLOY_TARGET=elb) — 이 서버는 MySQL + 백엔드만"
+            # 한 서버 구성에서 넘어올 때 남는 컨테이너. 화면은 Vercel, AI 는 AI 그룹, HTTPS 는 ALB 가 맡는다.
+            # frontend·fastapi 는 프로필로 꺼 둔 서비스라 --remove-orphans 가 지우지 않으므로 이름으로 지운다.
+            docker rm -f artifact-frontend artifact-fastapi artifact-caddy 2>/dev/null || true
+          else
+            FILES="-f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.https.yml"
+            echo "한 서버 구성으로 배포"
           fi
           echo "COMPOSE_FILES=$FILES" >> "$GITHUB_ENV"
           docker compose $FILES up -d --build --remove-orphans
 
-          # ai-lb 는 설정 파일 하나를 볼륨으로 얹어 쓴다. 파일만 바뀌면 compose 는 컨테이너를 다시 만들지 않고,
-          # git 이 파일을 새로 쓰면(새 inode) 떠 있는 컨테이너는 옛 파일을 계속 본다 — nginx -s reload 로는 바뀐
-          # 설정이 읽히지 않는다(로컬에서 확인). 그래서 일회용 컨테이너로 새 설정의 문법을 먼저 보고, 맞을 때만
-          # ai-lb 를 다시 시작해 새 파일을 얹는다. 틀리면 여기서 멈추고 돌던 ai-lb 는 그대로 둔다.
-          if [ "${{ vars.BOOTH_MODE }}" = "true" ]; then
-            docker compose $FILES run --rm --no-deps -T ai-lb nginx -t
-            docker compose $FILES restart ai-lb
-          fi
-
       - name: 헬스체크
         run: |
-          URL="${{ vars.PUBLIC_URL || 'https://artifact-prod.duckdns.org' }}"
-          echo "확인 대상: $URL (화면) · $URL/api/v1/auth/login (백엔드·DB)"
+          if [ "${{ vars.DEPLOY_TARGET }}" = "elb" ]; then
+            # 화면은 이 서버에 없다(Vercel). ALB 를 거쳐 API 로 확인한다 — ALB·대상 그룹·보안 그룹까지 한 번에 본다.
+            # API_URL 이 아직 없으면 이 서버의 8080 으로만 본다.
+            URL="${{ vars.API_URL }}"
+            URL="${URL:-http://localhost:8080}"
+            PAGE="$URL/api/health"
+          else
+            URL="${{ vars.PUBLIC_URL || 'https://artifact-prod.duckdns.org' }}"
+            PAGE="$URL"
+          fi
+          echo "확인 대상: $PAGE (화면 또는 헬스체크) · $URL/api/v1/auth/login (백엔드·DB)"
 
           # 화면(/)만 보면 안 된다. 화면은 nginx 가 바로 주므로 백엔드가 죽어 있어도 200 이다 — 2026-11-12 에는
           # 배포가 초록인데 로그인만 "서버에 연결할 수 없습니다"(502)였다. 그래서 백엔드와 DB 까지 가는 요청을 같이
@@ -101,7 +109,7 @@ jobs:
           # 백엔드 기동에 30초 이상 걸린다(DataInitializer 가 KCD/약품 마스터를 적재).
           for i in $(seq 1 40); do
             # 연결이 안 되면 curl 이 000 을 찍고 실패한다. || true 로 이 스크립트(bash -e)가 거기서 끝나지 않게 한다.
-            page=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL") || true
+            page=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PAGE") || true
             api=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$URL/api/v1/auth/login" \
                     -H 'Content-Type: application/json' -d '{"loginId":"deploy-healthcheck","password":"-"}') || true
             if [ "$page" = "200" ] && [[ "$api" =~ ^4[0-9][0-9]$ ]]; then
@@ -117,9 +125,15 @@ jobs:
           COMPOSE="docker compose $COMPOSE_FILES"
           $COMPOSE ps
 
-          # 백엔드는 떠 있는데 화면 서버가 못 닿는 경우 여기에 connect() failed 가 남는다.
-          echo "--- 화면 서버(nginx) 최근 로그 ---"
-          $COMPOSE logs --tail 20 frontend
+          # 백엔드는 떠 있는데 화면 서버가 못 닿는 경우 여기에 connect() failed 가 남는다(한 서버 구성만).
+          if [ "${{ vars.DEPLOY_TARGET }}" != "elb" ]; then
+            echo "--- 화면 서버(nginx) 최근 로그 ---"
+            $COMPOSE logs --tail 20 frontend
+          else
+            echo "--- 이 서버에서 직접 (ALB 를 거치지 않고) ---"
+            curl -s -o /dev/null -w 'localhost:8080/api/health → %{http_code}\n' --max-time 5 http://localhost:8080/api/health || true
+            echo "ALB 로는 안 되고 위가 200 이면: 대상 그룹 헬스체크(/api/health)·보안 그룹(8080 ← ALB)·리스너를 본다"
+          fi
 
           # 스키마 문제로 안 뜬 경우 원인 줄이 스택트레이스 수백 줄에 묻힌다.
           # Flyway·validate 관련 줄만 먼저 뽑아 무엇이 어긋났는지 바로 보이게 한다.

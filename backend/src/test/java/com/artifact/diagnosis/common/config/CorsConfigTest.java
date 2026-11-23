@@ -10,7 +10,12 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * 배포 도메인에서 온 요청이 CORS 로 막히지 않는지 고정한다.
@@ -23,12 +28,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  *
  * 그래서 "설정이 주입되면 통과하고, 모르는 출처는 여전히 거절된다"를 여기서 못 박는다.
  *
- * preflight(OPTIONS)는 여기서 다루지 않는다. 현재는 프론트와 API 가 같은 출처
- * (nginx 가 {@code /api/} 를 프록시)라 브라우저가 preflight 를 아예 보내지 않는다.
- * 실제로 지금 {@code OPTIONS} 를 보내면 SecurityConfig 에 CORS 가 연결돼 있지 않아
- * JwtFilter 가 401 로 막는다. 프론트를 별도 도메인에 올리는 순간 모든 API 가 깨진다 —
- * 그때는 SecurityConfig 에 {@code .cors(Customizer.withDefaults())} 를 추가하고
- * preflight 테스트를 여기에 되살려야 한다.
+ * preflight(OPTIONS)도 고정한다. 화면을 Vercel, API 를 ALB 뒤(api 도메인)에 따로 두면 출처가 달라져
+ * 브라우저가 Authorization 헤더를 실은 요청마다 OPTIONS 를 먼저 보낸다. SecurityConfig 에
+ * {@code .cors(Customizer.withDefaults())} 가 없으면 그 OPTIONS 가 인증 없는 요청으로 401 이 되어
+ * 모든 API 가 막힌다(예전에 이 주석에 적어 둔 그 상태). 아래 preflight 테스트가 그 줄을 지킨다.
  */
 // 이 클래스의 컨텍스트가 끝나면 바로 닫는다. CI 는 SpringBootTest 컨텍스트 4개를
 // JVM 하나에서 순서대로 띄우는데, 안 닫고 남겨두면 마지막 것을 띄울 때쯤 메모리가 쌓여
@@ -99,5 +102,36 @@ class CorsConfigTest {
 						.content("{\"loginId\":\"nobody\",\"password\":\"wrong-password\"}"))
 				.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
 						.status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("다른 출처(Vercel 화면)의 preflight 는 로그인 없이 통과하고 허용 헤더를 돌려준다")
+	void preflightFromDeployedOriginPasses() throws Exception {
+		mockMvc.perform(options("/api/v1/visits")
+						.header("Origin", DEPLOYED_ORIGIN)
+						.header("Access-Control-Request-Method", "GET")
+						.header("Access-Control-Request-Headers", "authorization,content-type"))
+				.andExpect(status().isOk())
+				.andExpect(header().string("Access-Control-Allow-Origin", DEPLOYED_ORIGIN))
+				.andExpect(header().string("Access-Control-Allow-Methods", containsString("GET")))
+				.andExpect(header().string("Access-Control-Allow-Headers", containsString("authorization")));
+	}
+
+	@Test
+	@DisplayName("허용 목록에 없는 출처의 preflight 는 거절된다")
+	void preflightFromUnknownOriginIsRejected() throws Exception {
+		mockMvc.perform(options("/api/v1/visits")
+						.header("Origin", "https://attacker.example.com")
+						.header("Access-Control-Request-Method", "GET")
+						.header("Access-Control-Request-Headers", "authorization"))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("401 응답에도 CORS 헤더가 붙는다 — 그래야 다른 출처의 화면이 401 을 읽고 다시 로그인시킨다")
+	void unauthorizedResponseCarriesCorsHeader() throws Exception {
+		mockMvc.perform(get("/api/v1/visits").param("status", "RECEIVED").header("Origin", DEPLOYED_ORIGIN))
+				.andExpect(status().isUnauthorized())
+				.andExpect(header().string("Access-Control-Allow-Origin", DEPLOYED_ORIGIN));
 	}
 }

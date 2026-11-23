@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLoginToken",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushAiImage",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:ap-northeast-2:ACCOUNT_ID:repository/artifact-ai"
+    },
+    {
+      "Sid": "RollAiAutoScalingGroup",
+      "Effect": "Allow",
+      "Action": "autoscaling:StartInstanceRefresh",
+      "Resource": "arn:aws:autoscaling:ap-northeast-2:ACCOUNT_ID:autoScalingGroup:*:autoScalingGroupName/artifact-ai-asg"
+    },
+    {
+      "Sid": "WatchInstanceRefresh",
+      "Effect": "Allow",
+      "Action": "autoscaling:DescribeInstanceRefreshes",
+      "Resource": "*"
+    }
+  ]
+}

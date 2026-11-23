@@ -1,3 +1,4 @@
+import { apiUrl } from "./base";
 import { getToken, notifySessionExpired } from "./session";
 
 export type ApiErrorBody = {
@@ -37,7 +38,7 @@ export async function apiRequest<T>(
 
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(apiUrl(path), {
       ...options,
       headers: {
         // FormData일 때 Content-Type을 우리가 정하면 안 된다. 브라우저가

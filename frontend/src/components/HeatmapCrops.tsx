@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { HeatmapCrop } from "../api/analysis";
+import { apiUrl } from "../api/base";
 import { AuthedImage } from "./AuthedImage";
 
 /**
@@ -126,7 +127,7 @@ function CropImage({ src, alt, className, authed, fallback }: {
 }) {
   return authed
     ? <AuthedImage src={src} alt={alt} className={className} fallback={fallback} />
-    : <img src={src} alt={alt} className={className} />;
+    : <img src={apiUrl(src)} alt={alt} className={className} />;
 }
 
 /**

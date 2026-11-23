@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage, isConflict, isNotFound } from "../api/errors";
 import type { AnalysisType } from "../api/analysis";
+import { apiUrl } from "../api/base";
 import { analyzeKioskSession, getKioskSession, requestKioskComment, type KioskSession, type PreliminaryAnalysis } from "../api/kiosk";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -590,7 +591,7 @@ export default function KioskAnalyze() {
                         // (바깥 상자는 아래 범례·안내 문구까지 품고 있어 높이가 다르다).
                         <div className="relative">
                           <img
-                            src={displayUrl}
+                            src={apiUrl(displayUrl)}
                             alt={showHeatmap ? "AI 판단 근거 히트맵" : "촬영한 원본 사진"}
                             className={`w-full ${gradcamLoading ? "opacity-0" : "opacity-100"}`}
                             style={{ display: "block", transition: "opacity 0.15s ease" }}

@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI, File, Form, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import hashlib
 import hmac
@@ -1070,6 +1071,19 @@ def run_inference(image_bytes: bytes, task: str = DEFAULT_TASK, crops: bool = Tr
         # 확대 재판정을 했을 때만 채운다: 원본 사진만 보고 낸 1순위. top1 과 다를 수 있다.
         "full_image_top1": full_results[0] if rejudged else None,
     }
+
+
+# 로드밸런서(ALB) 대상 그룹이 부르는 "이 서버에 요청을 보내도 되는가".
+# /health 는 기본 태스크만 뜨면 200 이다(나머지 태스크가 깨져도 서버를 살려 두는 설계 — _load_tasks 주석).
+# 오토스케일링의 롤링 배포(인스턴스 새로 고침)에서는 그게 위험하다 — 안면부 가중치가 깨진 이미지가 "정상"으로 판정돼
+# 모든 인스턴스로 퍼진다. 여기서는 등록된 태스크가 전부 로드됐을 때만 200 을 주고, 하나라도 빠지면 503 과 이유를 준다.
+# 그러면 새 인스턴스가 대상 그룹에 들지 못해 새로 고침이 멈추고, 옛 인스턴스가 계속 일한다(docs/aws-elb-asg-guide.md).
+@app.get("/health/ready")
+def health_ready():
+    missing = {name: TASK_LOAD_ERRORS.get(name, "로드되지 않음") for name in TASKS if name not in TASK_MODELS}
+    if missing:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "missing": missing})
+    return {"status": "ready", "tasks": sorted(TASK_MODELS)}
 
 
 # /health 는 시크릿을 요구하지 않는다 — 도커 헬스체크와 로드밸런서가 부르는 곳이고,

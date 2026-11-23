@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -47,10 +48,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
+            // 화면(Vercel)과 API(ALB)의 출처가 다르면 브라우저가 Authorization 헤더를 실은 요청마다 먼저 OPTIONS(preflight)를
+            // 보낸다. 이 줄이 없으면 그 OPTIONS 가 인증 없는 요청으로 401 이 되어 모든 API 가 막힌다. 허용 출처 목록은
+            // WebConfig(CORS_ALLOWED_ORIGINS) 한 곳에 있고, 여기서는 그 설정을 보안 필터 앞에 건다(Spring MVC 설정을 그대로 쓴다).
+            .cors(Customizer.withDefaults())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/signup").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                // 로드밸런서(ALB) 헬스체크 — 상태 문자열만 돌려준다(HealthController).
+                .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
 
                 // 대기실 태블릿용 — 경로에 든 kiosk_token(base62 12자리 SecureRandom)이
                 // 곧 접근 자격이다. 토큰을 모르면 어떤 접수에도 닿을 수 없다.
