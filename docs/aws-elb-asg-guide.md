@@ -29,6 +29,22 @@
 Vercel 도 같은 일을 하지만, 학교 조직 저장소에 Vercel 앱을 설치하려면 조직 관리자 승인이 필요하다. S3 + CloudFront 는
 이미 쓰는 GitHub Actions 로 배포하므로 조직 설정이 필요 없고, AWS 실습 범위에도 들어간다(Vercel 은 부록 A).
 
+### 그림 · 비용 비교 문서
+
+그림은 `docs/architecture/` 에 있다(PNG, 원본 `.excalidraw` 는 [excalidraw.com](https://excalidraw.com) 에서 열어 고칠 수 있다).
+구성별 비용 · 장단점을 묶은 문서는 `docs/architecture/artifact-architecture-cost.pdf`(A4 가로 20쪽).
+
+| 그림 | 내용 |
+|---|---|
+| [01 지금 구조](architecture/01-asis-single-ec2.png) | EC2 한 대에 화면 · API · AI · DB · Caddy 전부 (월 약 $22) |
+| [02 바꿀 구조 — 요청 흐름](architecture/02-tobe-request-flow.png) | Route 53 · CloudFront · S3 · ALB 2 · 백엔드 · AI 오토스케일링, VPC · 보안 그룹 사슬 (월 약 $109) |
+| [03 바꿀 구조 — 배포 흐름](architecture/03-tobe-deploy-flow.png) | GitHub Actions 세 갈래 · OIDC · S3/CloudFront · ECR/인스턴스 새로 고침 · self-hosted 러너 |
+| [04 시나리오 A](architecture/04-scenario-a-cost.png) | 실습이 끝나면: 화면만 CloudFront, 나머지는 서버 한 대 (월 약 $22) |
+| [05 시나리오 B](architecture/05-scenario-b-scale-out.png) | 백엔드도 여러 대: RDS Multi-AZ · S3 사진 · 백엔드 오토스케일링 (월 약 $172) |
+| [06 시나리오 C](architecture/06-scenario-c-queue.png) | AI 분석이 몰릴 때: SQS 큐 + 큐 길이로 늘어나는 일꾼 (월 약 $70~90) |
+| [07 시나리오 D](architecture/07-scenario-d-security.png) | 보안 강화: 프라이빗 서브넷 · NAT · WAF · Session Manager (월 약 $163) |
+| [08 비용 비교](architecture/08-cost-comparison.png) | 구성별 한 달 요금을 항목별로 쌓은 막대 + 장단점 |
+
 ### 구성 (끝난 모습)
 
 ```mermaid
@@ -73,7 +89,7 @@ flowchart LR
 | 단계 | 하는 일 | 화면 | API |
 |---|---|---|---|
 | 0 | 이 문서의 코드가 main 에 머지됐는지 | duckdns | 지금 서버 |
-| **1** | **도메인 사기 (Route 53)** — 몇 분~몇 시간 걸려 가장 먼저 | 〃 | 〃 |
+| **1** | **도메인 — Route 53 호스팅 영역 · 네임서버 연결** (다른 곳에서 샀으면 1-A) — 몇 분~몇 시간 걸려 가장 먼저 | 〃 | 〃 |
 | 2 | 화면 인프라: S3 버킷 · CloudFront 배포(인증서·도메인 연결은 마법사가 함께) | 〃 | 〃 |
 | **3** | **GitHub → AWS 배포 권한(OIDC) · 화면 첫 배포 · 지금 서버에 새 화면 주소 허용** | **`<도메인>`** (+ duckdns 도 그대로) | 지금 서버 |
 | 4 | 보안 그룹 4개 | 〃 | 〃 |
@@ -100,18 +116,21 @@ flowchart LR
 | 8 | 공개 ALB 리스너(HTTPS·리디렉션) · 인증서 DNS 검증 |
 | 9~12 | 짧은 중단으로 넘어가기 · 되돌리기 · 요금이 멈추는 정리 순서 |
 
-### 비용 (서울 리전 온디맨드, 30일 기준 대략)
+### 비용 (서울 리전 온디맨드, 730시간 기준 대략)
 
-| 항목 | 월 | 비고 |
-|---|---:|---|
-| 도메인 등록(Route 53) | 연 $15 안팎(.com) | TLD 마다 다르다. **AWS 크레딧은 도메인 등록·이전 요금에 쓸 수 없다**(크레딧 약관) — 카드로 결제된다 |
-| Route 53 호스팅 영역 | $0.50 | |
-| S3 + CloudFront | 거의 0 | 종량제의 CloudFront 상시 무료 한도(월 1TB·1천만 요청), S3 는 몇 MB |
-| EC2 `t4g.small` × 3 (백엔드 1 + AI 2) | 약 $45 | AI 가 4대로 늘면 그 시간만큼 더 |
-| ALB × 2 (공개 + 내부) | 약 $35~40 | 끌 수 없다 — 안 쓰면 지운다 |
-| 공인 IPv4 ($0.005/h) × 5 안팎 | 약 $18 | 공개 ALB 2 + EC2 3. 내부 ALB 는 공인 IP 가 없다 |
-| EBS · ECR | 약 $6 | |
-| **합계** | **약 $105/월 (하루 $3.5)** | 지금 한 서버 구성은 약 $22/월. 화면(1~3 단계)만 하면 약 $1/월 + 도메인 |
+단가는 AWS 공개 요금 데이터(서울, 2026-11-23 조회)다. 세금 · 데이터 전송 · 크레딧은 뺐다.
+
+| 항목 | 단가 | 월 | 비고 |
+|---|---|---:|---|
+| 도메인 | — | 연 $27 | 이 프로젝트는 `artifact-medical.site` 를 Vercel 에서 샀다(갱신가). Route 53 에서 산다면 `.com` 연 $15 안팎. **AWS 크레딧은 도메인 등록·이전 요금에 쓸 수 없다**(크레딧 약관) |
+| Route 53 호스팅 영역 | $0.50/영역 | $0.50 | |
+| S3 + CloudFront | — | ≈ $0 | 종량제의 CloudFront 상시 무료 한도(월 1TB·1천만 요청), S3 는 몇 MB |
+| EC2 `t4g.small` × 3 (백엔드 1 + AI 2) | $0.0208/h | $45.5 | AI 가 4대로 늘면 늘어난 시간만큼 대당 시간 약 $0.028 더 |
+| ALB × 2 (공개 + 내부) | $0.0225/h + LCU | $37.9 | 끌 수 없다 — 안 쓰면 지운다 |
+| 공인 IPv4 × 5 | $0.005/h | $18.3 | 공개 ALB 2 + EC2 3. 내부 ALB 는 공인 IP 가 없다 |
+| EBS 62 GB · ECR | $0.0912/GB-월 · $0.10/GB-월 | $6.4 | |
+| CloudWatch 경보 | — | $0.2 | 대상 추적 정책이 만드는 경보 2개 |
+| **합계** | | **약 $109/월 (하루 약 $3.6)** | 지금 한 서버 구성은 약 $22/월. 화면(1~3 단계)만 하면 약 $0.5/월 + 도메인 |
 
 - 4~9 단계의 AWS 백엔드는 **기간을 정해 두고, 끝나면 12 단계로 지운다.** 크레딧 잔액·예산 알림은 `docs/booth-operation-guide.md` 1-1.
 - vCPU 한도: AI 가 최대 4대면 백엔드 포함 10 vCPU 가 필요하다. EC2 → 한도(Limits)에서 "Running On-Demand Standard instances" 가
@@ -119,7 +138,7 @@ flowchart LR
 
 ### 이 문서에서 쓰는 이름
 
-`<도메인>` 은 Route 53 에서 산 도메인(예: `artifact-emr.com`)이다.
+`<도메인>` 은 화면 주소로 쓸 도메인이다. 이 프로젝트는 **`artifact-medical.site`**(Vercel 에서 등록) — API 는 `api.artifact-medical.site`.
 
 | 이름 | 무엇 |
 |---|---|
@@ -140,9 +159,27 @@ flowchart LR
 
 ---
 
-## 1. 도메인 사기 — Route 53
+## 1. 도메인 — Route 53 에서 사거나, 다른 곳에서 산 도메인을 Route 53 으로
 
 등록에 몇 분에서 몇 시간(TLD 에 따라 더) 걸리므로 가장 먼저 한다. 기다리는 동안 2 단계의 S3 버킷까지는 만들 수 있다.
+
+### 1-A. 다른 곳(Vercel 등)에서 이미 샀다면 — 네임서버만 Route 53 으로 (이 프로젝트: `artifact-medical.site`)
+
+등록 기관(registrar)은 그대로 두고 **레코드를 관리하는 곳(네임서버)만 Route 53 으로 넘긴다.** 이 문서의 별칭 레코드 ·
+인증서 자동 발급이 Route 53 기준이고, Vercel DNS 에 저절로 생기는 CAA 레코드(`letsencrypt.org` · `sectigo.com` · `pki.goog` 만 허용)가
+그대로면 **AWS 인증서(ACM) 발급이 막히기** 때문이다.
+
+1. Route 53 → **호스팅 영역** → **호스팅 영역 생성** → 도메인 이름 `artifact-medical.site`, 유형 **퍼블릭 호스팅 영역** → 생성(월 $0.50)
+2. 만든 영역의 **NS 레코드 값 4개**를 복사한다(`ns-….awsdns-….com` · `.net` · `.org` · `.co.uk`, 끝의 점은 빼고)
+3. Vercel → **Domains** → `artifact-medical.site` → **Nameservers** → **Edit** → `ns1/ns2.vercel-dns.com` 을 지우고 2번의 4개를 넣는다 → Save
+4. 확인: `dig +short NS artifact-medical.site`(Windows 는 `nslookup -type=NS artifact-medical.site`)가 `awsdns` 를 보이면 끝.
+   보통 수십 분, 길면 몇 시간. 그 뒤로 Vercel 의 DNS Records 화면은 쓰이지 않는다 — 레코드는 전부 Route 53 에서 고친다
+5. Vercel 화면에서 함께 볼 것: **DNSSEC 은 켜지 않는다**(켠 채로 네임서버를 바꾸면 조회가 깨진다) ·
+   **Manage WHOIS Privacy** 가 켜져 있는지(주소 · 전화가 공개 WHOIS 에 나가지 않게) · 자동 갱신은 실습 기간에 맞춰
+
+네임서버가 Route 53 으로 바뀐 것을 확인한 뒤 2 단계로 간다(인증서 검증 레코드가 Route 53 에 생기므로, 그 전에는 인증서가 "검증 대기"에 머문다).
+
+### 1-B. Route 53 에서 새로 산다면
 
 1. AWS 콘솔 → **Route 53** → 왼쪽 **도메인 → 등록된 도메인** → **도메인 등록**
 2. 원하는 이름을 검색 → 가격 확인 → **선택** → **결제 진행**
